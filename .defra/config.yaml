@@ -1,0 +1,21 @@
+store:
+  path: ".defra/data"
+
+p2p:
+  enabled: true
+  bootstrap_peers: []
+  listen_addr: "/ip4/0.0.0.0/tcp/9182"
+
+http:
+  enabled: true
+  host: "127.0.0.1"
+  port: 9181
+  playground:
+    enabled: true
+
+logger:
+  level: "info"
+  format: "text"
+
+keyring:
+  secret: "${DEFRA_KEYRING_SECRET}"

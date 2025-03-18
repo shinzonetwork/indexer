@@ -1,0 +1,19 @@
+query GetLatestBlocks {
+  Block(orderBy: {number: DESC}, limit: 10) {
+    hash
+    number
+    time
+    parentHash
+    difficulty
+    gasUsed
+    gasLimit
+    nonce
+    miner
+    size
+    stateRootHash
+    uncleHash
+    transactionRootHash
+    receiptRootHash
+    extraData
+  }
+}

@@ -1,0 +1,71 @@
+type Block {
+  hash: String @primary
+  number: String
+  time: String
+  parentHash: String
+  difficulty: String
+  gasUsed: String
+  gasLimit: String
+  nonce: String
+  miner: String
+  size: String
+  stateRootHash: String
+  uncleHash: String
+  transactionRootHash: String
+  receiptRootHash: String
+  extraData: String
+  # Relationships
+  transactions: [Transaction] @relation(name: "block_transactions")
+  events: [Event] @relation(name: "block_events")
+}
+
+type Transaction {
+  hash: String @primary
+  blockHash: String
+  blockNumber: String
+  from: String
+  to: String
+  value: String
+  gas: String
+  gasPrice: String
+  input: String
+  nonce: String
+  transactionIndex: String
+  status: Boolean
+  # Relationships
+  block: Block @relation(name: "block_transactions")
+  logs: [Log] @relation(name: "transaction_logs")
+  events: [Event] @relation(name: "transaction_events")
+}
+
+type Log  {
+  address: String
+  topics: [String]
+  data: String
+  blockNumber: String
+  transactionHash: String
+  transactionIndex: String
+  blockHash: String
+  logIndex: String @primary
+  removed: Boolean
+  # Relationships
+  transaction: Transaction @relation(name: "transaction_logs")
+  block: Block @relation(name: "block_events")
+}
+
+type Event {
+  address: String
+  topics: [String]
+  data: String
+  blockNumber: String
+  transactionHash: String
+  transactionIndex: String
+  blockHash: String
+  logIndex: String @primary
+  name: String
+  args: String
+  removed: Boolean
+  # Relationships
+  transaction: Transaction @relation(name: "transaction_events")
+  block: Block @relation(name: "block_events")
+}

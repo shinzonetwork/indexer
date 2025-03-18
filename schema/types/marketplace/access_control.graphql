@@ -1,0 +1,14 @@
+type AccessControl {
+  type: AccessType!               # Type of access control
+  allowedUsers: [String!]         # List of allowed user addresses
+  allowedRoles: [String!]         # List of allowed roles
+  price: String                   # Price for access (if pay-per-use)
+  tokenAddress: String            # Token contract address for token-gated access
+}
+
+enum AccessType {
+  PUBLIC                          # Anyone can access
+  PRIVATE                         # Only allowed users can access
+  TOKEN_GATED                     # Must hold tokens to access
+  PAY_PER_USE                    # Pay per use access
+}

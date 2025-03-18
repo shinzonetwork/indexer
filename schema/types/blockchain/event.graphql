@@ -1,0 +1,17 @@
+
+type Event @collection {
+  address: String!                # Contract address that emitted the event
+  topics: [String!]!              # Event topics (including event signature)
+  data: String!                   # Event data (Base64-encoded)
+  blockNumber: String!            # Block number
+  transactionHash: String!        # Transaction hash
+  transactionIndex: String!       # Transaction index
+  blockHash: String!              # Block hash
+  logIndex: String! @primary       # Log index
+  name: String!                   # Event name
+  args: String!                   # Event arguments
+  removed: Boolean!               # Whether the event was removed
+  # Relationships
+  transaction: Transaction! @relation(name: "transaction_events")  # Relation from Event to Transaction
+  block: Block! @relation(name: "block_events")  # Relation from Event to Block
+}

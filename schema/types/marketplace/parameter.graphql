@@ -1,0 +1,7 @@
+type Parameter {
+  name: String!                    # Parameter name
+  description: String!             # Parameter description
+  type: String!                    # Parameter data type
+  required: Boolean!               # Whether the parameter is required
+  defaultValue: String             # Default value for the parameter
+}

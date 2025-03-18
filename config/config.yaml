@@ -1,0 +1,46 @@
+defradb:
+  host: "127.0.0.1"
+  port: 9181
+  p2p:
+    enabled: true
+    bootstrap_peers: []
+    listen_addr: "/ip4/0.0.0.0/tcp/9182"
+  store:
+    path: ".defra"
+  keyring_secret: "${DEFRA_KEYRING_SECRET}"
+
+alchemy:
+  api_key: "${ALCHEMY_API_KEY}"
+  network: "${ALCHEMY_NETWORK}"
+
+indexer:
+  block_polling_interval: 0.001  # 1 millisecond
+  batch_size: 100
+  start_height: 18100000  # More recent block with transactions
+  pipeline:
+    fetch_blocks:
+      workers: 2
+      buffer_size: 1000
+    process_transactions:
+      workers: 4
+      buffer_size: 2000
+    store_data:
+      workers: 2
+      buffer_size: 1000
+
+lensvm:
+  enabled: true
+  store_path: ".lensvm"
+  pipeline:
+    batch_size: 500
+    workers: 2
+    transformations:
+      - name: "block_transform"
+        input: "Block"
+        output: "Block"
+      - name: "transaction_transform"
+        input: "Transaction"
+        output: "Transaction"
+      - name: "event_transform"
+        input: "Event"
+        output: "Event"
