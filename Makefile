@@ -12,3 +12,8 @@ defra:playground:
 
 build:
 	go build -o bin/indexer cmd/indexer/main.go
+
+github:
+	git add .
+	git commit -m "Update dependencies"
+	git push origin ${BRANCH}
