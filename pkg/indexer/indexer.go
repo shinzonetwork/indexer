@@ -27,8 +27,10 @@ type Indexer struct {
 	client    *http.Client
 }
 
-type createDocumentResult struct {
-	DocID string `json:"_docID"`
+type Response struct {
+	Data map[string][]struct {
+		DocID string `json:"_docID"`
+	} `json:"data"`
 }
 
 func NewIndexer(cfg *config.Config) (*Indexer, error) {
@@ -178,7 +180,7 @@ func (i *Indexer) blockExists(ctx context.Context, blockHash string) (bool, erro
 	return len(result.Data.Block) > 0, nil
 }
 
-func (i *Indexer) postToCollection(ctx context.Context, collection string, data map[string]interface{}) (*createDocumentResult, error) {
+func (i *Indexer) postToCollection(ctx context.Context, collection string, data map[string]interface{}) (string, error) {
 	// Convert data to GraphQL input format
 	var inputFields []string
 	for key, value := range data {
@@ -187,24 +189,10 @@ func (i *Indexer) postToCollection(ctx context.Context, collection string, data 
 			inputFields = append(inputFields, fmt.Sprintf("%s: %q", key, v))
 		case bool:
 			inputFields = append(inputFields, fmt.Sprintf("%s: %v", key, v))
-		case map[string]interface{}:
-			// Handle relationship fields based on our schema
-			if docID, ok := v["docID"].(string); ok && docID != "" {
-				switch key {
-				case "block":
-					inputFields = append(inputFields, fmt.Sprintf("block_id: %q", docID))
-				case "transaction":
-					inputFields = append(inputFields, fmt.Sprintf("transaction_id: %q", docID))
-				case "log":
-					inputFields = append(inputFields, fmt.Sprintf("log_id: %q", docID))
-				case "event":
-					inputFields = append(inputFields, fmt.Sprintf("event_id: %q", docID))
-				}
-			}
 		case []string:
 			jsonBytes, err := json.Marshal(v)
 			if err != nil {
-				return nil, fmt.Errorf("failed to marshal field %s: %w", key, err)
+				return "", fmt.Errorf("failed to marshal field %s: %w", key, err)
 			}
 			inputFields = append(inputFields, fmt.Sprintf("%s: %s", key, string(jsonBytes)))
 		default:
@@ -212,123 +200,70 @@ func (i *Indexer) postToCollection(ctx context.Context, collection string, data 
 		}
 	}
 
-	// Use create mutation for all collections and handle conflicts gracefully
+	// Create mutation
 	mutation := fmt.Sprintf(`mutation {
 		create_%s(input: { %s }) {
 			_docID
 		}
 	}`, collection, strings.Join(inputFields, ", "))
 
-	i.logger.Debug("sending mutation", zap.String("collection", collection), zap.String("payload", mutation), zap.Any("data", data))
-
-	resp, err := i.client.Post(
-		fmt.Sprintf("%s/api/v0/graphql", i.defraURL),
-		"application/json",
-		bytes.NewReader([]byte(fmt.Sprintf(`{"query": %q}`, mutation))),
-	)
+	// Send mutation
+	resp, err := i.postGraphQL(ctx, mutation)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create document: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	i.logger.Debug("store response", zap.String("body", string(body)))
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to create document: status=%d body=%s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("failed to create %s: %w", collection, err)
 	}
 
-	var result struct {
-		Data struct {
-			Create struct {
-				DocID string `json:"_docID"`
-			} `json:"create_Block,omitempty"`
-		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
+	// Parse response
+	var response Response
+	if err := json.Unmarshal(resp, &response); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	// Look for the create_{collection} field in the response
+	createField := fmt.Sprintf("create_%s", collection)
+	items, ok := response.Data[createField]
+	if !ok || len(items) == 0 {
+		return "", fmt.Errorf("no document ID returned")
 	}
 
-	// If we get a document ID conflict for a block, just skip it
-	if collection == "Block" && len(result.Errors) > 0 && strings.Contains(result.Errors[0].Message, "document with the given ID already exists") {
-		i.logger.Debug("skipping existing block", zap.String("hash", data["hash"].(string)))
-		query := fmt.Sprintf(`{
-			Block(filter: { hash: %q }) {
-				_docID
-			}
-		}`, data["hash"].(string))
-
-		resp, err := i.client.Post(
-			fmt.Sprintf("%s/api/v0/graphql", i.defraURL),
-			"application/json",
-			bytes.NewReader([]byte(fmt.Sprintf(`{"query": %q}`, query))),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get existing block: %w", err)
-		}
-		defer resp.Body.Close()
-
-		var existingResult struct {
-			Data struct {
-				Block []struct {
-					DocID string `json:"_docID"`
-				} `json:"Block"`
-			} `json:"data"`
-		}
-
-		if err := json.NewDecoder(resp.Body).Decode(&existingResult); err != nil {
-			return nil, fmt.Errorf("failed to decode response: %w", err)
-		}
-
-		if len(existingResult.Data.Block) > 0 {
-			return &createDocumentResult{DocID: existingResult.Data.Block[0].DocID}, nil
-		}
-	} else if len(result.Errors) > 0 {
-		return nil, fmt.Errorf("graphql error: %s", result.Errors[0].Message)
-	}
-
-	return &createDocumentResult{DocID: result.Data.Create.DocID}, nil
+	return items[0].DocID, nil
 }
 
 func (i *Indexer) processNextBlock(ctx context.Context) error {
 	blockNumber := i.lastBlock + 1
+	i.logger.Info("processing block", zap.Int("number", blockNumber))
 	blockNumberHex := fmt.Sprintf("0x%x", blockNumber)
 
 	// Get block from Alchemy
-	customBlock, err := i.alchemy.GetBlock(ctx, blockNumberHex)
+	block, err := i.alchemy.GetBlock(ctx, blockNumberHex)
 	if err != nil {
 		if ctx.Err() != nil {
 			// Context was cancelled, return gracefully
 			return nil
 		}
-		return fmt.Errorf("failed to get block %d: %w", blockNumber, err)
+		return fmt.Errorf("failed to get block: %w", err)
 	}
 
-	// Create block mutation
+	// Create block in DefraDB
 	blockData := map[string]interface{}{
-		"hash":                customBlock.Hash,
-		"number":              blockNumberHex,
-		"time":                customBlock.Timestamp,
-		"parentHash":          customBlock.ParentHash,
-		"difficulty":          customBlock.Difficulty,
-		"gasUsed":             customBlock.GasUsed,
-		"gasLimit":            customBlock.GasLimit,
-		"nonce":               customBlock.Nonce,
-		"miner":               customBlock.Miner,
-		"size":                customBlock.Size,
-		"stateRootHash":       customBlock.StateRoot,
-		"uncleHash":           customBlock.Sha3Uncles,
-		"transactionRootHash": customBlock.TransactionsRoot,
-		"receiptRootHash":     customBlock.ReceiptsRoot,
-		"extraData":           customBlock.ExtraData,
+		"hash":               block.Hash,
+		"number":            block.Number,
+		"time":             block.Timestamp,
+		"parentHash":       block.ParentHash,
+		"difficulty":       block.Difficulty,
+		"gasUsed":         block.GasUsed,
+		"gasLimit":        block.GasLimit,
+		"nonce":           block.Nonce,
+		"miner":           block.Miner,
+		"size":            block.Size,
+		"stateRootHash":   block.StateRoot,
+		"uncleHash":       block.Sha3Uncles,
+		"transactionRootHash": block.TransactionsRoot,
+		"receiptRootHash": block.ReceiptsRoot,
+		"extraData":       block.ExtraData,
 	}
 
-	// Create block first
-	blockResult, err := i.postToCollection(ctx, "Block", blockData)
+	_, err = i.postToCollection(ctx, "Block", blockData)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil
@@ -336,14 +271,14 @@ func (i *Indexer) processNextBlock(ctx context.Context) error {
 		return fmt.Errorf("failed to create block: %w", err)
 	}
 
-	// Process transactions and create relationships
-	for _, tx := range customBlock.Transactions {
+	// Process each transaction
+	for _, tx := range block.Transactions {
 		select {
 		case <-ctx.Done():
 			// Context was cancelled, stop processing transactions
 			i.logger.Info("stopping transaction processing due to shutdown",
 				zap.Int("block", blockNumber),
-				zap.String("hash", customBlock.Hash))
+				zap.String("hash", block.Hash))
 			return nil
 		default:
 			// Get transaction receipt
@@ -352,76 +287,75 @@ func (i *Indexer) processNextBlock(ctx context.Context) error {
 				if ctx.Err() != nil {
 					return nil
 				}
-				i.logger.Error("failed to get transaction receipt",
-					zap.String("tx", tx.Hash),
-					zap.Error(err),
-				)
+				i.logger.Error("failed to get transaction receipt", zap.String("tx", tx.Hash), zap.Error(err))
 				continue
 			}
 
-			// Convert hex status to boolean
-			status := false
-			if receipt.Status == "0x1" {
-				status = true
-			}
-
-			// Create transaction with block relationship
+			// Create transaction in DefraDB
 			txData := map[string]interface{}{
-				"hash":        tx.Hash,
-				"blockHash":   customBlock.Hash,
-				"blockNumber": blockNumberHex,
-				"from":        receipt.From,
-				"to":          receipt.To,
-				"gas":         receipt.GasUsed,
-				"status":      status,
-				"block": map[string]interface{}{
-					"docID": blockResult.DocID,
-				},
+				"hash":             tx.Hash,
+				"blockHash":        tx.BlockHash,
+				"blockNumber":      tx.BlockNumber,
+				"from":            tx.From,
+				"to":              tx.To,
+				"value":           tx.Value,
+				"gas":             tx.Gas,
+				"gasPrice":        tx.GasPrice,
+				"input":           tx.Input,
+				"nonce":           tx.Nonce,
+				"transactionIndex": tx.TransactionIndex,
+				"status":          receipt.Status == "0x1",
 			}
 
-			txResult, err := i.postToCollection(ctx, "Transaction", txData)
+			_, err = i.postToCollection(ctx, "Transaction", txData)
 			if err != nil {
 				if ctx.Err() != nil {
 					return nil
 				}
-				i.logger.Error("failed to create transaction",
-					zap.String("tx", tx.Hash),
-					zap.Error(err),
-				)
+				i.logger.Error("failed to create transaction", zap.String("tx", tx.Hash), zap.Error(err))
 				continue
 			}
 
 			// Process logs for this transaction
 			for _, log := range receipt.Logs {
 				logData := map[string]interface{}{
-					"address":         log.Address,
+					"address":          log.Address,
 					"topics":          log.Topics,
 					"data":            log.Data,
-					"blockNumber":     blockNumberHex,
-					"blockHash":       customBlock.Hash,
-					"transactionHash": tx.Hash,
+					"blockNumber":     log.BlockNumber,
+					"transactionHash": log.TransactionHash,
+					"transactionIndex": log.TransactionIndex,
+					"blockHash":       log.BlockHash,
 					"logIndex":        log.LogIndex,
 					"removed":         log.Removed,
-					"block": map[string]interface{}{
-						"docID": blockResult.DocID,
-					},
-					"transaction": map[string]interface{}{
-						"docID": txResult.DocID,
-					},
 				}
 
-				_, err = i.postToCollection(ctx, "Log", logData)
+				_, err := i.postToCollection(ctx, "Log", logData)
 				if err != nil {
 					if ctx.Err() != nil {
 						return nil
 					}
-					i.logger.Error("failed to create log",
-						zap.String("tx", tx.Hash),
-						zap.String("log_index", log.LogIndex),
-						zap.Error(err),
-					)
+					i.logger.Error("failed to create log", zap.String("tx", tx.Hash), zap.String("logIndex", log.LogIndex), zap.Error(err))
 					continue
 				}
+
+				// Update relationships for this log
+				if err := i.updateLogRelationships(ctx, block.Hash, tx.Hash, log.LogIndex); err != nil {
+					if ctx.Err() != nil {
+						return nil
+					}
+					i.logger.Error("failed to update log relationships", zap.String("tx", tx.Hash), zap.String("logIndex", log.LogIndex), zap.Error(err))
+					continue
+				}
+			}
+
+			// Update relationships for this transaction
+			if err := i.updateTransactionRelationships(ctx, block.Hash, tx.Hash); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				i.logger.Error("failed to update transaction relationships", zap.String("tx", tx.Hash), zap.Error(err))
+				continue
 			}
 		}
 	}
@@ -430,61 +364,119 @@ func (i *Indexer) processNextBlock(ctx context.Context) error {
 	return nil
 }
 
-func (i *Indexer) postGraphQL(ctx context.Context, query string) ([]byte, error) {
-	// Create the final JSON payload
-	payload := map[string]interface{}{
-		"query": query,
-	}
+func (i *Indexer) updateTransactionRelationships(ctx context.Context, blockHash, txHash string) error {
+	// First query for the block's ID using its hash
+	query := fmt.Sprintf(`query {
+		Block(filter: {hash: {_eq: %q}}) {
+			_docID
+		}
+	}`, blockHash)
 
-	// Marshal the entire payload to JSON
-	jsonPayload, err := json.Marshal(payload)
+	resp, err := i.postGraphQL(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal mutation: %w", err)
+		return fmt.Errorf("failed to get block ID: %w", err)
 	}
 
-	i.logger.Debug("sending mutation",
-		zap.String("query", query),
-		zap.String("payload", string(jsonPayload)),
-	)
+	var blockResp struct {
+		Data struct {
+			Block []struct {
+				DocID string `json:"_docID"`
+			}
+		}
+	}
+	if err := json.Unmarshal(resp, &blockResp); err != nil {
+		return fmt.Errorf("failed to decode block response: %w", err)
+	}
+
+	if len(blockResp.Data.Block) == 0 {
+		return fmt.Errorf("block not found")
+	}
+
+	// Update transaction with block relationship using block's ID
+	mutation := fmt.Sprintf(`mutation {
+		update_Transaction(filter: {hash: {_eq: %q}}, input: {block: %q}) {
+			_docID
+		}
+	}`, txHash, blockResp.Data.Block[0].DocID)
+
+	_, err = i.postGraphQL(ctx, mutation)
+	if err != nil {
+		return fmt.Errorf("failed to update transaction relationships: %w", err)
+	}
+
+	return nil
+}
+
+func (i *Indexer) updateLogRelationships(ctx context.Context, blockHash, txHash, logIndex string) error {
+	// First query for block and transaction IDs using their hashes
+	query := fmt.Sprintf(`query {
+		Block(filter: {hash: {_eq: %q}}) {
+			_docID
+		}
+		Transaction(filter: {hash: {_eq: %q}}) {
+			_docID
+		}
+	}`, blockHash, txHash)
+
+	resp, err := i.postGraphQL(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to get IDs: %w", err)
+	}
+
+	var idResp struct {
+		Data struct {
+			Block []struct {
+				DocID string `json:"_docID"`
+			}
+			Transaction []struct {
+				DocID string `json:"_docID"`
+			}
+		}
+	}
+	if err := json.Unmarshal(resp, &idResp); err != nil {
+		return fmt.Errorf("failed to decode ID response: %w", err)
+	}
+
+	if len(idResp.Data.Block) == 0 || len(idResp.Data.Transaction) == 0 {
+		return fmt.Errorf("block or transaction not found")
+	}
+
+	// Update log with block and transaction relationships using their IDs
+	mutation := fmt.Sprintf(`mutation {
+		update_Log(filter: {logIndex: {_eq: %q}}, input: {
+			block: %q,
+			transaction: %q
+		}) {
+			_docID
+		}
+	}`, logIndex, idResp.Data.Block[0].DocID, idResp.Data.Transaction[0].DocID)
+
+	_, err = i.postGraphQL(ctx, mutation)
+	if err != nil {
+		return fmt.Errorf("failed to update log relationships: %w", err)
+	}
+
+	return nil
+}
+
+func (i *Indexer) postGraphQL(ctx context.Context, mutation string) ([]byte, error) {
+	i.logger.Debug("sending mutation", zap.String("mutation", mutation))
 
 	resp, err := i.client.Post(
 		fmt.Sprintf("%s/api/v0/graphql", i.defraURL),
 		"application/json",
-		bytes.NewReader(jsonPayload),
+		bytes.NewReader([]byte(fmt.Sprintf(`{"query": %q}`, mutation))),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to store data: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		i.logger.Error("failed to store data",
-			zap.Int("status", resp.StatusCode),
-			zap.String("body", string(body)),
-			zap.String("payload", string(jsonPayload)),
-		)
-		return nil, fmt.Errorf("failed to store data: status=%d body=%s", resp.StatusCode, string(body))
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Parse response to check for GraphQL errors
-	var response struct {
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if err := json.Unmarshal(body, &response); err == nil && len(response.Errors) > 0 {
-		i.logger.Error("graphql error",
-			zap.String("error", response.Errors[0].Message),
-			zap.String("payload", string(jsonPayload)),
-		)
-		return nil, fmt.Errorf("graphql error: %s", response.Errors[0].Message)
-	}
-
-	// Log response on success
-	i.logger.Debug("store response",
-		zap.String("body", string(body)),
-	)
-
+	i.logger.Debug("store response", zap.ByteString("body", body))
 	return body, nil
 }
