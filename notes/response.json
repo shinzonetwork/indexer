@@ -1,0 +1,1 @@
+{"errors":[{"message":"Syntax Error GraphQL request (1:67) Expected :, found )\n\n1: query { Block { _docID number hash transactions { hash logs(topics)} } }\n                                                                     ^\n"}],"data":null}

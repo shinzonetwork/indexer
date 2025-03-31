@@ -208,10 +208,15 @@ func (i *Indexer) postToCollection(ctx context.Context, collection string, data 
 	}`, collection, strings.Join(inputFields, ", "))
 
 	// Send mutation
-	resp, err := i.postGraphQL(ctx, mutation)
+	resp, err := i.client.Post(
+		fmt.Sprintf("%s/api/v0/collections/%s", i.defraURL, collection),
+		"application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"query": %q}`, mutation))),
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create %s: %w", collection, err)
 	}
+	defer resp.Body.Close()
 
 	// Parse response
 	var response Response
@@ -246,21 +251,21 @@ func (i *Indexer) processNextBlock(ctx context.Context) error {
 
 	// Create block in DefraDB
 	blockData := map[string]interface{}{
-		"hash":               block.Hash,
-		"number":            block.Number,
-		"time":             block.Timestamp,
-		"parentHash":       block.ParentHash,
-		"difficulty":       block.Difficulty,
-		"gasUsed":         block.GasUsed,
-		"gasLimit":        block.GasLimit,
-		"nonce":           block.Nonce,
-		"miner":           block.Miner,
-		"size":            block.Size,
-		"stateRootHash":   block.StateRoot,
-		"uncleHash":       block.Sha3Uncles,
+		"hash":                block.Hash,
+		"number":              block.Number,
+		"time":                block.Timestamp,
+		"parentHash":          block.ParentHash,
+		"difficulty":          block.Difficulty,
+		"gasUsed":             block.GasUsed,
+		"gasLimit":            block.GasLimit,
+		"nonce":               block.Nonce,
+		"miner":               block.Miner,
+		"size":                block.Size,
+		"stateRootHash":       block.StateRoot,
+		"uncleHash":           block.Sha3Uncles,
 		"transactionRootHash": block.TransactionsRoot,
-		"receiptRootHash": block.ReceiptsRoot,
-		"extraData":       block.ExtraData,
+		"receiptRootHash":     block.ReceiptsRoot,
+		"extraData":           block.ExtraData,
 	}
 
 	_, err = i.postToCollection(ctx, "Block", blockData)
@@ -296,15 +301,15 @@ func (i *Indexer) processNextBlock(ctx context.Context) error {
 				"hash":             tx.Hash,
 				"blockHash":        tx.BlockHash,
 				"blockNumber":      tx.BlockNumber,
-				"from":            tx.From,
-				"to":              tx.To,
-				"value":           tx.Value,
-				"gas":             tx.Gas,
-				"gasPrice":        tx.GasPrice,
-				"input":           tx.Input,
-				"nonce":           tx.Nonce,
+				"from":             tx.From,
+				"to":               tx.To,
+				"value":            tx.Value,
+				"gas":              tx.Gas,
+				"gasPrice":         tx.GasPrice,
+				"input":            tx.Input,
+				"nonce":            tx.Nonce,
 				"transactionIndex": tx.TransactionIndex,
-				"status":          receipt.Status == "0x1",
+				"status":           receipt.Status == "0x1",
 			}
 
 			_, err = i.postToCollection(ctx, "Transaction", txData)
@@ -320,14 +325,14 @@ func (i *Indexer) processNextBlock(ctx context.Context) error {
 			for _, log := range receipt.Logs {
 				logData := map[string]interface{}{
 					"address":          log.Address,
-					"topics":          log.Topics,
-					"data":            log.Data,
-					"blockNumber":     log.BlockNumber,
-					"transactionHash": log.TransactionHash,
+					"topics":           log.Topics,
+					"data":             log.Data,
+					"blockNumber":      log.BlockNumber,
+					"transactionHash":  log.TransactionHash,
 					"transactionIndex": log.TransactionIndex,
-					"blockHash":       log.BlockHash,
-					"logIndex":        log.LogIndex,
-					"removed":         log.Removed,
+					"blockHash":        log.BlockHash,
+					"logIndex":         log.LogIndex,
+					"removed":          log.Removed,
 				}
 
 				_, err := i.postToCollection(ctx, "Log", logData)
