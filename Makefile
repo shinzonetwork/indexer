@@ -11,7 +11,7 @@ defra:playground:
 	GOFLAGS="-tags=playground" go install ./cmd/defradb
 
 build:
-	go build -o bin/indexer cmd/indexer/main.go
+	go build -o bin/block_poster cmd/block_poster/main.go
 
 github:
 	git add .

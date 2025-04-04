@@ -1,0 +1,92 @@
+# Query blocks with their transactions
+query GetBlocks {
+  Block {
+    hash
+    number
+    timestamp
+    miner
+    transactions {
+      hash
+      from
+      to
+      value
+    }
+  }
+}
+
+# Query transactions with their logs
+query GetTransactions {
+  Transaction {
+    hash
+    from
+    to
+    value
+    block {
+      number
+    }
+    logs {
+      address
+      data
+      topics
+    }
+  }
+}
+
+# Query logs with their events
+query GetLogs {
+  Log {
+    address
+    data
+    topics
+    events {
+      eventName
+      parameters
+      contractAddress
+    }
+    transaction {
+      hash
+    }
+  }
+}
+
+# Query events with their associated data
+query GetEvents {
+  Event {
+    eventName
+    parameters
+    contractAddress
+    transactionHash
+    blockNumber
+    log {
+      address
+      data
+      topics
+    }
+  }
+}
+
+# Get a specific block by number with all nested data
+query GetBlockWithAllData($blockNumber: String!) {
+  Block(filter: { number: { _eq: $blockNumber } }) {
+    hash
+    number
+    timestamp
+    miner
+    transactions {
+      hash
+      from
+      to
+      value
+      logs {
+        address
+        data
+        topics
+        events {
+          eventName
+          parameters
+          contractAddress
+        }
+      }
+    }
+  }
+}

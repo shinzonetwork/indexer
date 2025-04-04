@@ -18,7 +18,7 @@ type BlockHandler struct {
 
 func NewBlockHandler(host string, port int) *BlockHandler {
 	return &BlockHandler{
-		defraURL: fmt.Sprintf("http://%s:%d/api/v0", host, port),
+		defraURL: fmt.Sprintf("http://%s:%d/api/v0/graphql", host, port),
 		client:   &http.Client{},
 	}
 }
@@ -77,6 +77,8 @@ type Event struct {
 	Parameters      string `json:"parameters"`
 	TransactionHash string `json:"transactionHash"`
 	BlockHash       string `json:"blockHash"`
+	BlockNumber     string `json:"blockNumber"`
+	TransactionIndex string `json:"transactionIndex"`
 	LogIndex        string `json:"logIndex"`
 }
 
@@ -88,7 +90,7 @@ type Response struct {
 
 // PostBlock posts a block and its nested objects to DefraDB
 func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, error) {
-	// Create block first
+	// Post block first
 	blockID, err := h.createBlock(ctx, block)
 	if err != nil {
 		return "", fmt.Errorf("failed to create block: %w", err)
@@ -96,25 +98,14 @@ func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, err
 
 	// Process transactions
 	for _, tx := range block.Transactions {
-		// Create transaction
-		txID, err := h.createTransaction(ctx, &tx)
+		_, err := h.createTransaction(ctx, &tx)
 		if err != nil {
 			return "", fmt.Errorf("failed to create transaction: %w", err)
 		}
 
 		// Link transaction to block
-		mutation := fmt.Sprintf(`mutation {
-			update_Transaction(
-				filter: {hash: {_eq: %q}},
-				input: {block: %q}
-			) {
-				_docID
-			}
-		}`, tx.Hash, blockID)
-
-		_, err = h.postGraphQL(ctx, mutation)
-		if err != nil {
-			return "", fmt.Errorf("failed to link transaction to block: %w", err)
+		if err := h.updateTransactionRelationships(ctx, block.Hash, tx.Hash); err != nil {
+			return "", fmt.Errorf("failed to update transaction relationships: %w", err)
 		}
 
 		// Process logs
@@ -124,19 +115,22 @@ func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, err
 				return "", fmt.Errorf("failed to create log: %w", err)
 			}
 
-			// Link log to transaction
-			mutation := fmt.Sprintf(`mutation {
-				update_Log(
-					filter: {logIndex: {_eq: %q}},
-					input: {transaction: %q}
-				) {
-					_docID
-				}
-			}`, log.LogIndex, txID)
+			// Link log to transaction and block
+			if err := h.updateLogRelationships(ctx, block.Hash, tx.Hash, log.LogIndex); err != nil {
+				return "", fmt.Errorf("failed to update log relationships: %w", err)
+			}
 
-			_, err = h.postGraphQL(ctx, mutation)
-			if err != nil {
-				return "", fmt.Errorf("failed to link log to transaction: %w", err)
+			// Process events
+			for _, event := range log.Events {
+				_, err := h.createEvent(ctx, &event)
+				if err != nil {
+					return "", fmt.Errorf("failed to create event: %w", err)
+				}
+
+				// Link event to log
+				if err := h.updateEventRelationships(ctx, log.LogIndex, event.LogIndex); err != nil {
+					return "", fmt.Errorf("failed to update event relationships: %w", err)
+				}
 			}
 		}
 	}
@@ -145,172 +139,78 @@ func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, err
 }
 
 func (h *BlockHandler) createBlock(ctx context.Context, block *Block) (string, error) {
-	mutation := fmt.Sprintf(`mutation {
-		create_Block(
-			input: {
-				difficulty: %q,
-				extraData: %q,
-				gasLimit: %q,
-				gasUsed: %q,
-				hash: %q,
-				miner: %q,
-				nonce: %q,
-				number: %q,
-				parentHash: %q,
-				receiptsRoot: %q,
-				size: %q,
-				stateRoot: %q,
-				timestamp: %q,
-				transactionsRoot: %q,
-				sha3Uncles: %q
-			}
-		) {
-			_docID
-		}
-	}`, block.Difficulty, block.ExtraData, block.GasLimit, block.GasUsed,
-		block.Hash, block.Miner, block.Nonce, block.Number,
-		block.ParentHash, block.ReceiptsRoot, block.Size,
-		block.StateRoot, block.Timestamp, block.TransactionsRoot,
-		block.Sha3Uncles)
-
-	resp, err := h.postGraphQL(ctx, mutation)
-	if err != nil {
-		return "", fmt.Errorf("failed to create block: %w", err)
+	blockData := map[string]interface{}{
+		"hash":             block.Hash,
+		"number":           block.Number,
+		"timestamp":        block.Timestamp,
+		"parentHash":       block.ParentHash,
+		"difficulty":       block.Difficulty,
+		"gasUsed":          block.GasUsed,
+		"gasLimit":         block.GasLimit,
+		"nonce":            block.Nonce,
+		"miner":            block.Miner,
+		"size":             block.Size,
+		"stateRoot":        block.StateRoot,
+		"sha3Uncles":       block.Sha3Uncles,
+		"transactionsRoot": block.TransactionsRoot,
+		"receiptsRoot":     block.ReceiptsRoot,
+		"extraData":        block.ExtraData,
 	}
 
-	var response Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	items, ok := response.Data["create_Block"]
-	if !ok || len(items) == 0 {
-		return "", fmt.Errorf("no document ID returned")
-	}
-
-	return items[0].DocID, nil
+	return h.postToCollection(ctx, "Block", blockData)
 }
 
 func (h *BlockHandler) createTransaction(ctx context.Context, tx *Transaction) (string, error) {
-	mutation := fmt.Sprintf(`mutation {
-		create_Transaction(
-			input: {
-				hash: %q,
-				blockHash: %q,
-				blockNumber: %q,
-				from: %q,
-				to: %q,
-				value: %q,
-				gasUsed: %q,
-				gasPrice: %q,
-				inputData: %q,
-				nonce: %q,
-				transactionIndex: %q
-			}
-		) {
-			_docID
-		}
-	}`, tx.Hash, tx.BlockHash, tx.BlockNumber, tx.From, tx.To,
-		tx.Value, tx.Gas, tx.GasPrice, tx.Input, tx.Nonce,
-		tx.TransactionIndex)
-
-	resp, err := h.postGraphQL(ctx, mutation)
-	if err != nil {
-		return "", fmt.Errorf("failed to create transaction: %w", err)
+	txData := map[string]interface{}{
+		"hash":             tx.Hash,
+		"blockHash":        tx.BlockHash,
+		"blockNumber":      tx.BlockNumber,
+		"from":             tx.From,
+		"to":               tx.To,
+		"value":            tx.Value,
+		"gasUsed":          tx.Gas,           // Map Gas to gasUsed
+		"gasPrice":         tx.GasPrice,
+		"inputData":        tx.Input,         // Map Input to inputData
+		"nonce":            tx.Nonce,
+		"transactionIndex": tx.TransactionIndex,
 	}
 
-	var response Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	items, ok := response.Data["create_Transaction"]
-	if !ok || len(items) == 0 {
-		return "", fmt.Errorf("no document ID returned")
-	}
-
-	return items[0].DocID, nil
+	return h.postToCollection(ctx, "Transaction", txData)
 }
 
 func (h *BlockHandler) createLog(ctx context.Context, log *Log) (string, error) {
-	// Convert removed boolean to string
-	removed := "false"
-	if log.Removed {
-		removed = "true"
+	logData := map[string]interface{}{
+		"address":          log.Address,
+		"topics":           log.Topics,
+		"data":             log.Data,
+		"blockNumber":      log.BlockNumber,
+		"transactionHash":  log.TransactionHash,
+		"transactionIndex": log.TransactionIndex,
+		"blockHash":        log.BlockHash,
+		"logIndex":         log.LogIndex,
+		"removed":          fmt.Sprintf("%v", log.Removed), // Convert bool to string
 	}
 
-	mutation := fmt.Sprintf(`mutation {
-		create_Log(
-			input: {
-				address: %q,
-				topics: %q,
-				data: %q,
-				transactionHash: %q,
-				blockHash: %q,
-				logIndex: %q,
-				removed: %q
-			}
-		) {
-			_docID
-		}
-	}`, log.Address, log.Topics, log.Data,
-		log.TransactionHash, log.BlockHash,
-		log.LogIndex, removed)
-
-	resp, err := h.postGraphQL(ctx, mutation)
-	if err != nil {
-		return "", fmt.Errorf("failed to create log: %w", err)
-	}
-
-	var response Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	items, ok := response.Data["create_Log"]
-	if !ok || len(items) == 0 {
-		return "", fmt.Errorf("no document ID returned")
-	}
-
-	return items[0].DocID, nil
+	return h.postToCollection(ctx, "Log", logData)
 }
 
 func (h *BlockHandler) createEvent(ctx context.Context, event *Event) (string, error) {
-	mutation := fmt.Sprintf(`mutation {
-		create_Event(
-			input: {
-				contractAddress: %q,
-				eventName: %q,
-				parameters: %q,
-				transactionHash: %q,
-				blockHash: %q,
-				logIndex: %q
-			}
-		) {
-			_docID
-		}
-	}`, event.ContractAddress, event.EventName, event.Parameters,
-		event.TransactionHash, event.BlockHash, event.LogIndex)
-
-	resp, err := h.postGraphQL(ctx, mutation)
-	if err != nil {
-		return "", fmt.Errorf("failed to create event: %w", err)
+	eventData := map[string]interface{}{
+		"contractAddress":  event.ContractAddress,
+		"eventName":        event.EventName,
+		"parameters":       event.Parameters,
+		"transactionHash":  event.TransactionHash,
+		"blockHash":        event.BlockHash,
+		"blockNumber":      event.BlockNumber,
+		"transactionIndex": event.TransactionIndex,
+		"logIndex":         event.LogIndex,
 	}
 
-	var response Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	items, ok := response.Data["create_Event"]
-	if !ok || len(items) == 0 {
-		return "", fmt.Errorf("no document ID returned")
-	}
-
-	return items[0].DocID, nil
+	return h.postToCollection(ctx, "Event", eventData)
 }
 
 func (h *BlockHandler) updateTransactionRelationships(ctx context.Context, blockHash, txHash string) error {
+	// Get block ID
 	query := fmt.Sprintf(`query {
 		Block(filter: {hash: {_eq: %q}}) {
 			_docID
@@ -337,11 +237,9 @@ func (h *BlockHandler) updateTransactionRelationships(ctx context.Context, block
 		return fmt.Errorf("block not found")
 	}
 
+	// Update transaction with block relationship
 	mutation := fmt.Sprintf(`mutation {
-		update_Transaction(
-			filter: {hash: {_eq: %q}},
-			input: {block: %q}
-		) {
+		update_Transaction(filter: {hash: {_eq: %q}}, input: {block: %q}) {
 			_docID
 		}
 	}`, txHash, blockResp.Data.Block[0].DocID)
@@ -355,6 +253,7 @@ func (h *BlockHandler) updateTransactionRelationships(ctx context.Context, block
 }
 
 func (h *BlockHandler) updateLogRelationships(ctx context.Context, blockHash, txHash, logIndex string) error {
+	// Get block and transaction IDs
 	query := fmt.Sprintf(`query {
 		Block(filter: {hash: {_eq: %q}}) {
 			_docID
@@ -387,14 +286,12 @@ func (h *BlockHandler) updateLogRelationships(ctx context.Context, blockHash, tx
 		return fmt.Errorf("block or transaction not found")
 	}
 
+	// Update log with block and transaction relationships
 	mutation := fmt.Sprintf(`mutation {
-		update_Log(
-			filter: {logIndex: {_eq: %q}},
-			input: {
-				block: %q,
-				transaction: %q
-			}
-		) {
+		update_Log(filter: {logIndex: {_eq: %q}}, input: {
+			block: %q,
+			transaction: %q
+		}) {
 			_docID
 		}
 	}`, logIndex, idResp.Data.Block[0].DocID, idResp.Data.Transaction[0].DocID)
@@ -408,6 +305,7 @@ func (h *BlockHandler) updateLogRelationships(ctx context.Context, blockHash, tx
 }
 
 func (h *BlockHandler) updateEventRelationships(ctx context.Context, logIndex, eventLogIndex string) error {
+	// Get log ID
 	query := fmt.Sprintf(`query {
 		Log(filter: {logIndex: {_eq: %q}}) {
 			_docID
@@ -434,11 +332,9 @@ func (h *BlockHandler) updateEventRelationships(ctx context.Context, logIndex, e
 		return fmt.Errorf("log not found")
 	}
 
+	// Update event with log relationship
 	mutation := fmt.Sprintf(`mutation {
-		update_Event(
-			filter: {logIndex: {_eq: %q}},
-			input: {log: %q}
-		) {
+		update_Event(filter: {logIndex: {_eq: %q}}, input: {log: %q}) {
 			_docID
 		}
 	}`, eventLogIndex, logResp.Data.Log[0].DocID)
@@ -452,7 +348,8 @@ func (h *BlockHandler) updateEventRelationships(ctx context.Context, logIndex, e
 }
 
 func (h *BlockHandler) postToCollection(ctx context.Context, collection string, data map[string]interface{}) (string, error) {
-	inputFields := []string{}
+	// Convert data to GraphQL input format
+	var inputFields []string
 	for key, value := range data {
 		switch v := value.(type) {
 		case string:
@@ -473,27 +370,33 @@ func (h *BlockHandler) postToCollection(ctx context.Context, collection string, 
 	log.Printf("Collection: %s\n", collection)
 	log.Printf("Mutation: %s\n", fmt.Sprintf(`mutation {
 		create_%s(input: { %s }) {
-			%s
+			_docID
 		}
-	}`, collection, strings.Join(inputFields, ", "), collection))
+	}`, collection, strings.Join(inputFields, ", ")))
 	log.Printf("Http: %s\n", h.defraURL)
-
+	// Create mutation
 	mutation := fmt.Sprintf(`mutation {
 		create_%s(input: { %s }) {
-			%s
+			_docID
 		}
-	}`, collection, strings.Join(inputFields, ", "), collection)
+	}`, collection, strings.Join(inputFields, ", "))
 
+	// Debug: Print the mutation
+	fmt.Printf("Sending mutation: %s\n", mutation)
+
+	// Send mutation
 	resp, err := h.postGraphQL(ctx, mutation)
 	if err != nil {
 		return "", fmt.Errorf("failed to create %s: %w", collection, err)
 	}
 
+	// Parse response
 	var response Response
 	if err := json.Unmarshal(resp, &response); err != nil {
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	// Get document ID
 	createField := fmt.Sprintf("create_%s", collection)
 	items, ok := response.Data[createField]
 	if !ok || len(items) == 0 {
@@ -504,6 +407,7 @@ func (h *BlockHandler) postToCollection(ctx context.Context, collection string, 
 }
 
 func (h *BlockHandler) postGraphQL(ctx context.Context, mutation string) ([]byte, error) {
+	// Create request body
 	body := map[string]string{
 		"query": mutation,
 	}
@@ -512,23 +416,30 @@ func (h *BlockHandler) postGraphQL(ctx context.Context, mutation string) ([]byte
 		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", h.defraURL+"/graphql", bytes.NewBuffer(jsonBody))
+	// Debug: Print the mutation
+	fmt.Printf("Sending mutation: %s\n", mutation)
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, "POST", h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	// Send request
 	resp, err := h.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Read response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// Debug: Print the response
 	fmt.Printf("DefraDB Response: %s\n", string(respBody))
 
 	return respBody, nil

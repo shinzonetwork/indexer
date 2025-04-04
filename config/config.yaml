@@ -14,9 +14,9 @@ alchemy:
   network: "${ALCHEMY_NETWORK}"
 
 indexer:
-  block_polling_interval: 0.001  # 1 millisecond
+  block_polling_interval: 0.0001  # 1 millisecond
   batch_size: 100
-  start_height: 18100000  # More recent block with transactions
+  start_height: 22190000  # More recent block with transactions
   pipeline:
     fetch_blocks:
       workers: 2
