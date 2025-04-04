@@ -72,14 +72,14 @@ type Log struct {
 }
 
 type Event struct {
-	ContractAddress string `json:"contractAddress"`
-	EventName       string `json:"eventName"`
-	Parameters      string `json:"parameters"`
-	TransactionHash string `json:"transactionHash"`
-	BlockHash       string `json:"blockHash"`
-	BlockNumber     string `json:"blockNumber"`
+	ContractAddress  string `json:"contractAddress"`
+	EventName        string `json:"eventName"`
+	Parameters       string `json:"parameters"`
+	TransactionHash  string `json:"transactionHash"`
+	BlockHash        string `json:"blockHash"`
+	BlockNumber      string `json:"blockNumber"`
 	TransactionIndex string `json:"transactionIndex"`
-	LogIndex        string `json:"logIndex"`
+	LogIndex         string `json:"logIndex"`
 }
 
 type Response struct {
@@ -96,29 +96,34 @@ func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, err
 		return "", fmt.Errorf("failed to create block: %w", err)
 	}
 
+	println("Block created: " + blockID)
 	// Process transactions
 	for _, tx := range block.Transactions {
 		_, err := h.createTransaction(ctx, &tx)
 		if err != nil {
 			return "", fmt.Errorf("failed to create transaction: %w", err)
 		}
+		println("Transaction created: " + tx.Hash)
 
 		// Link transaction to block
 		if err := h.updateTransactionRelationships(ctx, block.Hash, tx.Hash); err != nil {
 			return "", fmt.Errorf("failed to update transaction relationships: %w", err)
 		}
 
+		println("Transaction linked to block: " + tx.Hash)
 		// Process logs
 		for _, log := range tx.Logs {
 			_, err := h.createLog(ctx, &log)
 			if err != nil {
 				return "", fmt.Errorf("failed to create log: %w", err)
 			}
+			println("Log created: " + log.LogIndex)
 
 			// Link log to transaction and block
 			if err := h.updateLogRelationships(ctx, block.Hash, tx.Hash, log.LogIndex); err != nil {
 				return "", fmt.Errorf("failed to update log relationships: %w", err)
 			}
+			println("Log linked to transaction: " + log.LogIndex)
 
 			// Process events
 			for _, event := range log.Events {
@@ -168,9 +173,9 @@ func (h *BlockHandler) createTransaction(ctx context.Context, tx *Transaction) (
 		"from":             tx.From,
 		"to":               tx.To,
 		"value":            tx.Value,
-		"gasUsed":          tx.Gas,           // Map Gas to gasUsed
+		"gasUsed":          tx.Gas, // Map Gas to gasUsed
 		"gasPrice":         tx.GasPrice,
-		"inputData":        tx.Input,         // Map Input to inputData
+		"inputData":        tx.Input, // Map Input to inputData
 		"nonce":            tx.Nonce,
 		"transactionIndex": tx.TransactionIndex,
 	}
