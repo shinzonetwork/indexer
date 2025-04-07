@@ -1,6 +1,20 @@
 package types
 
-// Block represents an Ethereum block
+// TransactionReceipt represents an Ethereum transaction receipt
+type TransactionReceipt struct {
+	TransactionHash   string `json:"transactionHash"`
+	TransactionIndex  string `json:"transactionIndex"`
+	BlockHash         string `json:"blockHash"`
+	BlockNumber       string `json:"blockNumber"`
+	From              string `json:"from"`
+	To                string `json:"to"`
+	CumulativeGasUsed string `json:"cumulativeGasUsed"`
+	GasUsed           string `json:"gasUsed"`
+	ContractAddress   string `json:"contractAddress"`
+	Logs              []Log  `json:"logs"`
+	Status            string `json:"status"`
+}
+
 type Block struct {
 	Hash             string        `json:"hash"`
 	Number           string        `json:"number"`
@@ -17,72 +31,45 @@ type Block struct {
 	TransactionsRoot string        `json:"transactionsRoot"`
 	ReceiptsRoot     string        `json:"receiptsRoot"`
 	ExtraData        string        `json:"extraData"`
-	Transactions     []Transaction `json:"transactions"`
-	Events           []Event       `json:"events"`
+	Transactions     []Transaction `json:"transactions,omitempty"`
 }
 
-// Transaction represents an Ethereum transaction
 type Transaction struct {
-	Hash             string  `json:"hash"`
-	From             string  `json:"from"`
-	To               string  `json:"to"`
-	Value            string  `json:"value"`
-	Gas              string  `json:"gas"`
-	GasPrice         string  `json:"gasPrice"`
-	Input            string  `json:"input"`
-	Nonce            string  `json:"nonce"`
-	TransactionIndex string  `json:"transactionIndex"`
-	BlockHash        string  `json:"blockHash"`
-	BlockNumber      string  `json:"blockNumber"`
-	Status           string  `json:"status"`
-	Logs             []Log   `json:"logs"`
-	Events           []Event `json:"events"`
-	Block            Block   `json:"block"`
+	Hash             string `json:"hash"`
+	BlockHash        string `json:"blockHash"`
+	BlockNumber      string `json:"blockNumber"`
+	From             string `json:"from"`
+	To               string `json:"to"`
+	Value            string `json:"value"`
+	Gas              string `json:"gas"`
+	GasPrice         string `json:"gasPrice"`
+	Input            string `json:"input"`
+	Nonce            string `json:"nonce"`
+	TransactionIndex string `json:"transactionIndex"`
+	Status           bool   `json:"status"`
+	Logs             []Log  `json:"logs,omitempty"`
 }
 
-// TransactionReceipt represents an Ethereum transaction receipt
-type TransactionReceipt struct {
-	TransactionHash   string `json:"transactionHash"`
-	TransactionIndex  string `json:"transactionIndex"`
-	BlockHash         string `json:"blockHash"`
-	BlockNumber       string `json:"blockNumber"`
-	From              string `json:"from"`
-	To                string `json:"to"`
-	CumulativeGasUsed string `json:"cumulativeGasUsed"`
-	GasUsed           string `json:"gasUsed"`
-	ContractAddress   string `json:"contractAddress"`
-	Logs              []Log  `json:"logs"`
-	Status            string `json:"status"`
-}
-
-// Log represents an Ethereum log entry
 type Log struct {
-	Address          string      `json:"address"`
-	Topics           []string    `json:"topics"`
-	Data             string      `json:"data"`
-	BlockNumber      string      `json:"blockNumber"`
-	TransactionHash  string      `json:"transactionHash"`
-	TransactionIndex string      `json:"transactionIndex"`
-	BlockHash        string      `json:"blockHash"`
-	LogIndex         string      `json:"logIndex"`
-	Removed          bool        `json:"removed"`
-	Block            Block       `json:"block"`
-	Transaction      Transaction `json:"transaction"`
+	Address          string   `json:"address"`
+	Topics           []string `json:"topics"`
+	Data             string   `json:"data"`
+	BlockNumber      string   `json:"blockNumber"`
+	TransactionHash  string   `json:"transactionHash"`
+	TransactionIndex string   `json:"transactionIndex"`
+	BlockHash        string   `json:"blockHash"`
+	LogIndex         string   `json:"logIndex"`
+	Removed          bool     `json:"removed"`
+	Events           []Event  `json:"events,omitempty"`
 }
 
-// Event represents a decoded Ethereum event
 type Event struct {
-	Address          string      `json:"address"`
-	Topics           []string    `json:"topics"`
-	Data             string      `json:"data"`
-	BlockNumber      string      `json:"blockNumber"`
-	TransactionHash  string      `json:"transactionHash"`
-	TransactionIndex string      `json:"transactionIndex"`
-	BlockHash        string      `json:"blockHash"`
-	LogIndex         string      `json:"logIndex"`
-	Name             string      `json:"name"`
-	Args             string      `json:"args"`
-	Removed          bool        `json:"removed"`
-	Block            Block       `json:"block"`
-	Transaction      Transaction `json:"transaction"`
+	ContractAddress  string `json:"contractAddress"`
+	EventName        string `json:"eventName"`
+	Parameters       string `json:"parameters"`
+	TransactionHash  string `json:"transactionHash"`
+	BlockHash        string `json:"blockHash"`
+	BlockNumber      string `json:"blockNumber"`
+	TransactionIndex string `json:"transactionIndex"`
+	LogIndex         string `json:"logIndex"`
 }

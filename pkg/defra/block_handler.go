@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"shinzo/version1/pkg/types"
 	"strconv"
 	"strings"
 )
@@ -24,65 +25,6 @@ func NewBlockHandler(host string, port int) *BlockHandler {
 	}
 }
 
-type Block struct {
-	Hash             string        `json:"hash"`
-	Number           string        `json:"number"`
-	Timestamp        string        `json:"timestamp"`
-	ParentHash       string        `json:"parentHash"`
-	Difficulty       string        `json:"difficulty"`
-	GasUsed          string        `json:"gasUsed"`
-	GasLimit         string        `json:"gasLimit"`
-	Nonce            string        `json:"nonce"`
-	Miner            string        `json:"miner"`
-	Size             string        `json:"size"`
-	StateRoot        string        `json:"stateRoot"`
-	Sha3Uncles       string        `json:"sha3Uncles"`
-	TransactionsRoot string        `json:"transactionsRoot"`
-	ReceiptsRoot     string        `json:"receiptsRoot"`
-	ExtraData        string        `json:"extraData"`
-	Transactions     []Transaction `json:"transactions,omitempty"`
-}
-
-type Transaction struct {
-	Hash             string `json:"hash"`
-	BlockHash        string `json:"blockHash"`
-	BlockNumber      string `json:"blockNumber"`
-	From             string `json:"from"`
-	To               string `json:"to"`
-	Value            string `json:"value"`
-	Gas              string `json:"gas"`
-	GasPrice         string `json:"gasPrice"`
-	Input            string `json:"input"`
-	Nonce            string `json:"nonce"`
-	TransactionIndex string `json:"transactionIndex"`
-	Status           bool   `json:"status"`
-	Logs             []Log  `json:"logs,omitempty"`
-}
-
-type Log struct {
-	Address          string   `json:"address"`
-	Topics           []string `json:"topics"`
-	Data             string   `json:"data"`
-	BlockNumber      string   `json:"blockNumber"`
-	TransactionHash  string   `json:"transactionHash"`
-	TransactionIndex string   `json:"transactionIndex"`
-	BlockHash        string   `json:"blockHash"`
-	LogIndex         string   `json:"logIndex"`
-	Removed          bool     `json:"removed"`
-	Events           []Event  `json:"events,omitempty"`
-}
-
-type Event struct {
-	ContractAddress  string `json:"contractAddress"`
-	EventName        string `json:"eventName"`
-	Parameters       string `json:"parameters"`
-	TransactionHash  string `json:"transactionHash"`
-	BlockHash        string `json:"blockHash"`
-	BlockNumber      string `json:"blockNumber"`
-	TransactionIndex string `json:"transactionIndex"`
-	LogIndex         string `json:"logIndex"`
-}
-
 type Response struct {
 	Data map[string][]struct {
 		DocID string `json:"_docID"`
@@ -90,7 +32,7 @@ type Response struct {
 }
 
 // PostBlock posts a block and its nested objects to DefraDB
-func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, error) {
+func (h *BlockHandler) PostBlock(ctx context.Context, block *types.Block) (string, error) {
 	// Post block first
 	blockID, err := h.createBlock(ctx, block)
 	if err != nil {
@@ -153,7 +95,7 @@ func (h *BlockHandler) ConvertHexToInt(s string) int64 {
 	return blockInt
 }
 
-func (h *BlockHandler) createBlock(ctx context.Context, block *Block) (string, error) {
+func (h *BlockHandler) createBlock(ctx context.Context, block *types.Block) (string, error) {
 	// Convert string number to int
 	blockInt, err := strconv.ParseInt(block.Number, 0, 64)
 	if err != nil {
@@ -181,7 +123,7 @@ func (h *BlockHandler) createBlock(ctx context.Context, block *Block) (string, e
 	return h.postToCollection(ctx, "Block", blockData)
 }
 
-func (h *BlockHandler) createTransaction(ctx context.Context, tx *Transaction) (string, error) {
+func (h *BlockHandler) createTransaction(ctx context.Context, tx *types.Transaction) (string, error) {
 	blockInt, err := strconv.ParseInt(tx.BlockNumber, 0, 64)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse block number: %w", err)
@@ -204,7 +146,7 @@ func (h *BlockHandler) createTransaction(ctx context.Context, tx *Transaction) (
 	return h.postToCollection(ctx, "Transaction", txData)
 }
 
-func (h *BlockHandler) createLog(ctx context.Context, log *Log) (string, error) {
+func (h *BlockHandler) createLog(ctx context.Context, log *types.Log) (string, error) {
 	blockInt, err := strconv.ParseInt(log.BlockNumber, 0, 64)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse block number: %w", err)
@@ -225,7 +167,7 @@ func (h *BlockHandler) createLog(ctx context.Context, log *Log) (string, error) 
 	return h.postToCollection(ctx, "Log", logData)
 }
 
-func (h *BlockHandler) createEvent(ctx context.Context, event *Event) (string, error) {
+func (h *BlockHandler) createEvent(ctx context.Context, event *types.Event) (string, error) {
 	blockInt, err := strconv.ParseInt(event.BlockNumber, 0, 64)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse block number: %w", err)
@@ -324,13 +266,13 @@ func (h *BlockHandler) updateLogRelationships(ctx context.Context, blockHash, tx
 
 	// Update log with block and transaction relationships
 	mutation := fmt.Sprintf(`mutation {
-		update_Log(filter: {logIndex: {_eq: %q}, transaction:%q}, input: {
+		update_Log(filter: {logIndex: {_eq: %q}, transactionHash: {_eq: %q}}, input: {
 			block: %q,
 			transaction: %q
 		}) {
 			_docID
 		}
-	}`, logIndex, idResp.Data.Transaction[0].DocID, idResp.Data.Block[0].DocID, idResp.Data.Transaction[0].DocID)
+	}`, logIndex, txHash, idResp.Data.Block[0].DocID, idResp.Data.Transaction[0].DocID)
 
 	_, err = h.postGraphQL(ctx, mutation)
 	if err != nil {
@@ -484,33 +426,41 @@ func (h *BlockHandler) postGraphQL(ctx context.Context, mutation string) ([]byte
 }
 
 // GetHighestBlockNumber returns the highest block number stored in DefraDB
-func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (string, error) {
+func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, error) {
 	query := `query {
-		Block(sort: {number: DESC}, limit: 100) {
+		Block(order: {number: DESC}, limit: 1) {
 			number
-		}
+		}	
 	}`
 
 	resp, err := h.postGraphQL(ctx, query)
 	if err != nil {
-		return "", fmt.Errorf("failed to query highest block number: %w", err)
+		return 0, fmt.Errorf("failed to query block numbers: %w", err)
 	}
 
 	var result struct {
 		Data struct {
 			Block []struct {
-				number string `json:"number"`
+				Number int64 `json:"number"`
 			} `json:"Block"`
 		} `json:"data"`
 	}
 
 	if err := json.Unmarshal(resp, &result); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+		return 0, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	if len(result.Data.Block) == 0 {
-		return "0", nil // Return "0" if no blocks exist
+		return 0, nil // Return 0 if no blocks exist
 	}
 
-	return result.Data.Block[0].number, nil
+	// Find the highest block number
+	var highest int64
+	for _, block := range result.Data.Block {
+		if block.Number > highest {
+			highest = block.Number
+		}
+	}
+
+	return highest + 1, nil
 }
