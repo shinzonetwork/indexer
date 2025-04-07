@@ -11,6 +11,8 @@ import (
 	"shinzo/version1/pkg/types"
 	"strconv"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 type BlockHandler struct {
@@ -32,41 +34,41 @@ type Response struct {
 }
 
 // PostBlock posts a block and its nested objects to DefraDB
-func (h *BlockHandler) PostBlock(ctx context.Context, block *types.Block) (string, error) {
+func (h *BlockHandler) PostBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) (string, error) {
 	// Post block first
-	blockID, err := h.createBlock(ctx, block)
+	blockID, err := h.createBlock(ctx, block, sugar)
 	if err != nil {
 		return "", fmt.Errorf("failed to create block: %w", err)
 	}
 
-	println("Block created: " + blockID)
+	sugar.Debug("Block created: " + blockID)
 	// Process transactions
 	for _, tx := range block.Transactions {
-		_, err := h.createTransaction(ctx, &tx)
+		_, err := h.createTransaction(ctx, &tx, sugar)
 		if err != nil {
 			return "", fmt.Errorf("failed to create transaction: %w", err)
 		}
-		println("Transaction created: " + tx.Hash)
+		sugar.Debug("Transaction created: " + tx.Hash)
 
 		// Link transaction to block
 		if err := h.updateTransactionRelationships(ctx, block.Hash, tx.Hash); err != nil {
 			return "", fmt.Errorf("failed to update transaction relationships: %w", err)
 		}
 
-		println("Transaction linked to block: " + tx.Hash)
+		sugar.Debug("Transaction linked to block: " + tx.Hash)
 		// Process logs
 		for _, log := range tx.Logs {
-			_, err := h.createLog(ctx, &log)
+			_, err := h.createLog(ctx, &log, sugar)
 			if err != nil {
 				return "", fmt.Errorf("failed to create log: %w", err)
 			}
-			println("Log created: " + log.LogIndex)
+			sugar.Debug("Log created: " + log.LogIndex)
 
 			// Link log to transaction and block
 			if err := h.updateLogRelationships(ctx, block.Hash, tx.Hash, log.LogIndex); err != nil {
 				return "", fmt.Errorf("failed to update log relationships: %w", err)
 			}
-			println("Log linked to transaction: " + log.LogIndex)
+			sugar.Debug("Log linked to transaction: " + log.LogIndex)
 
 			// Process events
 			for _, event := range log.Events {
@@ -95,7 +97,7 @@ func (h *BlockHandler) ConvertHexToInt(s string) int64 {
 	return blockInt
 }
 
-func (h *BlockHandler) createBlock(ctx context.Context, block *types.Block) (string, error) {
+func (h *BlockHandler) createBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) (string, error) {
 	// Convert string number to int
 	blockInt, err := strconv.ParseInt(block.Number, 0, 64)
 	if err != nil {
@@ -119,11 +121,11 @@ func (h *BlockHandler) createBlock(ctx context.Context, block *types.Block) (str
 		"receiptsRoot":     block.ReceiptsRoot,
 		"extraData":        block.ExtraData,
 	}
-
+	sugar.Debug("Posting blockdata to collection endpoint: ", blockData, ctx)
 	return h.postToCollection(ctx, "Block", blockData)
 }
 
-func (h *BlockHandler) createTransaction(ctx context.Context, tx *types.Transaction) (string, error) {
+func (h *BlockHandler) createTransaction(ctx context.Context, tx *types.Transaction, sugar *zap.SugaredLogger) (string, error) {
 	blockInt, err := strconv.ParseInt(tx.BlockNumber, 0, 64)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse block number: %w", err)
@@ -142,11 +144,11 @@ func (h *BlockHandler) createTransaction(ctx context.Context, tx *types.Transact
 		"nonce":            tx.Nonce,
 		"transactionIndex": tx.TransactionIndex,
 	}
-
+	sugar.Debug("Posting blockdata to collection endpoint: ", txData, ctx)
 	return h.postToCollection(ctx, "Transaction", txData)
 }
 
-func (h *BlockHandler) createLog(ctx context.Context, log *types.Log) (string, error) {
+func (h *BlockHandler) createLog(ctx context.Context, log *types.Log, sugar *zap.SugaredLogger) (string, error) {
 	blockInt, err := strconv.ParseInt(log.BlockNumber, 0, 64)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse block number: %w", err)
@@ -163,7 +165,7 @@ func (h *BlockHandler) createLog(ctx context.Context, log *types.Log) (string, e
 		"logIndex":         log.LogIndex,
 		"removed":          fmt.Sprintf("%v", log.Removed), // Convert bool to string
 	}
-
+	sugar.Debug("Posting to collection, ", logData, ctx)
 	return h.postToCollection(ctx, "Log", logData)
 }
 

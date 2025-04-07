@@ -28,4 +28,6 @@ go.work.sum
 
 .vscode
 
-logs/
+logs/*.txt
+logs/*.logs
+logs/*.log

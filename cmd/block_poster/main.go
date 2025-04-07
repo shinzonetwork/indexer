@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 
+	"go.uber.org/zap"
+
 	"shinzo/version1/config"
 	"shinzo/version1/pkg/defra"
 	"shinzo/version1/pkg/rpc"
@@ -18,6 +20,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+
+	logger, err := zap.NewProduction()
+	sugar := logger.Sugar()
+	defer logger.Sync()
 
 	// Create Alchemy client
 	alchemy := rpc.NewAlchemyClient(cfg.Alchemy.APIKey)
@@ -47,7 +53,7 @@ func main() {
 		// Convert to hex for Alchemy API
 		blockHex := fmt.Sprintf("0x%x", blockNum)
 
-		log.Printf("Processing block %d (0x%x)", blockNum, blockNum)
+		sugar.Info("Processing block %d (0x%x)", blockNum, blockNum)
 
 		// Get block with retry logic
 		var block *types.Block
@@ -56,11 +62,11 @@ func main() {
 			if err == nil {
 				break
 			}
-			log.Printf("Failed to get block %d, retry %d: %v", blockNum, retries+1, err)
-			time.Sleep(time.Second * 2)
+			sugar.Error("Failed to get block %d, retry %d: %v", blockNum, retries+1, err)
+			time.Sleep(time.Second * 1)
 		}
 		if err != nil {
-			log.Printf("Skipping block %d after all retries failed: %v", blockNum, err)
+			sugar.Error("Skipping block %d after all retries failed: %v", blockNum, err)
 			continue
 		}
 
@@ -74,11 +80,11 @@ func main() {
 				if err == nil {
 					break
 				}
-				log.Printf("Failed to get receipt for tx %s, retry %d: %v", tx.Hash, retries+1, err)
+				sugar.Error("Failed to get receipt for tx %s, retry %d: %v", tx.Hash, retries+1, err)
 				time.Sleep(time.Second * 2)
 			}
 			if err != nil {
-				log.Printf("Skipping transaction %s after all retries failed: %v", tx.Hash, err)
+				sugar.Error("Skipping transaction %s after all retries failed: %v", tx.Hash, err)
 				continue
 			}
 
@@ -156,14 +162,14 @@ func main() {
 			ReceiptsRoot:     block.ReceiptsRoot,
 			ExtraData:        block.ExtraData,
 			Transactions:     transactions,
-		})
+		}, sugar)
 
 		if err != nil {
-			log.Printf("Failed to post block %d: %v", blockNum, err)
+			sugar.Error("Failed to post block %d: %v", blockNum, err)
 			continue
 		}
 
-		log.Printf("Successfully processed block %d with DocID %s (%d transactions)", blockNum, docID, len(transactions))
+		sugar.Info("Successfully processed block %d with DocID %s (%d transactions)", blockNum, docID, len(transactions))
 
 		// Add a small delay to avoid rate limiting
 		// time.Sleep(time.Millisecond)
