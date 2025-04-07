@@ -1,6 +1,6 @@
 type Block {
     hash: String @index(unique: true)
-    number: String
+    number: Int @index
     timestamp: String
     parentHash: String
     difficulty: String
@@ -20,8 +20,8 @@ type Block {
 
 type Transaction {
     hash: String @index(unique: true)
-    blockHash: String
-    blockNumber: String
+    blockHash: String @index
+    blockNumber: Int @index
     from: String
     to: String
     value: String
@@ -44,13 +44,13 @@ type Log {
     data: String
     transactionHash: String
     blockHash: String
-    blockNumber: String
+    blockNumber: Int @index
     transactionIndex: String
     logIndex: String
     removed: String
     # Relationships
-    block: Block @relation(name: "block_transactions")
-    transaction: Transaction @relation(name: "transaction_logs")
+    block: Block @index @relation(name: "block_transactions")
+    transaction: Transaction @index @relation(name: "transaction_logs")
     events: [Event] @relation(name: "log_events")
 }
 
@@ -58,11 +58,11 @@ type Event {
     contractAddress: String
     eventName: String
     parameters: String
-    transactionHash: String
+    transactionHash: String @index
     blockHash: String
-    blockNumber: String
+    blockNumber: Int @index
     transactionIndex: String
     logIndex: String
     # Relationships
-    log: Log @relation(name: "log_events")
+    log: Log @index @relation(name: "log_events")
 }

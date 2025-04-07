@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -133,7 +134,7 @@ func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, err
 				}
 
 				// Link event to log
-				if err := h.updateEventRelationships(ctx, log.LogIndex, event.LogIndex); err != nil {
+				if err := h.updateEventRelationships(ctx, log.LogIndex, tx.Hash, event.LogIndex); err != nil {
 					return "", fmt.Errorf("failed to update event relationships: %w", err)
 				}
 			}
@@ -143,10 +144,25 @@ func (h *BlockHandler) PostBlock(ctx context.Context, block *Block) (string, err
 	return blockID, nil
 }
 
+func (h *BlockHandler) ConvertHexToInt(s string) int64 {
+	block16 := s[2:]
+	blockInt, err := strconv.ParseInt(block16, 16, 64)
+	if err != nil {
+		log.Fatalf("Failed to ParseInt(%v): ", err)
+	}
+	return blockInt
+}
+
 func (h *BlockHandler) createBlock(ctx context.Context, block *Block) (string, error) {
+	// Convert string number to int
+	blockInt, err := strconv.ParseInt(block.Number, 0, 64)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse block number: %w", err)
+	}
+
 	blockData := map[string]interface{}{
 		"hash":             block.Hash,
-		"number":           block.Number,
+		"number":           blockInt,
 		"timestamp":        block.Timestamp,
 		"parentHash":       block.ParentHash,
 		"difficulty":       block.Difficulty,
@@ -166,10 +182,15 @@ func (h *BlockHandler) createBlock(ctx context.Context, block *Block) (string, e
 }
 
 func (h *BlockHandler) createTransaction(ctx context.Context, tx *Transaction) (string, error) {
+	blockInt, err := strconv.ParseInt(tx.BlockNumber, 0, 64)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse block number: %w", err)
+	}
+
 	txData := map[string]interface{}{
 		"hash":             tx.Hash,
 		"blockHash":        tx.BlockHash,
-		"blockNumber":      tx.BlockNumber,
+		"blockNumber":      blockInt, // This is correct - blockInt is already converted to int64
 		"from":             tx.From,
 		"to":               tx.To,
 		"value":            tx.Value,
@@ -184,11 +205,16 @@ func (h *BlockHandler) createTransaction(ctx context.Context, tx *Transaction) (
 }
 
 func (h *BlockHandler) createLog(ctx context.Context, log *Log) (string, error) {
+	blockInt, err := strconv.ParseInt(log.BlockNumber, 0, 64)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse block number: %w", err)
+	}
+
 	logData := map[string]interface{}{
 		"address":          log.Address,
 		"topics":           log.Topics,
 		"data":             log.Data,
-		"blockNumber":      log.BlockNumber,
+		"blockNumber":      blockInt,
 		"transactionHash":  log.TransactionHash,
 		"transactionIndex": log.TransactionIndex,
 		"blockHash":        log.BlockHash,
@@ -200,13 +226,18 @@ func (h *BlockHandler) createLog(ctx context.Context, log *Log) (string, error) 
 }
 
 func (h *BlockHandler) createEvent(ctx context.Context, event *Event) (string, error) {
+	blockInt, err := strconv.ParseInt(event.BlockNumber, 0, 64)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse block number: %w", err)
+	}
+
 	eventData := map[string]interface{}{
 		"contractAddress":  event.ContractAddress,
 		"eventName":        event.EventName,
 		"parameters":       event.Parameters,
 		"transactionHash":  event.TransactionHash,
 		"blockHash":        event.BlockHash,
-		"blockNumber":      event.BlockNumber,
+		"blockNumber":      blockInt,
 		"transactionIndex": event.TransactionIndex,
 		"logIndex":         event.LogIndex,
 	}
@@ -293,13 +324,13 @@ func (h *BlockHandler) updateLogRelationships(ctx context.Context, blockHash, tx
 
 	// Update log with block and transaction relationships
 	mutation := fmt.Sprintf(`mutation {
-		update_Log(filter: {logIndex: {_eq: %q}}, input: {
+		update_Log(filter: {logIndex: {_eq: %q}, transaction:%q}, input: {
 			block: %q,
 			transaction: %q
 		}) {
 			_docID
 		}
-	}`, logIndex, idResp.Data.Block[0].DocID, idResp.Data.Transaction[0].DocID)
+	}`, logIndex, idResp.Data.Transaction[0].DocID, idResp.Data.Block[0].DocID, idResp.Data.Transaction[0].DocID)
 
 	_, err = h.postGraphQL(ctx, mutation)
 	if err != nil {
@@ -309,13 +340,13 @@ func (h *BlockHandler) updateLogRelationships(ctx context.Context, blockHash, tx
 	return nil
 }
 
-func (h *BlockHandler) updateEventRelationships(ctx context.Context, logIndex, eventLogIndex string) error {
+func (h *BlockHandler) updateEventRelationships(ctx context.Context, logIndex, txHash, eventLogIndex string) error {
 	// Get log ID
 	query := fmt.Sprintf(`query {
-		Log(filter: {logIndex: {_eq: %q}}) {
+		Log(filter: {logIndex: {_eq: %q}, transactionHash:{_eq:%q} }) {
 			_docID
 		}
-	}`, logIndex)
+	}`, logIndex, txHash)
 
 	resp, err := h.postGraphQL(ctx, query)
 	if err != nil {
@@ -361,6 +392,8 @@ func (h *BlockHandler) postToCollection(ctx context.Context, collection string, 
 			inputFields = append(inputFields, fmt.Sprintf("%s: %q", key, v))
 		case bool:
 			inputFields = append(inputFields, fmt.Sprintf("%s: %v", key, v))
+		case int, int64:
+			inputFields = append(inputFields, fmt.Sprintf("%s: %d", key, v))
 		case []string:
 			jsonBytes, err := json.Marshal(v)
 			if err != nil {
@@ -448,4 +481,36 @@ func (h *BlockHandler) postGraphQL(ctx context.Context, mutation string) ([]byte
 	fmt.Printf("DefraDB Response: %s\n", string(respBody))
 
 	return respBody, nil
+}
+
+// GetHighestBlockNumber returns the highest block number stored in DefraDB
+func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (string, error) {
+	query := `query {
+		Block(sort: {number: DESC}, limit: 100) {
+			number
+		}
+	}`
+
+	resp, err := h.postGraphQL(ctx, query)
+	if err != nil {
+		return "", fmt.Errorf("failed to query highest block number: %w", err)
+	}
+
+	var result struct {
+		Data struct {
+			Block []struct {
+				number string `json:"number"`
+			} `json:"Block"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(result.Data.Block) == 0 {
+		return "0", nil // Return "0" if no blocks exist
+	}
+
+	return result.Data.Block[0].number, nil
 }

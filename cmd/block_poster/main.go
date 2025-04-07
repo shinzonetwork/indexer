@@ -26,13 +26,24 @@ func main() {
 	blockHandler := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
 
 	// Starting block number (in decimal)
-	startBlock := 22100000
-	endBlock := 22109000
+	// Get the highest block number from DefraDB
+	// highestBlock, err := blockHandler.GetHighestBlockNumber(context.Background())
+	// if err != nil {
+	// 	log.Fatalf("Failed to get highest block number: %v", err)
+	// }
+	// startBlock, err := strconv.ParseInt(highestBlock, 10, 64)
+	// if err != nil {
+	// 	log.Fatalf("failed to decode the block number: %v", err)
+	// }
+	// endBlock := startBlock + 9000
+
+	startBlock := 21000000
+	endBlock := startBlock + 9000
 
 	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
 		// Convert to hex for Alchemy API
 		blockHex := fmt.Sprintf("0x%x", blockNum)
-		
+
 		log.Printf("Processing block %d (0x%x)", blockNum, blockNum)
 
 		// Get block with retry logic
@@ -76,16 +87,16 @@ func main() {
 				if len(rcptLog.Topics) > 0 {
 					// First topic is always the event signature
 					eventSig := rcptLog.Topics[0]
-					
+					// blockInt := blockHandler.convertHexToInt(rcptLog.BlockNumber)
 					// Create event
 					event := defra.Event{
-						ContractAddress:   rcptLog.Address,
-						EventName:         eventSig, // We could decode this to human-readable name if we had ABI
-						Parameters:        rcptLog.Data, // Raw data, could be decoded with ABI
-						TransactionHash:   rcptLog.TransactionHash,
-						BlockHash:         rcptLog.BlockHash,
-						BlockNumber:       rcptLog.BlockNumber,
-						TransactionIndex:  rcptLog.TransactionIndex,
+						ContractAddress:  rcptLog.Address,
+						EventName:        eventSig,     // We could decode this to human-readable name if we had ABI
+						Parameters:       rcptLog.Data, // Raw data, could be decoded with ABI
+						TransactionHash:  rcptLog.TransactionHash,
+						BlockHash:        rcptLog.BlockHash,
+						BlockNumber:      fmt.Sprintf("0x%x", blockNum),
+						TransactionIndex: rcptLog.TransactionIndex,
 						LogIndex:         rcptLog.LogIndex,
 					}
 					events = append(events, event)
@@ -96,7 +107,7 @@ func main() {
 					Address:          rcptLog.Address,
 					Topics:           rcptLog.Topics,
 					Data:             rcptLog.Data,
-					BlockNumber:      rcptLog.BlockNumber,
+					BlockNumber:      fmt.Sprintf("0x%x", blockNum),
 					TransactionHash:  rcptLog.TransactionHash,
 					TransactionIndex: rcptLog.TransactionIndex,
 					BlockHash:        rcptLog.BlockHash,
@@ -110,7 +121,7 @@ func main() {
 			transactions = append(transactions, defra.Transaction{
 				Hash:             tx.Hash,
 				BlockHash:        tx.BlockHash,
-				BlockNumber:      tx.BlockNumber,
+				BlockNumber:      fmt.Sprintf("0x%x", blockNum),
 				From:             tx.From,
 				To:               tx.To,
 				Value:            tx.Value,
@@ -127,7 +138,7 @@ func main() {
 		// Post block with nested objects to DefraDB
 		docID, err := blockHandler.PostBlock(context.Background(), &defra.Block{
 			Hash:             block.Hash,
-			Number:           block.Number,
+			Number:           fmt.Sprintf("0x%x", blockNum),
 			Timestamp:        block.Timestamp,
 			ParentHash:       block.ParentHash,
 			Difficulty:       block.Difficulty,
@@ -150,8 +161,8 @@ func main() {
 		}
 
 		log.Printf("Successfully processed block %d with DocID %s (%d transactions)", blockNum, docID, len(transactions))
-		
+
 		// Add a small delay to avoid rate limiting
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 10)
 	}
 }

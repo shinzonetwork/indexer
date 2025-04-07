@@ -34,7 +34,7 @@ type Transaction struct {
 	TransactionIndex string  `json:"transactionIndex"`
 	BlockHash        string  `json:"blockHash"`
 	BlockNumber      string  `json:"blockNumber"`
-	Status           string  `json:"status"`  // Changed from bool to string to match receipt status
+	Status           string  `json:"status"`
 	Logs             []Log   `json:"logs"`
 	Events           []Event `json:"events"`
 	Block            Block   `json:"block"`
