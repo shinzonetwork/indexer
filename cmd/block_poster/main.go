@@ -38,7 +38,7 @@ func main() {
 		log.Fatalf("Failed to get highest block number: %v", err)
 	}
 	if startBlock == 0 {
-		startBlock = 21000000
+		startBlock = int64(cfg.Indexer.StartHeight)
 	}
 	// startBlock, err := strconv.ParseInt(highestBlock, 10, 64)
 	// if err != nil {
