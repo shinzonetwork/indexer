@@ -17,3 +17,59 @@ query GetLatestBlocks {
     extraData
   }
 }
+
+query GetBlockWithTransactions($blockNumber: Int!) {
+  Block(filter: {number: {_eq: $blockNumber}}) {
+    hash
+    number
+    time
+    parentHash
+    difficulty
+    gasUsed
+    gasLimit
+    nonce
+    miner
+    size
+    stateRootHash
+    uncleHash
+    transactionRootHash
+    receiptRootHash
+    extraData
+    transactions {
+      hash
+      blockHash
+      blockNumber
+      from
+      to
+      value
+      gas
+      gasPrice
+      input
+      nonce
+      transactionIndex
+      logs {
+        address
+        topics
+        data
+        blockNumber
+        transactionHash
+        transactionIndex
+        blockHash
+        logIndex
+        removed
+      }
+    }
+  }
+}
+
+query GetCounts {
+  Block {
+    _count
+  }
+  Transaction {
+    _count
+  }
+  Log {
+    _count
+  }
+}

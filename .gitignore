@@ -23,3 +23,11 @@ go.work.sum
 
 # env file
 .env
+
+.defra/
+
+.vscode
+
+logs/*.txt
+logs/*.logs
+logs/*.log

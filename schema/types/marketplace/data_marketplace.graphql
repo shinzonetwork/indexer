@@ -1,9 +1,0 @@
-type DataMarketplace {
-  id: String!                      # Unique identifier for the marketplace
-  name: String!                    # Name of the marketplace
-  description: String!             # Description of the marketplace
-  views: [View!]                   # Views available in this marketplace
-  creator: String!                 # Address of the marketplace creator
-  createdAt: Int!                  # Creation timestamp
-  updatedAt: Int!                  # Last update timestamp
-}
