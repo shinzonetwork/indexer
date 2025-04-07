@@ -27,3 +27,5 @@ go.work.sum
 .defra/
 
 .vscode
+
+logs/
