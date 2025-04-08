@@ -16,7 +16,7 @@ type Config struct {
 		Host          string `yaml:"host"`
 		Port          int    `yaml:"port"`
 		KeyringSecret string `yaml:"keyring_secret"`
-		P2P          struct {
+		P2P           struct {
 			Enabled        bool     `yaml:"enabled"`
 			BootstrapPeers []string `yaml:"bootstrap_peers"`
 			ListenAddr     string   `yaml:"listen_addr"`
@@ -33,9 +33,9 @@ type Config struct {
 
 	Indexer struct {
 		BlockPollingInterval float64 `yaml:"block_polling_interval"`
-		BatchSize           int     `yaml:"batch_size"`
-		StartHeight         int     `yaml:"start_height"`
-		Pipeline           struct {
+		BatchSize            int     `yaml:"batch_size"`
+		StartHeight          int     `yaml:"start_height"`
+		Pipeline             struct {
 			FetchBlocks struct {
 				Workers    int `yaml:"workers"`
 				BufferSize int `yaml:"buffer_size"`
@@ -75,8 +75,8 @@ type Config struct {
 		Enabled   bool   `yaml:"enabled"`
 		StorePath string `yaml:"store_path"`
 		Pipeline  struct {
-			BatchSize int `yaml:"batch_size"`
-			Workers   int `yaml:"workers"`
+			BatchSize       int `yaml:"batch_size"`
+			Workers         int `yaml:"workers"`
 			Transformations []struct {
 				Name   string `yaml:"name"`
 				Input  string `yaml:"input"`
@@ -84,6 +84,10 @@ type Config struct {
 			} `yaml:"transformations"`
 		} `yaml:"pipeline"`
 	} `yaml:"lensvm"`
+
+	Logger struct {
+		Development bool `yaml:"development"`
+	} `yaml:"logger"`
 }
 
 // LoadConfig loads configuration from a YAML file and environment variables
