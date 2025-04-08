@@ -6,10 +6,9 @@ import (
 	"log"
 	"time"
 
-	"go.uber.org/zap"
-
 	"shinzo/version1/config"
 	"shinzo/version1/pkg/defra"
+	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/rpc"
 	"shinzo/version1/pkg/types"
 )
@@ -20,10 +19,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-
-	logger, err := zap.NewProduction()
-	sugar := logger.Sugar()
-	defer logger.Sync()
+	logger.Init(cfg.Logger.Development)
+	sugar := logger.Sugar
+	// sugar := logger.Sugar()
 
 	// Create Alchemy client
 	alchemy := rpc.NewAlchemyClient(cfg.Alchemy.APIKey)
@@ -33,7 +31,7 @@ func main() {
 
 	// Starting block number (in decimal)
 	// Get the highest block number from DefraDB
-	startBlock, err := blockHandler.GetHighestBlockNumber(context.Background())
+	startBlock, err := blockHandler.GetHighestBlockNumber(context.Background(), sugar)
 	if err != nil {
 		log.Fatalf("Failed to get highest block number: %v", err)
 	}
@@ -53,23 +51,25 @@ func main() {
 		// Convert to hex for Alchemy API
 		blockHex := fmt.Sprintf("0x%x", blockNum)
 
-		sugar.Info("Processing block %d (0x%x)", blockNum, blockNum)
+		sugar.Info("Processing block: ", blockNum, ", hex: ", blockHex)
 
 		// Get block with retry logic
 		var block *types.Block
 		for retries := 0; retries < 3; retries++ {
 			block, err = alchemy.GetBlock(context.Background(), blockHex)
 			if err == nil {
+				sugar.Debug("Received block from Alechemy")
 				break
 			}
 			sugar.Error("Failed to get block %d, retry %d: %v", blockNum, retries+1, err)
 			time.Sleep(time.Second * 1)
 		}
 		if err != nil {
-			sugar.Error("Skipping block %d after all retries failed: %v", blockNum, err)
+			sugar.Error("Skipping block ", blockNum, " after all retries failed: ", err)
 			continue
 		}
 
+		sugar.Info("... grabbing transactions")
 		// Get transaction receipts and build nested objects
 		var transactions []types.Transaction
 		for _, tx := range block.Transactions {
@@ -78,16 +78,17 @@ func main() {
 			for retries := 0; retries < 3; retries++ {
 				receipt, err = alchemy.GetTransactionReceipt(context.Background(), tx.Hash)
 				if err == nil {
+					sugar.Debug("Received transaction from Alcehmy...")
 					break
 				}
 				sugar.Error("Failed to get receipt for tx %s, retry %d: %v", tx.Hash, retries+1, err)
 				time.Sleep(time.Second * 2)
 			}
 			if err != nil {
-				sugar.Error("Skipping transaction %s after all retries failed: %v", tx.Hash, err)
+				sugar.Error("Skipping transaction ", tx.Hash, " after all retries failed: ", err)
 				continue
 			}
-
+			sugar.Info("... grabbing logs")
 			// Build logs with events
 			var logs []types.Log
 			for _, rcptLog := range receipt.Logs {
@@ -104,7 +105,7 @@ func main() {
 						Parameters:       rcptLog.Data, // Raw data, could be decoded with ABI
 						TransactionHash:  rcptLog.TransactionHash,
 						BlockHash:        rcptLog.BlockHash,
-						BlockNumber:      fmt.Sprintf("0x%x", blockNum),
+						BlockNumber:      receipt.BlockNumber,
 						TransactionIndex: rcptLog.TransactionIndex,
 						LogIndex:         rcptLog.LogIndex,
 					}
@@ -116,7 +117,7 @@ func main() {
 					Address:          rcptLog.Address,
 					Topics:           rcptLog.Topics,
 					Data:             rcptLog.Data,
-					BlockNumber:      fmt.Sprintf("0x%x", blockNum),
+					BlockNumber:      rcptLog.BlockNumber,
 					TransactionHash:  rcptLog.TransactionHash,
 					TransactionIndex: rcptLog.TransactionIndex,
 					BlockHash:        rcptLog.BlockHash,
@@ -130,7 +131,7 @@ func main() {
 			transactions = append(transactions, types.Transaction{
 				Hash:             tx.Hash,
 				BlockHash:        tx.BlockHash,
-				BlockNumber:      fmt.Sprintf("0x%x", blockNum),
+				BlockNumber:      tx.BlockNumber,
 				From:             tx.From,
 				To:               tx.To,
 				Value:            tx.Value,
@@ -147,7 +148,7 @@ func main() {
 		// Post block with nested objects to DefraDB
 		docID, err := blockHandler.PostBlock(context.Background(), &types.Block{
 			Hash:             block.Hash,
-			Number:           fmt.Sprintf("0x%x", blockNum),
+			Number:           block.Number,
 			Timestamp:        block.Timestamp,
 			ParentHash:       block.ParentHash,
 			Difficulty:       block.Difficulty,
