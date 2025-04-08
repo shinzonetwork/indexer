@@ -38,14 +38,8 @@ func main() {
 	if startBlock == 0 {
 		startBlock = int64(cfg.Indexer.StartHeight)
 	}
-	// startBlock, err := strconv.ParseInt(highestBlock, 10, 64)
-	// if err != nil {
-	// 	log.Fatalf("failed to decode the block number: %v", err)
-	// }
-	// endBlock := startBlock + 9000
 
-	// startBlock := 21000000
-	endBlock := startBlock + 9000
+	endBlock := startBlock + 100
 
 	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
 		// Convert to hex for Alchemy API
@@ -126,7 +120,6 @@ func main() {
 					Events:           events,
 				})
 			}
-
 			// Build transaction
 			transactions = append(transactions, types.Transaction{
 				Hash:             tx.Hash,
@@ -146,7 +139,7 @@ func main() {
 		}
 
 		// Post block with nested objects to DefraDB
-		docID, err := blockHandler.PostBlock(context.Background(), &types.Block{
+		block = &types.Block{
 			Hash:             block.Hash,
 			Number:           block.Number,
 			Timestamp:        block.Timestamp,
@@ -163,14 +156,64 @@ func main() {
 			ReceiptsRoot:     block.ReceiptsRoot,
 			ExtraData:        block.ExtraData,
 			Transactions:     transactions,
-		}, sugar)
+		}
+		blockID, err := blockHandler.CreateBlock(context.Background(), block, sugar)
+		if err != nil {
+			sugar.Fatalf("failed to create block: %w", err)
+		}
+		var txID string
 
+		for _, tx := range transactions {
+			txID, err = blockHandler.CreateTransaction(context.Background(), &tx, sugar)
+			if err != nil {
+				sugar.Error("Failed to create transaction: %v", err)
+				continue
+			}
+			// Update transaction relationships using the txID
+			if err := blockHandler.UpdateTransactionRelationships(context.Background(), blockID, txID, sugar); err != nil {
+				sugar.Error("Failed to update transaction relationships: %v", err)
+				continue
+			}
+		}
+		// Process logs and events for each transaction
+		for _, tx := range transactions {
+			for _, log := range tx.Logs {
+				logId, err := blockHandler.CreateLog(context.Background(), &log, sugar)
+				if err != nil {
+					sugar.Error("Failed to create log: %v", err)
+					continue
+				}
+				sugar.Debug("Log created: " + log.LogIndex)
+				// func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId, txId, txHash string, logIndex string, sugar *zap.SugaredLogger) error {
+				// Link log to transaction and block
+				if err := blockHandler.UpdateLogRelationships(context.Background(), blockID, txID, tx.Hash, log.LogIndex, sugar); err != nil {
+					sugar.Error("Failed to update log relationships: %v", err)
+					continue
+				}
+				sugar.Debug("Log linked to transaction: " + log.LogIndex)
+
+				// Process events
+				for _, event := range log.Events {
+					_, err := blockHandler.CreateEvent(context.Background(), &event, sugar)
+					if err != nil {
+						sugar.Error("Failed to create event: %v", err)
+						continue
+					}
+					// func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logIndex, logId, txId, eventLogIndex string, sugar *zap.SugaredLogger) error {
+					// Link event to log
+					if err := blockHandler.UpdateEventRelationships(context.Background(), log.LogIndex, logId, txID, event.LogIndex, sugar); err != nil {
+						sugar.Error("Failed to update event relationships: %v", err)
+						continue
+					}
+				}
+			}
+		}
 		if err != nil {
 			sugar.Error("Failed to post block %d: %v", blockNum, err)
 			continue
 		}
 
-		sugar.Info("Successfully processed block %d with DocID %s (%d transactions)", blockNum, docID, len(transactions))
+		sugar.Info("Successfully processed block %d with DocID %s (%d transactions)", blockNum, blockID, len(transactions))
 
 		// Add a small delay to avoid rate limiting
 		// time.Sleep(time.Millisecond)
