@@ -19,7 +19,7 @@ func Init(development bool) {
 		Development:      development,
 		Encoding:         "json",
 		EncoderConfig:    zap.NewDevelopmentEncoderConfig(),
-		OutputPaths:      []string{"stdout", "logfile"},
+		OutputPaths:      []string{"stdout", "logs/logfile"},
 		ErrorOutputPaths: []string{"stderr"},
 	}
 	logger, err := config.Build()
