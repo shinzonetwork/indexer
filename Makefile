@@ -14,3 +14,14 @@ start:
 
 defradb:
 	sh scripts/apply_schema.sh
+
+clean:
+	rm -rf bin/ && rm -r logs/logfile && touch logs/logfile
+
+env:
+	export $(cat .env)
+
+git: 
+	git add .
+	git commit -m "${COMMIT_MESSAGE}"
+	git push origin ${BRANCH_NAME}
