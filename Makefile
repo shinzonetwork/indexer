@@ -1,4 +1,4 @@
-.PHONY: deps env build start
+.PHONY: deps env build start clean defradb
 
 deps:
 	go mod download
@@ -21,7 +21,5 @@ clean:
 env:
 	export $(cat .env)
 
-git: 
-	git add .
-	git commit -m "${COMMIT_MESSAGE}"
-	git push origin ${BRANCH_NAME}
+gitpush: 
+	git add . && git commit -m "${COMMIT_MESSAGE}" && git push origin ${BRANCH_NAME}
