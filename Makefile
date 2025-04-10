@@ -4,7 +4,7 @@ deps:
 	go mod download
 
 env:
-	export `cat .env`
+	export $(cat .env)
 
 build:
 	go build -o bin/block_poster cmd/block_poster/main.go
@@ -17,9 +17,6 @@ defradb:
 
 clean:
 	rm -rf bin/ && rm -r logs/logfile && touch logs/logfile
-
-env:
-	export $(cat .env)
 
 gitpush: 
 	git add . && git commit -m "${COMMIT_MESSAGE}" && git push origin ${BRANCH_NAME}
