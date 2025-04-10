@@ -31,3 +31,9 @@ go.work.sum
 logs/*.txt
 logs/*.logs
 logs/*.log
+
+bin/*
+
+todo.txt
+
+logs/logfile
