@@ -4,9 +4,8 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 ## Architecture
 
+- **GoLang**: Indexing engine for storing block data at source
 - **DefraDB**: P2P datastore for blockchain data storage and querying
-- **Source Network**: Handles consensus and transaction management
-- **LensVM**: ETL pipeline for blockchain data transformation (replacing CocoIndex)
 
 ## Features
 
@@ -67,13 +66,13 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 1. Start DefraDB:
    ```bash
-   export $(cat .env) && ~/go/bin/defradb start
+   export $(cat .env) && ~/go/bin/defradb start --root-dir /path/to/version1/.defra/
    ```
 
 2. Build and run the indexer:
    ```bash
-   go build -o bin/indexer cmd/indexer/main.go
-   ./bin/indexer
+   go build -o bin/block_poster cmd/block_poster/main.go
+   ./bin/block_poster > logs/log.txt 1>&2   
    ```
 
 ## Data Model
@@ -98,7 +97,7 @@ Access indexed data through DefraDB's GraphQL API at `http://localhost:9181/api/
 Example query:
 ```graphql
 {
-  Block(filter: { number: { _eq: "0x1142f20" } }) {
+  Block(filter: { number: { _eq: 21000000 } }) {
     hash
     transactions {
       hash
