@@ -11,3 +11,6 @@ build:
 
 start:
 	./bin/block_poster > logs/log.txt 1>&2   
+
+defradb:
+	sh scripts/apply_schema.sh

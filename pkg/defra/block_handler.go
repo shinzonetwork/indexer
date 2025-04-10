@@ -30,88 +30,21 @@ func NewBlockHandler(host string, port int) *BlockHandler {
 	}
 }
 
-type Response struct {
-	Data map[string][]struct {
-		DocID string `json:"_docID"`
-	} `json:"data"`
-}
-
-// PostBlock posts a block and its nested objects to DefraDB
-func (h *BlockHandler) PostBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) (string, error) {
-	// Post block first
-	blockID, err := h.CreateBlock(ctx, block, sugar)
-	if err != nil {
-		sugar.Fatal("failed to create block: %w", err)
-		return "", fmt.Errorf("failed to create block: %w", err)
-	}
-
-	sugar.Debug("Block created: " + blockID)
-	// Process transactions
-	for _, tx := range block.Transactions {
-		txId, err := h.CreateTransaction(ctx, &tx, sugar)
-		if err != nil {
-			sugar.Error("failed to create transaction: %w", err)
-			return "", fmt.Errorf("failed to create transaction: %w", err)
-		}
-		sugar.Debug("Transaction created: " + tx.Hash)
-
-		// Link transaction to block
-		if err := h.UpdateTransactionRelationships(ctx, block.Hash, tx.Hash, sugar); err != nil {
-			sugar.Fatal("failed to update transaction relationships: %w", err)
-			return "", fmt.Errorf("failed to update transaction relationships: %w", err)
-		}
-
-		sugar.Debug("Transaction linked to block: " + tx.Hash)
-		// Process logs
-		for _, log := range tx.Logs {
-			logDocId, err := h.CreateLog(ctx, &log, sugar)
-			if err != nil {
-				sugar.Fatal("failed to create log: %w", err)
-				return "", fmt.Errorf("failed to create log: %w", err)
-			}
-			sugar.Debug("Log created: " + log.LogIndex)
-
-			// Link log to transaction and block
-			if err := h.UpdateLogRelationships(ctx, blockID, txId, tx.Hash, log.LogIndex, sugar); err != nil {
-				sugar.Fatal("failed to update log relationships: %w", err)
-				return "", fmt.Errorf("failed to update log relationships: %w", err)
-			}
-			sugar.Debug("Log linked to transaction: " + log.LogIndex)
-
-			// Process events
-			for _, event := range log.Events {
-				_, err := h.CreateEvent(ctx, &event, sugar)
-				if err != nil {
-					sugar.Fatal("failed to create event: %w", err)
-					return "", fmt.Errorf("failed to create event: %w", err)
-				}
-
-				// Link event to log
-				if err := h.UpdateEventRelationships(ctx, log.LogIndex, logDocId, txId, event.LogIndex, sugar); err != nil {
-					sugar.Fatal("failed to update event relationships: %w", err)
-					return "", fmt.Errorf("failed to update event relationships: %w", err)
-				}
-			}
-		}
-	}
-
-	return blockID, nil
-}
-
 func (h *BlockHandler) ConvertHexToInt(s string, sugar *zap.SugaredLogger) int64 {
 	block16 := s[2:]
 	blockInt, err := strconv.ParseInt(block16, 16, 64)
 	if err != nil {
-		sugar.Fatalf("Failed to ParseInt(%v): ", err)
+		sugar.Fatalf("Failed to ParseInt(", err, ")")
+		return 0
 	}
 	return blockInt
 }
 
-func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) (string, error) {
+func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) string {
 	// Convert string number to int
 	blockInt, err := strconv.ParseInt(block.Number, 0, 64)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse block number: %w", err)
+		sugar.Fatalf("failed to parse block number: %w", err)
 	}
 
 	blockData := map[string]interface{}{
@@ -131,14 +64,14 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, suga
 		"receiptsRoot":     block.ReceiptsRoot,
 		"extraData":        block.ExtraData,
 	}
-	sugar.Debug("Posting blockdata to collection endpoint: ", blockData, ctx)
-	return h.postToCollection(ctx, "Block", blockData, sugar)
+	sugar.Debug("Posting blockdata to collection endpoint: ", blockData)
+	return h.PostToCollection(ctx, "Block", blockData, sugar)
 }
 
-func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transaction, sugar *zap.SugaredLogger) (string, error) {
+func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transaction, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(tx.BlockNumber, 0, 64)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse block number: %w", err)
+		sugar.Fatalf("failed to parse block number: ", err)
 	}
 
 	txData := map[string]interface{}{
@@ -154,14 +87,14 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		"nonce":            tx.Nonce,
 		"transactionIndex": tx.TransactionIndex,
 	}
-	sugar.Debug("Posting blockdata to collection endpoint: ", txData, ctx)
-	return h.postToCollection(ctx, "Transaction", txData, sugar)
+	sugar.Debug("Posting blockdata to collection endpoint: ", txData)
+	return h.PostToCollection(ctx, "Transaction", txData, sugar)
 }
 
-func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, sugar *zap.SugaredLogger) (string, error) {
+func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(log.BlockNumber, 0, 64)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse block number: %w", err)
+		sugar.Fatalf("failed to parse block number: ", err)
 	}
 
 	logData := map[string]interface{}{
@@ -175,14 +108,14 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, sugar *zap
 		"logIndex":         log.LogIndex,
 		"removed":          fmt.Sprintf("%v", log.Removed), // Convert bool to string
 	}
-	sugar.Debug("Posting to collection, ", logData, ctx)
-	return h.postToCollection(ctx, "Log", logData, sugar)
+	return h.PostToCollection(ctx, "Log", logData, sugar)
 }
 
-func (h *BlockHandler) CreateEvent(ctx context.Context, event *types.Event, sugar *zap.SugaredLogger) (string, error) {
+func (h *BlockHandler) CreateEvent(ctx context.Context, event *types.Event, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(event.BlockNumber, 0, 64)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse block number: %w", err)
+		sugar.Errorf("failed to parse block number: %w", err)
+		return ""
 	}
 
 	eventData := map[string]interface{}{
@@ -195,155 +128,66 @@ func (h *BlockHandler) CreateEvent(ctx context.Context, event *types.Event, suga
 		"transactionIndex": event.TransactionIndex,
 		"logIndex":         event.LogIndex,
 	}
-
-	return h.postToCollection(ctx, "Event", eventData, sugar)
+	return h.PostToCollection(ctx, "Event", eventData, sugar)
 }
 
-func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, blockId string, txHash string, sugar *zap.SugaredLogger) error {
-	// Get block ID
-	// query := fmt.Sprintf(`query {
-	// 	Block(filter: {hash: {_eq: %q}}) {
-	// 		_docID
-	// 	}
-	// }`, blockHash)
-
-	// resp, err := h.postGraphQL(ctx, query, sugar)
-	// if err != nil {
-	// 	sugar.Error("failed to get block ID: %w", err)
-	// 	return fmt.Errorf("failed to get block ID: %w", err)
-	// }
-
-	// var blockResp struct {
-	// 	Data struct {
-	// 		Block []struct {
-	// 			DocID string `json:"_docID"`
-	// 		}
-	// 	}
-	// }
-	// if err := json.Unmarshal(resp, &blockResp); err != nil {
-	// 	sugar.Error("failed to decode block response: %w", err)
-	// 	return fmt.Errorf("failed to decode block response: %w", err)
-	// }
-
-	// if len(blockResp.Data.Block) == 0 {
-	// 	sugar.Error("block not found")
-	// 	return fmt.Errorf("block not found")
-	// }
+func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, blockId string, txHash string, sugar *zap.SugaredLogger) string {
 
 	// Update transaction with block relationship
-	mutation := fmt.Sprintf(`mutation {
+	mutation := types.Request{Query: fmt.Sprintf(`mutation {
 		update_Transaction(filter: {hash: {_eq: %q}}, input: {block: %q}) {
 			_docID
 		}
-	}`, txHash, blockId)
+	}`, txHash, blockId)}
 
-	docId := h.PostGraphQL(ctx, mutation, sugar)
+	docId := h.SendToGraphql(ctx, mutation, sugar)
 	if docId == nil {
 		sugar.Errorf("failed to update transaction relationships: ", mutation)
+		return ""
 	}
 
-	return nil
+	return string(docId)
 }
 
-func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId, txId, txHash string, logIndex string, sugar *zap.SugaredLogger) error {
-	// Get block and transaction IDs
-	// query := fmt.Sprintf(`query {
-	// 	Block(filter: {hash: {_eq: %q}}) {
-	// 		_docID
-	// 	}
-	// 	Transaction(filter: {hash: {_eq: %q}}) {
-	// 		_docID
-	// 	}
-	// }`, blockHash, txHash)
-
-	// resp, err := h.postGraphQL(ctx, query, sugar)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to get IDs: %w", err)
-	// }
-
-	// var idResp struct {
-	// 	Data struct {
-	// 		Block []struct {
-	// 			DocID string `json:"_docID"`
-	// 		}
-	// 		Transaction []struct {
-	// 			DocID string `json:"_docID"`
-	// 		}
-	// 	}
-	// }
-	// if err := json.Unmarshal(resp, &idResp); err != nil {
-	// 	sugar.Error("failed to decode ID response: %w", err)
-	// 	return fmt.Errorf("failed to decode ID response: %w", err)
-	// }
-
-	// if len(idResp.Data.Block) == 0 || len(idResp.Data.Transaction) == 0 {
-	// 	sugar.Error("block or transaction not found")
-	// 	return fmt.Errorf("block or transaction not found")
-	// }
+func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId string, txId string, txHash string, logIndex string, sugar *zap.SugaredLogger) string {
 
 	// Update log with block and transaction relationships
-	mutation := fmt.Sprintf(`mutation {
+	mutation := types.Request{Query: fmt.Sprintf(`mutation {
 		update_Log(filter: {logIndex: {_eq: %q}, transactionHash: {_eq: %q}}, input: {
 			block: %q,
 			transaction: %q
 		}) {
 			_docID
 		}
-	}`, logIndex, txHash, blockId, txId)
+	}`, logIndex, txHash, blockId, txId)}
 
-	docId := h.PostGraphQL(ctx, mutation, sugar)
+	docId := h.SendToGraphql(ctx, mutation, sugar)
 	if docId == nil {
-		sugar.Fatalf("log relationship update failure")
+		sugar.Warn("log relationship update failure")
+		return ""
 	}
-	return nil
+	return string(docId)
 }
 
-func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logIndex, logId, txId, eventLogIndex string, sugar *zap.SugaredLogger) error {
-	// Get log ID
-	// query := fmt.Sprintf(`query {
-	// 	Log(filter: {logIndex: {_eq: %q}, transactionHash:{_eq:%q} }) {
-	// 		_docID
-	// 	}
-	// }`, logIndex, txHash)
-
-	// resp, err := h.postGraphQL(ctx, query, sugar)
-	// if err != nil {
-	// 	sugar.Error("failed to get log ID: %w", err)
-	// 	return fmt.Errorf("failed to get log ID: %w", err)
-	// }
-
-	// var logResp struct {
-	// 	Data struct {
-	// 		Log []struct {
-	// 			DocID string `json:"_docID"`
-	// 		}
-	// 	}
-	// }
-	// if err := json.Unmarshal(resp, &logResp); err != nil {
-	// 	sugar.Error("failed to decode log response: %w", err)
-	// 	return fmt.Errorf("failed to decode log response: %w", err)
-	// }
-
-	// if len(logResp.Data.Log) == 0 {
-	// 	sugar.Error("log not found")
-	// 	return fmt.Errorf("log not found")
-	// }
-
+func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId string, txHash string, logIndex string, sugar *zap.SugaredLogger) string {
 	// Update event with log relationship
-	mutation := fmt.Sprintf(`mutation {
-		update_Event(filter: {logIndex: {_eq: %q}}, input: {log: %q}) {
+	mutation := types.Request{Query: fmt.Sprintf(`mutation {
+		update_Event(filter: {logIndex: {_eq: %q}, transactionHash:{_eq:%q}}, input: {
+		log: %q
+		}) {
 			_docID
 		}
-	}`, eventLogIndex, logId)
+	}`, logIndex, txHash, logDocId)}
 
-	docId := h.PostGraphQL(ctx, mutation, sugar)
+	docId := h.SendToGraphql(ctx, mutation, sugar)
 	if docId == nil {
-		sugar.Fatalf("log relationship update failure")
+		sugar.Warn("log relationship update failure")
+		return ""
 	}
-	return nil
+	return string(docId)
 }
 
-func (h *BlockHandler) postToCollection(ctx context.Context, collection string, data map[string]interface{}, sugar *zap.SugaredLogger) (string, error) {
+func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, data map[string]interface{}, sugar *zap.SugaredLogger) string {
 	// Convert data to GraphQL input format
 	var inputFields []string
 	for key, value := range data {
@@ -357,67 +201,79 @@ func (h *BlockHandler) postToCollection(ctx context.Context, collection string, 
 		case []string:
 			jsonBytes, err := json.Marshal(v)
 			if err != nil {
-				return "", fmt.Errorf("failed to marshal field %s: %w", key, err)
+				sugar.Fatalf("failed to marshal field ", key, "err: ", err)
+				return ""
 			}
 			inputFields = append(inputFields, fmt.Sprintf("%s: %s", key, string(jsonBytes)))
 		default:
 			inputFields = append(inputFields, fmt.Sprintf("%s: %q", key, fmt.Sprint(v)))
 		}
 	}
-	sugar.Debug("Input fields: ", strings.Join(inputFields, ", "), "\n")
-	sugar.Debug("Collection: ", collection, "\n")
-	sugar.Debug("Http: ", h.defraURL, "\n")
+
 	// Create mutation
-	mutation := fmt.Sprintf(`mutation {
+	mutation := types.Request{Type: "POST", Query: fmt.Sprintf(`mutation {
 		create_%s(input: { %s }) {
 			_docID
 		}
-	}`, collection, strings.Join(inputFields, ", "))
-
-	// Debug: Print the mutation
-	sugar.Info("Sending mutation: ", mutation)
+	}`, collection, strings.Join(inputFields, ", "))}
 
 	// Send mutation
-	resp := h.PostGraphQL(ctx, mutation, sugar)
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
+		sugar.Error("Received nil response from GraphQL")
+		return ""
+	}
 
 	// Parse response
-	var response Response
+	var response types.Response
 	if err := json.Unmarshal(resp, &response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+		sugar.Errorf("failed to decode response: %v", err)
+		sugar.Debug("Raw response: ", string(resp))
+		return ""
 	}
 
 	// Get document ID
 	createField := fmt.Sprintf("create_%s", collection)
 	items, ok := response.Data[createField]
-	if !ok || len(items) == 0 {
-		return "", fmt.Errorf("no document ID returned")
+	if !ok {
+		sugar.Errorf("create_", collection, " field not found in response")
+		sugar.Debug("Response data: ", response.Data)
+		return ""
+	}
+	if len(items) == 0 {
+		sugar.Warnf("no document ID returned for create_", collection)
+		return ""
 	}
 
-	return items[0].DocID, nil
+	return items[0].DocID
 }
 
-func (h *BlockHandler) PostGraphQL(ctx context.Context, mutation string, sugar *zap.SugaredLogger) []byte {
-	// Create request body
-	body := map[string]string{
-		"query": mutation,
+func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request, sugar *zap.SugaredLogger) []byte {
+
+	type RequestJSON struct {
+		Query string `json:"query"`
 	}
+
+	// Create request body
+	body := RequestJSON{req.Query}
+
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		sugar.Errorf("failed to marshal request body: ", err)
 	}
 
 	// Debug: Print the mutation
-	sugar.Info("Sending mutation: ", mutation, "\n")
+	sugar.Debug("Sending mutation: ", req.Query, "\n")
 
 	// Create request
-	req, err := http.NewRequestWithContext(ctx, "POST", h.defraURL, bytes.NewBuffer(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, req.Type, h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		sugar.Errorf("failed to create request: ", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Content-Type", "application/json")
 
 	// Send request
-	resp, err := h.client.Do(req)
+	resp, err := h.client.Do(httpReq)
 	if err != nil {
 		sugar.Errorf("failed to send request: ", err)
 	}
@@ -436,14 +292,16 @@ func (h *BlockHandler) PostGraphQL(ctx context.Context, mutation string, sugar *
 }
 
 // GetHighestBlockNumber returns the highest block number stored in DefraDB
-func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.SugaredLogger) (int64, error) {
-	query := `query {
+func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.SugaredLogger) int64 {
+	query := types.Request{
+		Type: "POST",
+		Query: `query {
 		Block(order: {number: DESC}, limit: 1) {
 			number
 		}	
-	}`
+	}`}
 
-	resp := h.PostGraphQL(ctx, query, sugar)
+	resp := h.SendToGraphql(ctx, query, sugar)
 	if resp == nil {
 		sugar.Errorf("failed to query block numbers error: ", resp)
 	}
@@ -457,11 +315,11 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.Sug
 	}
 
 	if err := json.Unmarshal(resp, &result); err != nil {
-		return 0, fmt.Errorf("failed to decode response: %w", err)
+		sugar.Errorf("failed to decode response: ", err)
 	}
 
 	if len(result.Data.Block) == 0 {
-		return 0, nil // Return 0 if no blocks exist
+		return 0 // Return 0 if no blocks exist
 	}
 
 	// Find the highest block number
@@ -472,5 +330,5 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.Sug
 		}
 	}
 
-	return highest + 1, nil
+	return highest + 1
 }

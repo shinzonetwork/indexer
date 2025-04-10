@@ -73,3 +73,41 @@ type Event struct {
 	TransactionIndex string `json:"transactionIndex"`
 	LogIndex         string `json:"logIndex"`
 }
+
+type Response struct {
+	Data map[string][]struct {
+		DocID string `json:"_docID"` // the document ID of the item in the collection
+	} `json:"data"` // the data returned from the query
+}
+
+type Request struct {
+	Type  string `json:"type"`
+	Query string `json:"query"`
+}
+
+type Error struct {
+	Level   int    `json:"level"`
+	Message string `json:"message"`
+}
+
+type DefraDoc struct {
+	JSON interface{} `json:"json"`
+}
+
+type UpdateTransactionStruct struct {
+	BlockId string `json:"blockId"`
+	TxHash  string `json:"txHash"`
+}
+
+type UpdateLogStruct struct {
+	BlockId  string `json:"blockId"`
+	TxId     string `json:"txId"`
+	TxHash   string `json:"txHash"`
+	LogIndex string `json:"logIndex"`
+}
+
+type UpdateEventStruct struct {
+	LogIndex string `json:"logIndex"`
+	TxHash   string `json:"txHash"`
+	LogDocId string `json:"logDocId"`
+}
