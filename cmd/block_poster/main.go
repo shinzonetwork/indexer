@@ -40,87 +40,101 @@ func main() {
 
 	endBlock := startBlock + 100
 
+	fmt.Println("here")
+	//go routines start here
+
+	workerPool := make(chan struct{}, 4)
+
 	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
-		// Convert to hex for Alchemy API
-		blockHex := fmt.Sprintf("0x%x", blockNum)
 
-		sugar.Info("Processing block: ", blockNum, ", hex: ", blockHex)
+		workerPool <- struct{}{}
 
-		// Get block with retry logic
-		var block *types.Block
-		for retries := 0; retries < 3; retries++ {
-			block, err = alchemy.GetBlock(context.Background(), blockHex)
-			if err == nil {
-				sugar.Debug("Received block from Alechemy")
-				break
+		go func(blockNum int64) {
+
+			fmt.Println("near here")
+
+			// Convert to hex for Alchemy API
+			blockHex := fmt.Sprintf("0x%x", blockNum)
+
+			sugar.Info("Processing block: ", blockNum, ", hex: ", blockHex)
+
+			// Get block with retry logic
+			var block *types.Block
+			for retries := 0; retries < 3; retries++ {
+				block, err = alchemy.GetBlock(context.Background(), blockHex)
+				fmt.Println(block)
+				if err == nil {
+					sugar.Debug("Received block from Alechemy")
+					break
+				}
+				sugar.Error("Failed to get block %d, retry %d: %v", blockNum, retries+1, err)
+				time.Sleep(time.Second * 1)
 			}
-			sugar.Error("Failed to get block %d, retry %d: %v", blockNum, retries+1, err)
-			time.Sleep(time.Second * 1)
-		}
-		if err != nil {
-			sugar.Error("Skipping block ", blockNum, " after all retries failed: ", err)
-			continue
-		}
-
-		// Process all transactions first
-		var transactions []types.Transaction
-		var allLogs []types.Log
-		var allEvents []types.Event
-
-		// First pass: collect all data
-		for _, tx := range block.Transactions {
-			receipt, err := getTransactionReceipt(context.Background(), alchemy, tx.Hash, sugar)
 			if err != nil {
-				sugar.Error("Skipping transaction ", tx.Hash, ": ", err)
-				continue
+				sugar.Error("Skipping block ", blockNum, " after all retries failed: ", err)
+				return
 			}
 
-			// Build logs and events
-			logs, events := processLogsAndEvents(receipt.Logs, receipt, sugar)
-			allLogs = append(allLogs, logs...)
-			allEvents = append(allEvents, events...)
+			// TODO: explore using goroutine for every block to speed up processing async.
 
-			transactions = append(transactions, buildTransaction(tx, receipt, logs))
-		}
+			// Process all transactions first
+			var transactions []types.Transaction
+			var allLogs []types.Log
+			var allEvents []types.Event
 
-		// Create block once
-		block = buildBlock(block, transactions)
-		blockDocID := blockHandler.CreateBlock(context.Background(), block, sugar)
-		if blockDocID == "" {
-			sugar.Error("Failed to create block, skipping relationships")
-			continue
-		}
+			// First pass: collect all data
+			for _, tx := range block.Transactions {
+				receipt, err := getTransactionReceipt(context.Background(), alchemy, tx.Hash, sugar)
+				if err != nil {
+					sugar.Error("Skipping transaction ", tx.Hash, ": ", err)
+					return
+				}
 
-		// Create all transactions
-		txIDMap := make(map[string]string) // hash -> docID
-		for _, tx := range transactions {
-			txID := blockHandler.CreateTransaction(context.Background(), &tx, sugar)
-			if txID != "" {
-				txIDMap[tx.Hash] = txID
-				blockHandler.UpdateTransactionRelationships(context.Background(), blockDocID, tx.Hash, sugar)
+				// Build logs and events
+				logs, events := processLogsAndEvents(receipt.Logs, receipt, sugar)
+				allLogs = append(allLogs, logs...)
+				allEvents = append(allEvents, events...)
+
+				transactions = append(transactions, buildTransaction(tx, receipt, logs))
 			}
-		}
 
-		// Create all logs and update relationships
-		logIDMap := make(map[string]string) // logIndex -> docID
-		for _, log := range allLogs {
-			if logID := blockHandler.CreateLog(context.Background(), &log, sugar); logID != "" {
-				logIDMap[log.LogIndex] = logID
-				txID := txIDMap[log.TransactionHash]
-				blockHandler.UpdateLogRelationships(context.Background(), blockDocID, txID, log.TransactionHash, log.LogIndex, sugar)
+			// Create block once
+			block = buildBlock(block, transactions)
+			blockDocID := blockHandler.CreateBlock(context.Background(), block, sugar)
+			if blockDocID == "" {
+				sugar.Error("Failed to create block, skipping relationships")
+				return
 			}
-		}
-
-		// Create all events and update relationships
-		for _, event := range allEvents {
-			if eventID := blockHandler.CreateEvent(context.Background(), &event, sugar); eventID != "" {
-				logID := logIDMap[event.LogIndex]
-				// _ := txIDMap[event.TransactionHash]
-				blockHandler.UpdateEventRelationships(context.Background(), logID, event.TransactionHash, event.LogIndex, sugar)
+			// TODO: remove sending the log, instantiate it at the start of each file
+			// Create all transactions
+			txIDMap := make(map[string]string) // hash -> docID
+			for _, tx := range transactions {
+				txID := blockHandler.CreateTransaction(context.Background(), &tx, blockDocID, sugar)
+				if txID != "" {
+					txIDMap[tx.Hash] = txID
+					// 	blockHandler.UpdateTransactionRelationships(context.Background(), blockDocID, tx.Hash, sugar)
+				}
 			}
-		}
 
-		sugar.Info("Successfully processed block - ", blockNum, " with DocID - ", blockDocID, " (#", len(transactions), " transactions)")
+			// Create all logs and update relationships
+			logIDMap := make(map[string]string) // logIndex -> docID
+			for _, log := range allLogs {
+				if logID := blockHandler.CreateLog(context.Background(), &log, blockDocID, txIDMap[log.TransactionHash], sugar); logID != "" {
+					logIDMap[log.LogIndex] = logID
+					// blockHandler.UpdateLogRelationships(context.Background(), blockDocID, txID, log.TransactionHash, log.LogIndex, sugar)
+				}
+			}
+
+			// Create all events and update relationships
+			for _, event := range allEvents {
+				_ = blockHandler.CreateEvent(context.Background(), &event, logIDMap[event.LogIndex], sugar)
+			}
+
+			sugar.Info("Successfully processed block - ", blockNum, " with DocID - ", blockDocID, " (#", len(transactions), " transactions)")
+
+			<-workerPool
+		}(blockNum)
+
 	}
 }
 
@@ -158,7 +172,6 @@ func processLogsAndEvents(logs []types.Log, receipt *types.TransactionReceipt, s
 				TransactionIndex: rcptLog.TransactionIndex,
 				LogIndex:         rcptLog.LogIndex,
 			}
-			sugar.Debug("Event appended to list: " + event.EventName)
 			events = append(events, event)
 		}
 
@@ -175,8 +188,6 @@ func processLogsAndEvents(logs []types.Log, receipt *types.TransactionReceipt, s
 			Removed:          rcptLog.Removed,
 			Events:           events,
 		})
-
-		sugar.Debug("Log appended to list: " + rcptLog.LogIndex)
 		processedEvents = append(processedEvents, events...)
 	}
 

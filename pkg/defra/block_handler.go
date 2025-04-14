@@ -68,7 +68,7 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, suga
 	return h.PostToCollection(ctx, "Block", blockData, sugar)
 }
 
-func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transaction, sugar *zap.SugaredLogger) string {
+func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transaction, block_id string, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(tx.BlockNumber, 0, 64)
 	if err != nil {
 		sugar.Fatalf("failed to parse block number: ", err)
@@ -86,12 +86,13 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		"inputData":        tx.Input, // Map Input to inputData
 		"nonce":            tx.Nonce,
 		"transactionIndex": tx.TransactionIndex,
+		"block_id":         block_id,
 	}
 	sugar.Debug("Posting blockdata to collection endpoint: ", txData)
 	return h.PostToCollection(ctx, "Transaction", txData, sugar)
 }
 
-func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, sugar *zap.SugaredLogger) string {
+func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, tx_Id string, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(log.BlockNumber, 0, 64)
 	if err != nil {
 		sugar.Fatalf("failed to parse block number: ", err)
@@ -107,11 +108,13 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, sugar *zap
 		"blockHash":        log.BlockHash,
 		"logIndex":         log.LogIndex,
 		"removed":          fmt.Sprintf("%v", log.Removed), // Convert bool to string
+		"transaction_id":   tx_Id,
+		"block_id":         block_id,
 	}
 	return h.PostToCollection(ctx, "Log", logData, sugar)
 }
 
-func (h *BlockHandler) CreateEvent(ctx context.Context, event *types.Event, sugar *zap.SugaredLogger) string {
+func (h *BlockHandler) CreateEvent(ctx context.Context, event *types.Event, log_id string, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(event.BlockNumber, 0, 64)
 	if err != nil {
 		sugar.Errorf("failed to parse block number: %w", err)
@@ -127,6 +130,7 @@ func (h *BlockHandler) CreateEvent(ctx context.Context, event *types.Event, suga
 		"blockNumber":      blockInt,
 		"transactionIndex": event.TransactionIndex,
 		"logIndex":         event.LogIndex,
+		"log_id":           log_id,
 	}
 	return h.PostToCollection(ctx, "Event", eventData, sugar)
 }
@@ -148,6 +152,11 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 
 	return string(docId)
 }
+
+// shinzo stuct
+// alchemy client interface
+// call start and measure what i am storing in defra
+// mock alchemy block data { alter diff fields to create diff scenarios}
 
 func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId string, txId string, txHash string, logIndex string, sugar *zap.SugaredLogger) string {
 
@@ -211,7 +220,9 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	}
 
 	// Create mutation
-	mutation := types.Request{Type: "POST", Query: fmt.Sprintf(`mutation {
+	mutation := types.Request{
+		Type: "POST",
+		Query: fmt.Sprintf(`mutation {
 		create_%s(input: { %s }) {
 			_docID
 		}
@@ -247,6 +258,8 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 
 	return items[0].DocID
 }
+
+// Graph golang client check in defra
 
 func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request, sugar *zap.SugaredLogger) []byte {
 
