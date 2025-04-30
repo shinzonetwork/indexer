@@ -13,8 +13,10 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 - GraphQL API for querying indexed data
 - Support for blocks, transactions, logs, and events
 - Bi-directional relationships between blockchain entities
-- Deterministic document IDs based on primary keys
+- Deterministic document IDs
 - Graceful shutdown handling
+- Concurrent indexing with duplicate block protection
+- Structured logging with clear error reporting
 
 ## Prerequisites
 
@@ -78,17 +80,45 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 ## Data Model
 
 ### Entities and Relationships
-- **Block**: Primary key is `hash`
+- **Block**
+  - Primary key: `hash` (unique index)
+  - Secondary index: `number`
   - Has many transactions (`block_transactions`)
-  - Has many events (`block_events`)
-- **Transaction**: Primary key is `hash`
-  - Belongs to block
+- **Transaction**
+  - Primary key: `hash` (unique index)
+  - Secondary indices: `blockHash`, `blockNumber`
+  - Belongs to block (`block_transactions`)
   - Has many logs (`transaction_logs`)
-  - Has many events (`transaction_events`)
-- **Log**: Primary key is `logIndex`
+- **Log**
+  - Indices: `blockNumber`
   - Belongs to block and transaction
-- **Event**: Primary key is `logIndex`
-  - Belongs to block and transaction
+  - Has many events (`log_events`)
+- **Event**
+  - Indices: `transactionHash`, `blockNumber`
+  - Belongs to log (`log_events`)
+
+### Relationship Definitions
+
+DefraDB relationships use the `@relation(name: "relationship_name")` syntax. Example:
+
+```graphql
+type Block {
+  transactions: [Transaction] @relation(name: "block_transactions")
+}
+
+type Transaction {
+  block: Block @relation(name: "block_transactions")
+}
+```
+
+### Logging Strategy
+
+The indexer implements a structured logging strategy:
+- INFO level: Important state changes and block processing
+- ERROR level: Critical issues requiring attention
+- Block number context in error messages
+- Clear distinction between normal shutdown and errors
+- Success logging for block processing progress
 
 ### Querying Data
 
@@ -97,13 +127,17 @@ Access indexed data through DefraDB's GraphQL API at `http://localhost:9181/api/
 Example query:
 ```graphql
 {
-  Block(filter: { number: { _eq: 21000000 } }) {
+  Block(filter: { number: { _eq: 18100003 } }) {
     hash
     transactions {
       hash
       logs {
         logIndex
         data
+        events {
+          eventName
+          parameters
+        }
       }
     }
   }
