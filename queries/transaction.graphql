@@ -1,0 +1,69 @@
+query GetTransactionByHash($txHash: String!) {
+  Transaction(filter: {hash: {_eq: $txHash}}) {
+    hash
+    blockHash
+    blockNumber
+    from
+    to
+    value
+    gasPrice
+    nonce
+    transactionIndex
+    logs {
+      address
+      topics
+      data
+      blockNumber
+      transactionHash
+      transactionIndex
+      blockHash
+      logIndex
+      removed
+    }
+  }
+}
+
+query GetTransactionsInvolvingAddress($address: String!) {
+    Transaction(filter: { _or: [
+        {from: { _eq: $address }}
+        {to: { _eq: $address }}
+    ]}) {
+        hash
+        blockHash
+        blockNumber
+        from
+        to
+        value
+        gasPrice
+        nonce
+        transactionIndex
+        logs {
+            address
+            topics
+            data
+            blockNumber
+            transactionHash
+            transactionIndex
+            blockHash
+            logIndex
+            removed
+        }
+    }
+}
+
+query GetAllTransactionWithTopic($topic: String!) {
+  Log(filter: { topics: { _any: { _eq: $topic } } }) {
+    address
+    topics
+    data
+    blockHash
+    logIndex
+    removed
+    transaction {
+      hash
+      from
+      to
+      value
+    }
+  }
+}
