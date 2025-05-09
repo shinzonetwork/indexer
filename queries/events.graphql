@@ -1,0 +1,15 @@
+query GetEventsForBlock($blockHash: String!) {
+    Event (filter: { blockHash: { _eq: $blockHash }}){
+		contractAddress
+    	eventName
+    	parameters
+    }
+}
+
+query GetEventsByEventName($name: String!) {
+    Event (filter: { eventName: { _eq: $name }}){
+		contractAddress
+    	eventName
+    	parameters
+    }
+}

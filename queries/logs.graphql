@@ -1,0 +1,32 @@
+query GetAllTransactionLogs($txHash: String!) {
+  Log(filter: { transactionHash: { _eq: $txHash } }) {
+    address
+    topics
+    data
+    blockHash
+    logIndex
+    removed
+  }
+}
+
+query GetAllBlockLogs($blockHash: String!) {
+  Log(filter: { blockHash: { _eq: $blockHash } }) {
+    address
+    topics
+    data
+    logIndex
+    removed
+  }
+}
+
+query GetAllLogsByTopic($topic: String!) {
+  Log(filter: { topics: { _any: { _eq: $topic } } }) {
+    address
+    topics
+    data
+    blockHash
+    transactionHash
+    logIndex
+    removed
+  }
+}
