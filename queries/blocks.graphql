@@ -1,3 +1,9 @@
+query GetHighestBlockNumber {
+  Block(order: {number: DESC}, limit: 1) {
+    number
+  }
+}
+
 query GetLatestBlocks {
   Block(orderBy: {number: DESC}, limit: 10) {
     hash
