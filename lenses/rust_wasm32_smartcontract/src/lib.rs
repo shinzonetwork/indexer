@@ -13,21 +13,16 @@ extern "C" {
     fn next() -> *mut u8;
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 pub struct Input {
-    // pub topics: String,
-    pub address: String,
+    pub hash: String,
+	pub from: String,
+	pub to: String,
 }
 
 #[derive(Serialize)]
 pub struct Output {
-    // pub topic0: String,
-    // pub topic1: String,
-    // pub topic2: String,
-    // pub topic3: String,
-    // pub topic4: String,
-    pub address: String,
-    // pub contractAddress: String, // if different from to
+    pub data: String,
 }
 
 #[no_mangle]
@@ -58,28 +53,16 @@ fn try_transform() -> Result<StreamOption<Vec<u8>>, Box<dyn Error>> {
             EndOfStream => return Ok(EndOfStream)
         };
 
-        // let res = input.topics.split(";").collect::<Vec<&str>>();
-        // let mut result = Output {
-        //     address: input.address,
-        //     topic0: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        //     topic1: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        //     topic2: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        //     topic3: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        //     topic4: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        // };
-        // for i in 0..res.len() {
-        //     match i {
-        //         0 => result.topic0 = res[i].to_string(),
-        //         1 => result.topic1 = res[i].to_string(),
-        //         2 => result.topic2 = res[i].to_string(),
-        //         3 => result.topic3 = res[i].to_string(),
-        //         4 => result.topic4 = res[i].to_string(),
-        //         _ => break
-        //     }
-        // }
+        let concatenated = format!("{}:{}:{}", input.hash, input.from, input.to);
+
         let result = Output {
-            address: input.address,
+            data: concatenated,
         };
+        
+        let result = Output {
+            data: "test-static-output".to_string(),
+        };
+        
         let result_json = serde_json::to_vec(&result)?;
         lens_sdk::free_transport_buffer(ptr)?;
         return Ok(Some(result_json))
