@@ -20,3 +20,6 @@ clean:
 
 gitpush: 
 	git add . && git commit -m "${COMMIT_MESSAGE}" && git push origin ${BRANCH_NAME}
+
+view:
+	./bin/view_creator > logs/log.txt 1>&2
