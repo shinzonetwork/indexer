@@ -1,4 +1,7 @@
 use std::error::Error;
+use ethabi::decode as ethabi_decode;
+use ethabi::Token;
+use ethereum_types::H256;
 use serde::{Serialize, Deserialize};
 use lens_sdk::StreamOption;
 use lens_sdk::option::StreamOption::{Some, None, EndOfStream};
@@ -22,6 +25,7 @@ pub struct Output {
 pub struct Input {
     pub topics: String,
     pub number: u64,
+    pub abi: Vec<u8>,
 }
 
 #[no_mangle]
@@ -63,11 +67,11 @@ fn try_transform() -> Result<StreamOption<Vec<u8>>, Box<dyn Error>> {
         let idx = i as usize;
         if idx < topics.len() {
             match i {
-                0 => result.index_topic_0 = topics[idx].to_string(), // TODO: decode
-                1 => result.index_topic_1 = topics[idx].to_string(), // TODO: decode
-                2 => result.index_topic_2 = topics[idx].to_string(), // TODO: decode
-                3 => result.index_topic_3 = topics[idx].to_string(), // TODO: decode
-                4 => result.index_topic_4 = topics[idx].to_string(), // TODO: decode
+                0 => result.index_topic_0 = decode_topic(topics[idx], &input.abi)?,
+                1 => result.index_topic_1 = decode_topic(topics[idx], &input.abi)?,
+                2 => result.index_topic_2 = decode_topic(topics[idx], &input.abi)?,
+                3 => result.index_topic_3 = decode_topic(topics[idx], &input.abi)?,
+                4 => result.index_topic_4 = decode_topic(topics[idx], &input.abi)?,
                 _ => break,
             }
         } else {
@@ -78,5 +82,31 @@ fn try_transform() -> Result<StreamOption<Vec<u8>>, Box<dyn Error>> {
     let result_json = serde_json::to_vec(&result)?;
     lens_sdk::free_transport_buffer(ptr)?;
     Ok(Some(result_json))
+}
+
+fn decode_topic(topic: &str, abi: &[u8]) -> Result<String, Box<dyn Error>> {
+    // Parse the ABI
+    let parsed_abi = ethabi::Contract::load(abi)?;
+    
+    // Convert hex topic to H256
+    let topic_bytes = hex::decode(topic.trim_start_matches("0x"))?;
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&topic_bytes);
+    let topic_hash = H256::from(bytes);
+    
+    // Find the event in the ABI and decode
+    for event in parsed_abi.events() {
+        if let Ok(decoded) = event.parse_log(ethabi::RawLog {
+            topics: vec![topic_hash],
+            data: vec![],
+        }) {
+            return Ok(decoded.params.iter()
+                .map(|param| param.value.to_string())
+                .collect::<Vec<_>>().join(", "));
+        }
+    }
+    
+    // If we couldn't decode it, return the original topic
+    Ok(topic.to_string())
 }
 
