@@ -16,6 +16,7 @@ github.com/lens-vm/lens v0.6.0 h1:Wkif9cfa0IHL5X1xewSmbk7mhc6GrXxgxjU4iScuahE=
 github.com/lens-vm/lens v0.6.0/go.mod h1:gq/P3OSlvH8unTAzS6B+m0EjgU636/RxsFP4pIDwQDw=
 github.com/lens-vm/lens/host-go v0.0.0-20240605170614-979fa9eb14d5 h1:pP850r5kNYqBnTCEp1iQvJgH3j+0GfSRP6/7jxnUNVo=
 github.com/lens-vm/lens/host-go v0.0.0-20240605170614-979fa9eb14d5/go.mod h1:/KALHpn4yHMQ9vx/8KzG7XnE/Z4Yb14T6sBcyNhqhHA=
+github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
