@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"shinzo/version1/config"
@@ -38,12 +39,12 @@ func main() {
 		startBlock = int64(cfg.Indexer.StartHeight)
 	}
 
-	endBlock := startBlock + 100
+	endBlock := startBlock + 10
 
 	fmt.Println("here")
 	//go routines start here
 
-	workerPool := make(chan struct{}, 4)
+	workerPool := make(chan struct{}, 2)
 
 	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
 
@@ -62,14 +63,14 @@ func main() {
 			var block *types.Block
 			for retries := 0; retries < 3; retries++ {
 				block, err = alchemy.GetBlock(context.Background(), blockHex)
-				fmt.Println(block)
-				if err == nil {
+				if block != nil && err == nil {
 					sugar.Debug("Received block from Alechemy")
 					break
 				}
-				sugar.Error("Failed to get block %d, retry %d: %v", blockNum, retries+1, err)
+				sugar.Error("Failed to get block ", blockNum, " retries: ", retries+1, " error: ", err)
 				time.Sleep(time.Second * 1)
 			}
+			sugar.Debug("xxx")
 			if err != nil {
 				sugar.Error("Skipping block ", blockNum, " after all retries failed: ", err)
 				return
@@ -79,9 +80,9 @@ func main() {
 
 			// Process all transactions first
 			var transactions []types.Transaction
-			var allLogs []types.Log
+			var allLogs []types.LogA
 			var allEvents []types.Event
-
+			sugar.Info("block: ", block)
 			// First pass: collect all data
 			for _, tx := range block.Transactions {
 				receipt, err := getTransactionReceipt(context.Background(), alchemy, tx.Hash, sugar)
@@ -151,10 +152,10 @@ func getTransactionReceipt(ctx context.Context, alchemy *rpc.AlchemyClient, hash
 	return nil, fmt.Errorf("failed after 3 retries")
 }
 
-func processLogsAndEvents(logs []types.Log, receipt *types.TransactionReceipt, sugar *zap.SugaredLogger) ([]types.Log, []types.Event) {
-	var processedLogs []types.Log
+func processLogsAndEvents(logs []types.Log, receipt *types.TransactionReceipt, sugar *zap.SugaredLogger) ([]types.LogA, []types.Event) {
+	var processedLogs []types.LogA
 	var processedEvents []types.Event
-
+	var splitTopics string
 	for _, rcptLog := range receipt.Logs {
 		// Create events from log
 		var events []types.Event
@@ -174,11 +175,11 @@ func processLogsAndEvents(logs []types.Log, receipt *types.TransactionReceipt, s
 			}
 			events = append(events, event)
 		}
-
+		splitTopics = strings.Join(rcptLog.Topics, ";")
 		// Build log with events
-		processedLogs = append(processedLogs, types.Log{
+		processedLogs = append(processedLogs, types.LogA{
 			Address:          rcptLog.Address,
-			Topics:           rcptLog.Topics,
+			Topics:           splitTopics,
 			Data:             rcptLog.Data,
 			BlockNumber:      rcptLog.BlockNumber,
 			TransactionHash:  rcptLog.TransactionHash,
@@ -194,7 +195,7 @@ func processLogsAndEvents(logs []types.Log, receipt *types.TransactionReceipt, s
 	return processedLogs, processedEvents
 }
 
-func buildTransaction(tx types.Transaction, receipt *types.TransactionReceipt, logs []types.Log) types.Transaction {
+func buildTransaction(tx types.Transaction, receipt *types.TransactionReceipt, logs []types.LogA) types.Transaction {
 	return types.Transaction{
 		Hash:             tx.Hash,
 		BlockHash:        tx.BlockHash,

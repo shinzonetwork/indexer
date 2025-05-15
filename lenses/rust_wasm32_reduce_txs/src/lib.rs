@@ -15,9 +15,7 @@ extern "C" {
 
 #[derive(Deserialize)]
 pub struct Input {
-    pub hash: String,
-	pub from: String,
-	pub to: String,
+    pub topics: [String]
 }
 
 #[derive(Serialize)]
@@ -53,7 +51,7 @@ fn try_transform() -> Result<StreamOption<Vec<u8>>, Box<dyn Error>> {
             EndOfStream => return Ok(EndOfStream)
         };
 
-        let concatenated = format!("{}:{}:{}", input.hash, input.from, input.to);
+        let concatenated = format!("{}", input.topics);
 
         let result = Output {
             data: concatenated,

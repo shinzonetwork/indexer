@@ -36,31 +36,24 @@ func main() {
 	// create view for test purposes, in real prod enviroment we get the data from either user input or cosmos blocks parsing
 	view := viewHandler.CreateView(
 		`			
-			Log (filter: { address: { _eq: 'USDTSTAMRTCONTRACTADDRESS'}}){
-				topics,
-				data,
-				events {
-					eventName
-				}
+			Log{
+				topics 
 			}
 		`,
 		`
-			type DecodedLogViewer @materialized(if: false) {
-				decodedTopics: [String]
-				decodedData: String
-				decodedEventName: String
+			type DecodedLogViewer5 @materialized(if: true) {
+				data: String
 			}
 		`,
 		// immutable.None[model.Lens](),
 		immutable.Some(model.Lens{
-			// This transform will copy the value from `firstName` into the `fullName` field,
-			// like an overly-complicated alias
+			// Path: getPathRelativeToProjectRoot("lenses/rust_wasm32_reduce_txs/target/wasm32-unknown-unknown/debug/rust_wasm32_reduce_txs.wasm"),
 			Lenses: []model.LensModule{
 				{
 					Path: getPathRelativeToProjectRoot("lenses/rust_wasm32_reduce_txs/target/wasm32-unknown-unknown/debug/rust_wasm32_reduce_txs.wasm"), // path to the lenses file, this will be created in the /lenses folder
-					Arguments: map[string]any{
-						"abi": "{...}",
-					},
+					// Arguments: map[string]any{
+					// 	"abi": "[{'name': 'hash', 'type': 'string'}, {'name': 'from', 'type': 'string'}, {'name': 'to', 'type': 'string'}]",
+					// },
 				},
 			},
 		}),
