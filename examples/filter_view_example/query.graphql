@@ -1,4 +1,4 @@
-Log (limit: 1) {
+Log {
   address
   data
   topics

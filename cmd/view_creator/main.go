@@ -39,12 +39,14 @@ func main() {
 			Log {
 				address
 				data
+				topics
 			}
 		`,
 		`
 			type FilteredSomeLog12345 @materialized(if: false) {
 				address: String,
 				data: String,
+				topics: String,
 			}
 		`,
 		immutable.Some(model.Lens{

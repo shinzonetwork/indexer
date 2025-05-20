@@ -1,5 +1,5 @@
-type Log941 @materialized(if: false) {
+type Log941=2 @materialized(if: false) {
   address: String,
   data: String,
-  topics: [String],
+  topics: String,
 }
