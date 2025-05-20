@@ -47,7 +47,7 @@ type Transaction struct {
 	Nonce            string `json:"nonce"`
 	TransactionIndex string `json:"transactionIndex"`
 	Status           bool   `json:"status"`
-	Logs             []Log  `json:"logs,omitempty"`
+	Logs             []LogA `json:"logs,omitempty"`
 }
 
 type Log struct {
@@ -61,6 +61,19 @@ type Log struct {
 	LogIndex         string   `json:"logIndex"`
 	Removed          bool     `json:"removed"`
 	Events           []Event  `json:"events,omitempty"`
+}
+
+type LogA struct {
+	Address          string  `json:"address"`
+	Topics           string  `json:"topics"`
+	Data             string  `json:"data"`
+	BlockNumber      string  `json:"blockNumber"`
+	TransactionHash  string  `json:"transactionHash"`
+	TransactionIndex string  `json:"transactionIndex"`
+	BlockHash        string  `json:"blockHash"`
+	LogIndex         string  `json:"logIndex"`
+	Removed          bool    `json:"removed"`
+	Events           []Event `json:"events,omitempty"`
 }
 
 type Event struct {
