@@ -13,12 +13,6 @@ import (
 	"github.com/sourcenetwork/immutable"
 )
 
-// NewView{
-//     decodedTopics
-//     decodedData
-//     decodedEventName
-// }
-
 func main() {
 	cfg, err := config.LoadConfig("config/config.yaml")
 	if err != nil {
@@ -50,7 +44,7 @@ func main() {
 			// Path: getPathRelativeToProjectRoot("lenses/rust_wasm32_reduce_txs/target/wasm32-unknown-unknown/debug/rust_wasm32_reduce_txs.wasm"),
 			Lenses: []model.LensModule{
 				{
-					Path: getPathRelativeToProjectRoot("lenses/rust_wasm32_reduce_txs/target/wasm32-unknown-unknown/debug/rust_wasm32_reduce_txs.wasm"), // path to the lenses file, this will be created in the /lenses folder
+					Path: getPathRelativeToProjectRoot("lenses/rust_wasm32_combine_view/target/wasm32-unknown-unknown/debug/rust_wasm32_combine_view.wasm"), // path to the lenses file, this will be created in the /lenses folder
 					// Arguments: map[string]any{
 					// 	"abi": "[{'name': 'hash', 'type': 'string'}, {'name': 'from', 'type': 'string'}, {'name': 'to', 'type': 'string'}]",
 					// },
@@ -70,5 +64,5 @@ func main() {
 func getPathRelativeToProjectRoot(relativePath string) string {
 	_, filename, _, _ := runtime.Caller(0)
 	root := path.Dir(path.Dir(path.Dir(filename)))
-	return "file://" + path.Join(root, relativePath)
+	return path.Join(root, relativePath)
 }
