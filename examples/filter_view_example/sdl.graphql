@@ -1,5 +1,4 @@
-type Log941=2 @materialized(if: false) {
+type DecodedLog25 @materialized(if: false) {
   address: String,
   data: String,
-  topics: String,
 }

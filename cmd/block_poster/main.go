@@ -44,7 +44,7 @@ func main() {
 	fmt.Println("here")
 	//go routines start here
 
-	workerPool := make(chan struct{}, 2)
+	workerPool := make(chan struct{}, 1)
 
 	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
 
