@@ -1,4 +1,5 @@
-type DecodedLog25 @materialized(if: false) {
+type DecodedLog31 @materialized(if: false) {
   address: String,
   data: String,
+  topics: String,
 }
