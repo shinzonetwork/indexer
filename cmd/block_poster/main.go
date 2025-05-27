@@ -145,7 +145,7 @@ func getTransactionReceipt(ctx context.Context, alchemy *rpc.AlchemyClient, hash
 	return nil, fmt.Errorf("failed after 3 retries")
 }
 
-func processLogsAndEvents(receipt *types.TransactionReceipt, sugar *zap.SugaredLogger) ([]types.LogA, []types.Event) {
+func processLogsAndEvents(receipt *types.TransactionReceipt, sugar *zap.SugaredLogger) ([]types.Log, []types.Event) {
 	var processedLogs []types.Log
 	var processedEvents []types.Event
 	sugar.Debug("Processing Logs: ")
