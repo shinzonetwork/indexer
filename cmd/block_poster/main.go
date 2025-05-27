@@ -58,7 +58,7 @@ func main() {
 			for retries := 0; retries < 3; retries++ {
 				block, err = alchemy.GetBlock(context.Background(), blockHex)
 				if block != nil && err == nil {
-					sugar.Debug("Received block from Alechemy")
+					sugar.Info("Received block from Alechemy")
 					break
 				}
 				sugar.Error("Failed to get block ", blockNum, " retries: ", retries+1, " error: ", err)
@@ -86,7 +86,7 @@ func main() {
 
 				// Build logs and events
 				logs, events := processLogsAndEvents(receipt, sugar)
-
+				sugar.Debug("Transaction contains ", len(logs), " logs & ", len(events), " events")
 				allLogs = append(allLogs, logs...)
 				allEvents = append(allEvents, events...)
 
