@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"shinzo/version1/config"
@@ -72,7 +71,7 @@ func main() {
 			}
 			// Process all transactions first
 			var transactions []types.Transaction
-			var allLogs []types.LogA
+			var allLogs []types.Log
 			var allEvents []types.Event
 			var count int
 			// First pass: collect all data
@@ -173,12 +172,11 @@ func processLogsAndEvents(receipt *types.TransactionReceipt, sugar *zap.SugaredL
 			events = append(events, event)
 			sugar.Debug("...Appeneded")
 		}
-		splitTopics = strings.Join(rcptLog.Topics, ";")
 		// Build log with events
 		sugar.Debug("... Adding log: ", rcptLog.LogIndex, " with topics: ", rcptLog.Topics)
 		processedLogs = append(processedLogs, types.Log{
 			Address:          rcptLog.Address,
-			Topics:           splitTopics,
+			Topics:           rcptLog.Topics,
 			Data:             rcptLog.Data,
 			BlockNumber:      rcptLog.BlockNumber,
 			TransactionHash:  rcptLog.TransactionHash,
@@ -196,7 +194,7 @@ func processLogsAndEvents(receipt *types.TransactionReceipt, sugar *zap.SugaredL
 	return processedLogs, processedEvents
 }
 
-func buildTransaction(tx types.Transaction, receipt *types.TransactionReceipt, logs []types.LogA) types.Transaction {
+func buildTransaction(tx types.Transaction, receipt *types.TransactionReceipt, logs []types.Log) types.Transaction {
 	return types.Transaction{
 		Hash:             tx.Hash,
 		BlockHash:        tx.BlockHash,

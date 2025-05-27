@@ -40,7 +40,7 @@ type Transaction {
 
 type Log {
     address: String
-    topics: String
+    topics: [String]
     data: String
     transactionHash: String
     blockHash: String
