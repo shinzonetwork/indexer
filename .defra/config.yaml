@@ -1,8 +1,9 @@
 "": /Users/daniel/Desktop/code/version1/.defra
 acp:
-    sourcehub:
-        address: ""
-    type: none
+    dac:
+        sourcehub:
+            address: ""
+        type: none
 api:
     address: 127.0.0.1:9181
     allowed-origins: []
@@ -19,7 +20,6 @@ datastore:
     store: badger
 development: false
 keyring:
-    secret: "${DEFRA_KEYRING_SECRET}"
     backend: file
     disabled: false
     namespace: defradb
