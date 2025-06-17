@@ -39,3 +39,6 @@ todo.txt
 logs/logfile
 
 notes/
+
+# VSCode
+.history/
