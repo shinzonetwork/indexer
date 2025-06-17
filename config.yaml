@@ -10,8 +10,8 @@ defradb:
     path: "./data"
 
 alchemy:
-  api_key: `${ALCHEMY_API_KEY}` # Add your Alchemy API key here
-  network: `${NETWORK_NAME}`
+  api_key: "${ALCHEMY_API_KEY}" # Add your Alchemy API key here
+  network: "${NETWORK_NAME}"
 
 indexer:
   block_polling_interval: 12.0
