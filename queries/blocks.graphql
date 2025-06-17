@@ -5,10 +5,9 @@ query GetHighestBlockNumber {
 }
 
 query GetLatestBlocks {
-  Block(orderBy: {number: DESC}, limit: 10) {
+  Block(order: {number: DESC}, limit: 10) {
     hash
     number
-    time
     parentHash
     difficulty
     gasUsed
@@ -16,10 +15,9 @@ query GetLatestBlocks {
     nonce
     miner
     size
-    stateRootHash
-    uncleHash
-    transactionRootHash
-    receiptRootHash
+    stateRoot
+    transactionsRoot
+    receiptsRoot
     extraData
   }
 }
@@ -28,7 +26,6 @@ query GetBlockWithTransactions($blockNumber: Int!) {
   Block(filter: {number: {_eq: $blockNumber}}) {
     hash
     number
-    time
     parentHash
     difficulty
     gasUsed
@@ -36,10 +33,9 @@ query GetBlockWithTransactions($blockNumber: Int!) {
     nonce
     miner
     size
-    stateRootHash
-    uncleHash
-    transactionRootHash
-    receiptRootHash
+    stateRoot
+    transactionsRoot
+    receiptsRoot
     extraData
     transactions {
       hash
@@ -48,9 +44,8 @@ query GetBlockWithTransactions($blockNumber: Int!) {
       from
       to
       value
-      gas
       gasPrice
-      input
+      inputData
       nonce
       transactionIndex
       logs {
