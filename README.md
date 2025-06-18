@@ -25,6 +25,32 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 - [Source Network CLI](https://docs.sourcenetwork.io/cli)
 - [Alchemy API Key](https://www.alchemy.com/docs)
 
+## Prerequisit setup
+
+- Install [DefraDB](https://github.com/sourcenetwork/defradb)
+- Navigate to defradb
+- Add a .nvmrc file with the node `v23.10.0`
+
+### Defra Start
+*To start DefraDB in the correct location please include the flag `--root-dir` with the path to the .defra directory*
+
+*Example*
+- Run Commands [each as a separate command]
+```bash
+  make build
+  ./defradb start --root-dir /path/to/version1/.defra/
+```
+
+*The playground includes an interface to query DefraDB Data*
+### Playground Setup 
+
+- Run Commands [each as a separate command]
+```bash
+  make deps:playground
+  GOFLAGS="-tags=playground" make build
+  ./defradb start --root-dir /path/to/version1/.defra/
+```
+
 ## Installation
 
 1. Clone the repository:
@@ -38,16 +64,23 @@ A high-performance blockchain indexing solution built with Source Network, Defra
    go mod download
    ```
 
-3. Set up environment variables in `.env`:
+3. Create environment variables in `.env`:
    ```bash
-   ALCHEMY_API_KEY=your_api_key
-   DEFRA_URL=http://localhost:9181  # Default DefraDB URL
+    DEFRA_KEYRING_SECRET=<DefraDB_SECRET> # DEFRA KEY RING PASSWORD
+    ALCHEMY_API_KEY=<Alchemy_API_KEY> # Alchemy API key
+    ALCHEMY_NETWORK=<Alchemy_NETWORK> # RPC network 
+    VERSION=<VERSION> # verisoning 
+    DEFRA_LOGGING_DEVELOPMENT=<DEFRA_LOGGING_DEVELOPMENT> # logging switch
+    DEFRA_DEVELOPMENT=<DEFRA_DEVELOPMENT>
+    DEFRA_P2P_ENABLED=<DEFRA_P2P_ENABLED> # p2p enable true required for prod
+    RPC_URL=<RPC_URL> # RPC HTTP URL
+    DEFRADB_URL=<DEFRADB_URL> # DefraDB HTTP URL
    ```
 
-4. Install DefraDB:
-   ```bash
-   go install github.com/sourcenetwork/defradb/cmd/defradb@latest
-   ```
+4. Apply Schema
+```bash
+  ./scripts/apply_schema.sh
+```
 
 ## Configuration
 
