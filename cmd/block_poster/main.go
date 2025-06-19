@@ -37,6 +37,7 @@ func main() {
 	for {
 		// Fetch the latest block
 		gethBlock, err := client.GetLatestBlock(context.Background())
+		// gethBlock, err := client.Call(&lastBlock)
 		if err != nil {
 			sugar.Error("Failed to get latest block: ", err)
 			time.Sleep(time.Second * 3)
@@ -68,7 +69,7 @@ func main() {
 		for _, tx := range transactions {
 			// Note: Transaction receipts would need to be fetched separately if needed
 			// For now, we'll skip receipt processing to get the basic indexing working
-			
+
 			// Create transaction in DefraDB
 			txDocId := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId, sugar)
 			sugar.Info("Created transaction with DocID: ", txDocId)

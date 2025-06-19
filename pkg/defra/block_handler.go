@@ -33,12 +33,10 @@ func NewBlockHandler(host string, port int) *BlockHandler {
 func (h *BlockHandler) ConvertHexToInt(s string, sugar *zap.SugaredLogger) int64 {
 	block16 := s[2:]
 	blockInt, err := strconv.ParseInt(block16, 16, 64)
-	if blockInt != 0 {
-		return blockInt
+	if err != nil {
+		sugar.Fatalf("Failed to ParseInt: %v", err)
 	}
-	sugar.Fatalf("Failed to ParseInt(", err, ")")
-	return 0
-
+	return blockInt
 }
 
 func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) string {

@@ -38,6 +38,12 @@ func ConvertTransaction(tx *gethtypes.Transaction, msgSender common.Address, blo
 	if tx.To() != nil {
 		to = tx.To().Hex()
 	}
+	
+	var logs []Log
+	if receipt != nil {
+		logs = receipt.Logs
+	}
+	
 	return Transaction{
 		Hash:             tx.Hash().Hex(),
 		BlockHash:        block.Hash().Hex(),
@@ -51,7 +57,7 @@ func ConvertTransaction(tx *gethtypes.Transaction, msgSender common.Address, blo
 		Nonce:            big.NewInt(int64(tx.Nonce())).String(),
 		TransactionIndex: "", // Not available directly
 		Status:           status,
-		Logs:             receipt.Logs,
+		Logs:             logs,
 	}
 }
 
@@ -60,15 +66,24 @@ func ConvertReceipt(receipt *gethtypes.Receipt) *TransactionReceipt {
 	if receipt == nil {
 		return nil
 	}
+	// Convert logs if they exist
 	logs := make([]Log, len(receipt.Logs))
 	for i, l := range receipt.Logs {
 		logs[i] = ConvertLog(l)
 	}
+
+	var blockNumber string
+	if receipt.BlockNumber != nil {
+		blockNumber = big.NewInt(int64(receipt.BlockNumber.Uint64())).String()
+	} else {
+		blockNumber = "0"
+	}
+
 	return &TransactionReceipt{
 		TransactionHash:   receipt.TxHash.Hex(),
 		TransactionIndex:  big.NewInt(int64(receipt.TransactionIndex)).String(),
 		BlockHash:         receipt.BlockHash.Hex(),
-		BlockNumber:       big.NewInt(int64(receipt.BlockNumber.Uint64())).String(),
+		BlockNumber:       blockNumber,
 		From:              "", // Not available directly
 		To:                "", // Not available directly
 		CumulativeGasUsed: big.NewInt(int64(receipt.CumulativeGasUsed)).String(),

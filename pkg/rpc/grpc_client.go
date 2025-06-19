@@ -68,21 +68,20 @@ func (c *GRPCEthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest header: %w", err)
 	}
-	
-	// Use a block that's 2-3 blocks behind to avoid transaction type issues
-	targetBlockNum := new(big.Int).Sub(latestHeader.Number, big.NewInt(2))
-	
-	// Retry mechanism for transaction type errors
+
+	// Use a block that's 2 blocks behind to avoid transaction type issues
+	// targetBlockNum := new(big.Int).Sub(latestHeader.Number, big.NewInt(2))
+
 	var gethBlock *ethtypes.Block
-	
+
 	for retries := 0; retries < 3; retries++ {
-		gethBlock, err = c.httpClient.BlockByNumber(ctx, targetBlockNum)
+		gethBlock, err = c.httpClient.BlockByNumber(ctx, latestHeader.Number)
 		if err != nil {
-			if retries < 2 && (err.Error() == "transaction type not supported" || 
-			    err.Error() == "invalid transaction type") {
+			if retries < 2 && (err.Error() == "transaction type not supported" ||
+				err.Error() == "invalid transaction type") {
 				log.Printf("Retry %d: Transaction type error, trying again...", retries+1)
-				// Try an even older block
-				targetBlockNum = new(big.Int).Sub(targetBlockNum, big.NewInt(1))
+				// Try a block that's 1 block behind
+				latestHeader.Number = new(big.Int).Sub(latestHeader.Number, big.NewInt(1))
 				continue
 			}
 			return nil, fmt.Errorf("failed to get latest block: %w", err)
@@ -118,9 +117,13 @@ func (c *GRPCEthereumClient) GetNetworkID(ctx context.Context) (*big.Int, error)
 
 // convertGethBlock converts go-ethereum Block to our custom Block type
 func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Block {
+	if gethBlock == nil {
+		return nil
+	}
+
 	// Convert transactions
 	transactions := make([]types.Transaction, 0, len(gethBlock.Transactions()))
-	
+
 	for i, tx := range gethBlock.Transactions() {
 		// Skip transaction conversion if it fails (continue with others)
 		localTx, err := c.convertTransaction(tx, gethBlock, i)
@@ -128,7 +131,7 @@ func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.
 			log.Printf("Warning: Failed to convert transaction %s: %v", tx.Hash().Hex(), err)
 			continue
 		}
-		
+
 		transactions = append(transactions, localTx)
 	}
 
@@ -158,7 +161,7 @@ func (c *GRPCEthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBl
 	// Get transaction details with error handling
 	fromAddr := getFromAddress(tx)
 	toAddr := getToAddress(tx)
-	
+
 	// Handle different transaction types
 	var gasPrice *big.Int
 	switch tx.Type() {
@@ -173,7 +176,7 @@ func (c *GRPCEthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBl
 		// If it fails, we'll catch it in the calling function
 		gasPrice = tx.GasPrice()
 	}
-	
+
 	localTx := types.Transaction{
 		Hash:             tx.Hash().Hex(),
 		BlockHash:        gethBlock.Hash().Hex(),
@@ -188,7 +191,7 @@ func (c *GRPCEthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBl
 		TransactionIndex: fmt.Sprintf("%d", index),
 		Status:           true, // Default to true, will be updated from receipt
 	}
-	
+
 	return localTx, nil
 }
 
@@ -200,13 +203,13 @@ func getFromAddress(tx *ethtypes.Transaction) common.Address {
 		ethtypes.NewEIP155Signer(tx.ChainId()),
 		ethtypes.NewLondonSigner(tx.ChainId()),
 	}
-	
+
 	for _, signer := range signers {
 		if from, err := ethtypes.Sender(signer, tx); err == nil {
 			return from
 		}
 	}
-	
+
 	// If all signers fail, return zero address
 	return common.Address{}
 }
