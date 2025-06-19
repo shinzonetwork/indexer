@@ -150,12 +150,6 @@ Example query:
 - [Source Network Documentation](https://docs.sourcenetwork.io)
 - [Alchemy API Documentation](https://docs.alchemy.com/reference/api-overview)
 
-## Development
-
-- Use `go run cmd/indexer/main.go` for development
-- The indexer supports graceful shutdown via SIGINT (Ctrl+C)
-- Logs are structured using zap logger
-
 ## Contributing
 
 1. Fork the repository
