@@ -11,8 +11,13 @@ import (
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/rpc"
 	"shinzo/version1/pkg/types"
+	"shinzo/version1/pkg/utils"
 
 	"go.uber.org/zap"
+)
+
+const (
+	BlocksToIndexAtOnce = 10
 )
 
 func main() {
@@ -37,7 +42,7 @@ func main() {
 		startBlock = int64(cfg.Indexer.StartHeight)
 	}
 
-	endBlock := startBlock + 10
+	endBlock := startBlock + BlocksToIndexAtOnce
 
 	//go routines start here
 	// reduced from 4 to 2
@@ -50,9 +55,7 @@ func main() {
 		workerPool <- struct{}{}
 
 		go func(blockNum int64) {
-
-			// Convert blocknumber to hex for Alchemy API
-			blockHex := fmt.Sprintf("0x%x", blockNum)
+			blockHex := utils.NumberToHex(blockNum)
 
 			sugar.Info("Processing block: ", blockNum, ", hex: ", blockHex)
 			// Get block with retry logic
@@ -60,7 +63,7 @@ func main() {
 			for retries := 0; retries < 3; retries++ {
 				block, err = alchemy.GetBlock(context.Background(), blockHex)
 				if block != nil && err == nil {
-					sugar.Debug("Received block from Alechemy")
+					sugar.Debug("Received block from Alchemy")
 					break
 				}
 				sugar.Error("Failed to get block %d, retry %d: %v", blockNum, retries+1, err)
