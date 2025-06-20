@@ -31,14 +31,26 @@ func NewBlockHandler(host string, port int) *BlockHandler {
 }
 
 func (h *BlockHandler) ConvertHexToInt(s string, sugar *zap.SugaredLogger) int64 {
-	block16 := s[2:]
-	blockInt, err := strconv.ParseInt(block16, 16, 64)
-	if blockInt != 0 {
-		return blockInt
+	// Handle empty string
+	if s == "" {
+		sugar.Error("Empty hex string provided")
+		return 0
 	}
-	sugar.Fatalf("Failed to ParseInt(", err, ")")
-	return 0
-
+	
+	// Remove "0x" prefix if present
+	hexStr := s
+	if strings.HasPrefix(s, "0x") {
+		hexStr = s[2:]
+	}
+	
+	// Parse the hex string
+	blockInt, err := strconv.ParseInt(hexStr, 16, 64)
+	if err != nil {
+		sugar.Errorf("Failed to parse hex string '%s': %v", s, err)
+		return 0
+	}
+	
+	return blockInt
 }
 
 func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) string {

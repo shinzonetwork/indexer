@@ -20,3 +20,9 @@ clean:
 
 gitpush: 
 	git add . && git commit -m "${COMMIT_MESSAGE}" && git push origin ${BRANCH_NAME}
+
+test:
+	go test ./... -v
+
+testrpc:
+	go test ./pkg/rpc -v
