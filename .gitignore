@@ -40,5 +40,8 @@ logs/logfile
 
 notes/
 
+# Go test coverage viewer
+coverage.html
+
 # VSCode
 .history/

@@ -31,14 +31,26 @@ func NewBlockHandler(host string, port int) *BlockHandler {
 }
 
 func (h *BlockHandler) ConvertHexToInt(s string, sugar *zap.SugaredLogger) int64 {
-	block16 := s[2:]
-	blockInt, err := strconv.ParseInt(block16, 16, 64)
-	if blockInt != 0 {
-		return blockInt
+	// Handle empty string
+	if s == "" {
+		sugar.Error("Empty hex string provided")
+		return 0
 	}
-	sugar.Fatalf("Failed to ParseInt(", err, ")")
-	return 0
 
+	// Remove "0x" prefix if present
+	hexStr := s
+	if strings.HasPrefix(s, "0x") {
+		hexStr = s[2:]
+	}
+
+	// Parse the hex string
+	blockInt, err := strconv.ParseInt(hexStr, 16, 64)
+	if err != nil {
+		sugar.Errorf("Failed to parse hex string '%s': %v", s, err)
+		return 0
+	}
+
+	return blockInt
 }
 
 func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, sugar *zap.SugaredLogger) string {
@@ -145,13 +157,13 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 		}
 	}`, txHash, blockId)}
 
-	docId := h.SendToGraphql(ctx, mutation, sugar)
-	if docId == nil {
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
 		sugar.Errorf("failed to update transaction relationships: ", mutation)
 		return ""
 	}
 
-	return string(docId)
+	return h.parseGraphQLResponse(resp, "update_Transaction", sugar)
 }
 
 // shinzo stuct
@@ -171,12 +183,13 @@ func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId strin
 		}
 	}`, logIndex, txHash, blockId, txId)}
 
-	docId := h.SendToGraphql(ctx, mutation, sugar)
-	if docId == nil {
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
 		sugar.Warn("log relationship update failure")
 		return ""
 	}
-	return string(docId)
+
+	return h.parseGraphQLResponse(resp, "update_Log", sugar)
 }
 
 func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId string, txHash string, logIndex string, sugar *zap.SugaredLogger) string {
@@ -189,12 +202,13 @@ func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId st
 		}
 	}`, logIndex, txHash, logDocId)}
 
-	docId := h.SendToGraphql(ctx, mutation, sugar)
-	if docId == nil {
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
 		sugar.Warn("log relationship update failure")
 		return ""
 	}
-	return string(docId)
+
+	return h.parseGraphQLResponse(resp, "update_Event", sugar)
 }
 
 func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, data map[string]interface{}, sugar *zap.SugaredLogger) string {
@@ -236,27 +250,8 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		return ""
 	}
 
-	// Parse response
-	var response types.Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		sugar.Errorf("failed to decode response: %v", err)
-		sugar.Debug("Raw response: ", string(resp))
-		return ""
-	}
-
-	// Get document ID
 	createField := fmt.Sprintf("create_%s", collection)
-	items, ok := response.Data[createField]
-	if !ok {
-		sugar.Errorf("create_", collection, " field not found in response")
-		sugar.Debug("Response data: ", response.Data)
-		return ""
-	}
-	if len(items) == 0 {
-		sugar.Warnf("no document ID returned for create_", collection)
-		return ""
-	}
-	return items[0].DocID
+	return h.parseGraphQLResponse(resp, createField, sugar)
 }
 
 // Graph golang client check in defra
@@ -301,6 +296,30 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request, sug
 	return respBody
 }
 
+// parseGraphQLResponse is a helper function to parse GraphQL responses and extract document IDs
+func (h *BlockHandler) parseGraphQLResponse(resp []byte, fieldName string, sugar *zap.SugaredLogger) string {
+	// Parse response
+	var response types.Response
+	if err := json.Unmarshal(resp, &response); err != nil {
+		sugar.Errorf("failed to decode response: %v", err)
+		sugar.Debug("Raw response: ", string(resp))
+		return ""
+	}
+
+	// Get document ID
+	items, ok := response.Data[fieldName]
+	if !ok {
+		sugar.Errorf("%s field not found in response", fieldName)
+		sugar.Debug("Response data: ", response.Data)
+		return ""
+	}
+	if len(items) == 0 {
+		sugar.Warnf("no document ID returned for %s", fieldName)
+		return ""
+	}
+	return items[0].DocID
+}
+
 // GetHighestBlockNumber returns the highest block number stored in DefraDB
 func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.SugaredLogger) int64 {
 	query := types.Request{
@@ -332,6 +351,5 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.Sug
 		return 0 // Return 0 if no blocks exist
 	}
 
-	// Return the highest block number + 1
-	return result.Data.Block[0].Number + 1
+	return result.Data.Block[0].Number
 }
