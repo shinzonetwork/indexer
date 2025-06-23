@@ -10,7 +10,23 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
+	"net/http/httptest"
 )
+
+// createBlockHandlerWithMocksConfig creates a mock server and returns it along with a BlockHandler configured to use it, using a custom MockServerConfig.
+func createBlockHandlerWithMocksConfig(config testutils.MockServerConfig) (*httptest.Server, *BlockHandler) {
+	server := testutils.CreateMockServer(config)
+	handler := &BlockHandler{
+		defraURL: server.URL,
+		client:   &http.Client{},
+	}
+	return server, handler
+}
+
+// createBlockHandlerWithMocks creates a mock server and returns it along with a BlockHandler configured to use it (simple version).
+func createBlockHandlerWithMocks(response string) (*httptest.Server, *BlockHandler) {
+	return createBlockHandlerWithMocksConfig(testutils.DefaultMockServerConfig(response))
+}
 
 func TestNewBlockHandler(t *testing.T) {
 	host := "localhost"
@@ -62,16 +78,9 @@ func TestConvertHexToInt(t *testing.T) {
 }
 
 func TestCreateBlock_MockServer(t *testing.T) {
-	// Create a mock DefraDB server using the helper
 	response := testutils.CreateGraphQLCreateResponse("Block", "test-block-doc-id")
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
-
-	// Create handler with test server URL
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -101,13 +110,8 @@ func TestCreateBlock_MockServer(t *testing.T) {
 
 func TestCreateTransaction_MockServer(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -136,13 +140,8 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 
 func TestUpdateTransactionRelationships_MockServer(t *testing.T) {
 	response := testutils.CreateGraphQLUpdateResponse("Transaction", "updated-tx-doc-id")
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -162,13 +161,8 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 			"number": 12345
 		}
 	]`)
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -181,13 +175,8 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 
 func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
 	response := testutils.CreateGraphQLQueryResponse("Block", "[]")
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -199,7 +188,6 @@ func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
 }
 
 func TestPostToCollection_Success(t *testing.T) {
-	// Create a mock server with request validation
 	config := testutils.MockServerConfig{
 		ResponseBody: testutils.CreateGraphQLCreateResponse("TestCollection", "test-doc-id"),
 		StatusCode:   http.StatusOK,
@@ -217,13 +205,8 @@ func TestPostToCollection_Success(t *testing.T) {
 			return nil
 		},
 	}
-	server := testutils.CreateMockServer(config)
+	server, handler := createBlockHandlerWithMocksConfig(config)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -231,7 +214,6 @@ func TestPostToCollection_Success(t *testing.T) {
 		"field1": "value1",
 		"field2": 123,
 	}
-
 	docID := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
 
 	if docID != "test-doc-id" {
@@ -253,10 +235,8 @@ func TestPostToCollection_ServerError(t *testing.T) {
 	data := map[string]interface{}{
 		"field1": "value1",
 	}
-
 	docID := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
 
-	// Should return empty string on error
 	if docID != "" {
 		t.Errorf("Expected empty docID on error, got '%s'", docID)
 	}
@@ -273,20 +253,14 @@ func TestSendToGraphql_Success(t *testing.T) {
 			"Content-Type": "application/json",
 		},
 		ValidateRequest: func(r *http.Request) error {
-			// Capture the request body to verify the query
 			body := make([]byte, r.ContentLength)
 			r.Body.Read(body)
 			receivedQuery = string(body)
 			return nil
 		},
 	}
-	server := testutils.CreateMockServer(config)
+	server, handler := createBlockHandlerWithMocksConfig(config)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -300,7 +274,6 @@ func TestSendToGraphql_Success(t *testing.T) {
 		t.Fatal("Result should not be nil")
 	}
 
-	// Verify the query was sent correctly
 	if !strings.Contains(receivedQuery, expectedQuery) {
 		t.Errorf("Request body should contain query '%s', got '%s'", expectedQuery, receivedQuery)
 	}
@@ -308,13 +281,8 @@ func TestSendToGraphql_Success(t *testing.T) {
 
 func TestCreateLog_MockServer(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 
@@ -342,13 +310,8 @@ func TestCreateLog_MockServer(t *testing.T) {
 
 func TestCreateEvent_MockServer(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Event", "test-event-doc-id")
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
 
 	logger := zap.NewNop().Sugar()
 

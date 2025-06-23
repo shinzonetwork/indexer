@@ -3,11 +3,20 @@ package rpc
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"shinzo/version1/pkg/testutils"
 	"strings"
 	"testing"
 	"time"
 )
+
+// createAlchemyClientWithMocks creates a mock server and returns it along with an AlchemyClient configured to use it.
+func createAlchemyClientWithMocks(response string) (*httptest.Server, *AlchemyClient) {
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
+	client := NewAlchemyClient("test-key")
+	client.baseURL = server.URL
+	return server, client
+}
 
 func TestNewAlchemyClient(t *testing.T) {
 	apiKey := "test-api-key"
@@ -31,7 +40,6 @@ func TestNewAlchemyClient(t *testing.T) {
 }
 
 func TestAlchemyClient_GetBlock_Success(t *testing.T) {
-	// Create a test server that returns a mock block response
 	blockData := map[string]interface{}{
 		"hash":         "0x1234567890abcdef",
 		"number":       "0x1",
@@ -40,14 +48,11 @@ func TestAlchemyClient_GetBlock_Success(t *testing.T) {
 		"transactions": []interface{}{},
 	}
 	response := testutils.CreateRPCNodeResponse(blockData)
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
-	defer server.Close()
-
-	client := NewAlchemyClient("test-key")
-	client.baseURL = server.URL // Override baseURL to use test server
+	s, c := createAlchemyClientWithMocks(response)
+	defer s.Close()
 
 	ctx := context.Background()
-	block, err := client.GetBlock(ctx, "0x1")
+	block, err := c.GetBlock(ctx, "0x1")
 
 	if err != nil {
 		t.Fatalf("GetBlock failed: %v", err)
@@ -67,15 +72,14 @@ func TestAlchemyClient_GetBlock_Success(t *testing.T) {
 }
 
 func TestAlchemyClient_GetBlock_ServerError(t *testing.T) {
-	// Create a test server that returns an error
-	server := testutils.CreateErrorServer(http.StatusInternalServerError, "Internal Server Error")
-	defer server.Close()
+	s := testutils.CreateErrorServer(http.StatusInternalServerError, "Internal Server Error")
+	defer s.Close()
 
-	client := NewAlchemyClient("test-key")
-	client.baseURL = server.URL
+	c := NewAlchemyClient("test-key")
+	c.baseURL = s.URL
 
 	ctx := context.Background()
-	_, err := client.GetBlock(ctx, "0x1")
+	_, err := c.GetBlock(ctx, "0x1")
 
 	if err == nil {
 		t.Error("Expected error for server error, got nil")
@@ -83,7 +87,6 @@ func TestAlchemyClient_GetBlock_ServerError(t *testing.T) {
 }
 
 func TestAlchemyClient_GetTransactionReceipt_Success(t *testing.T) {
-	// Create a test server that returns a mock receipt response
 	receiptData := map[string]interface{}{
 		"transactionHash": "0xabcdef1234567890",
 		"blockHash":       "0x1234567890abcdef",
@@ -94,14 +97,11 @@ func TestAlchemyClient_GetTransactionReceipt_Success(t *testing.T) {
 		"logs":            []interface{}{},
 	}
 	response := testutils.CreateRPCNodeResponse(receiptData)
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
-	defer server.Close()
-
-	client := NewAlchemyClient("test-key")
-	client.baseURL = server.URL
+	s, c := createAlchemyClientWithMocks(response)
+	defer s.Close()
 
 	ctx := context.Background()
-	receipt, err := client.GetTransactionReceipt(ctx, "0xabcdef1234567890")
+	receipt, err := c.GetTransactionReceipt(ctx, "0xabcdef1234567890")
 
 	if err != nil {
 		t.Fatalf("GetTransactionReceipt failed: %v", err)
@@ -121,16 +121,12 @@ func TestAlchemyClient_GetTransactionReceipt_Success(t *testing.T) {
 }
 
 func TestAlchemyClient_GetTransactionReceipt_NotFound(t *testing.T) {
-	// Create a test server that returns null result (transaction not found)
 	response := testutils.CreateRPCNodeResponse(nil)
-	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
-	defer server.Close()
-
-	client := NewAlchemyClient("test-key")
-	client.baseURL = server.URL
+	s, c := createAlchemyClientWithMocks(response)
+	defer s.Close()
 
 	ctx := context.Background()
-	receipt, err := client.GetTransactionReceipt(ctx, "0xnonexistent")
+	receipt, err := c.GetTransactionReceipt(ctx, "0xnonexistent")
 
 	if err != nil {
 		t.Fatalf("GetTransactionReceipt failed: %v", err)
