@@ -46,6 +46,8 @@ func TestConvertHexToInt(t *testing.T) {
 		{"Zero", "0x0", 0},
 		{"Large number", "0x1000", 4096},
 		{"Block number", "0x1234", 4660},
+		{"All characters, lowercase", "0x1234567890abcdef", 1311768467294899695},
+		{"All characters, uppercase", "0x1234567890ABCDEF", 1311768467294899695},
 	}
 
 	for _, tt := range tests {
@@ -84,20 +86,20 @@ func TestCreateBlock_MockServer(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 
 	block := &types.Block{
-		Hash:        "0x1234567890abcdef",
-		Number:      "12345",
-		Timestamp:   "1600000000",
-		ParentHash:  "0xabcdef1234567890",
-		Difficulty:  "1000000",
-		GasUsed:     "4000000",
-		GasLimit:    "8000000",
-		Nonce:       "123456789",
-		Miner:       "0xminer",
-		Size:        "1024",
-		StateRoot:   "0xstateroot",
-		Sha3Uncles:  "0xsha3uncles",
+		Hash:         "0x1234567890abcdef",
+		Number:       "12345",
+		Timestamp:    "1600000000",
+		ParentHash:   "0xabcdef1234567890",
+		Difficulty:   "1000000",
+		GasUsed:      "4000000",
+		GasLimit:     "8000000",
+		Nonce:        "123456789",
+		Miner:        "0xminer",
+		Size:         "1024",
+		StateRoot:    "0xstateroot",
+		Sha3Uncles:   "0xsha3uncles",
 		ReceiptsRoot: "0xreceiptsroot",
-		ExtraData:   "extra",
+		ExtraData:    "extra",
 	}
 
 	docID := handler.CreateBlock(context.Background(), block, logger)
