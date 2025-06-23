@@ -3,7 +3,7 @@ package rpc
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
+	"shinzo/version1/pkg/testutils"
 	"strings"
 	"testing"
 	"time"
@@ -32,22 +32,15 @@ func TestNewAlchemyClient(t *testing.T) {
 
 func TestAlchemyClient_GetBlock_Success(t *testing.T) {
 	// Create a test server that returns a mock block response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"jsonrpc": "2.0",
-			"id": 1,
-			"result": {
-				"hash": "0x1234567890abcdef",
-				"number": "0x1",
-				"timestamp": "0x5f5e100",
-				"parentHash": "0xabcdef1234567890",
-				"transactions": []
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	blockData := map[string]interface{}{
+		"hash":         "0x1234567890abcdef",
+		"number":       "0x1",
+		"timestamp":    "0x5f5e100",
+		"parentHash":   "0xabcdef1234567890",
+		"transactions": []interface{}{},
+	}
+	response := testutils.CreateRPCNodeResponse(blockData)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	client := NewAlchemyClient("test-key")
@@ -75,10 +68,7 @@ func TestAlchemyClient_GetBlock_Success(t *testing.T) {
 
 func TestAlchemyClient_GetBlock_ServerError(t *testing.T) {
 	// Create a test server that returns an error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Internal Server Error"))
-	}))
+	server := testutils.CreateErrorServer(http.StatusInternalServerError, "Internal Server Error")
 	defer server.Close()
 
 	client := NewAlchemyClient("test-key")
@@ -94,24 +84,17 @@ func TestAlchemyClient_GetBlock_ServerError(t *testing.T) {
 
 func TestAlchemyClient_GetTransactionReceipt_Success(t *testing.T) {
 	// Create a test server that returns a mock receipt response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"jsonrpc": "2.0",
-			"id": 1,
-			"result": {
-				"transactionHash": "0xabcdef1234567890",
-				"blockHash": "0x1234567890abcdef",
-				"blockNumber": "0x1",
-				"transactionIndex": "0x0",
-				"status": "0x1",
-				"gasUsed": "0x5208",
-				"logs": []
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	receiptData := map[string]interface{}{
+		"transactionHash": "0xabcdef1234567890",
+		"blockHash":       "0x1234567890abcdef",
+		"blockNumber":     "0x1",
+		"transactionIndex": "0x0",
+		"status":          "0x1",
+		"gasUsed":         "0x5208",
+		"logs":            []interface{}{},
+	}
+	response := testutils.CreateRPCNodeResponse(receiptData)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	client := NewAlchemyClient("test-key")
@@ -139,16 +122,8 @@ func TestAlchemyClient_GetTransactionReceipt_Success(t *testing.T) {
 
 func TestAlchemyClient_GetTransactionReceipt_NotFound(t *testing.T) {
 	// Create a test server that returns null result (transaction not found)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"jsonrpc": "2.0",
-			"id": 1,
-			"result": null
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	response := testutils.CreateRPCNodeResponse(nil)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	client := NewAlchemyClient("test-key")
@@ -171,18 +146,21 @@ func TestAlchemyClient_Post_RequestFormat(t *testing.T) {
 	var capturedBody string
 	var capturedHeaders http.Header
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedHeaders = r.Header
-		body := make([]byte, r.ContentLength)
-		r.Body.Read(body)
-		capturedBody = string(body)
-
-		// Return a minimal valid response
-		response := `{"jsonrpc": "2.0", "id": 1, "result": null}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	config := testutils.MockServerConfig{
+		ResponseBody: `{"jsonrpc": "2.0", "id": 1, "result": null}`,
+		StatusCode:   http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		ValidateRequest: func(r *http.Request) error {
+			capturedHeaders = r.Header
+			body := make([]byte, r.ContentLength)
+			r.Body.Read(body)
+			capturedBody = string(body)
+			return nil
+		},
+	}
+	server := testutils.CreateMockServer(config)
 	defer server.Close()
 
 	client := NewAlchemyClient("test-key")
@@ -209,11 +187,18 @@ func TestAlchemyClient_Post_RequestFormat(t *testing.T) {
 
 func TestAlchemyClient_Context_Cancellation(t *testing.T) {
 	// Create a test server that delays response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(time.Second) // Delay to allow context cancellation
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"result": null}`))
-	}))
+	config := testutils.MockServerConfig{
+		ResponseBody: `{"result": null}`,
+		StatusCode:   http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		ValidateRequest: func(r *http.Request) error {
+			time.Sleep(time.Second) // Delay to allow context cancellation
+			return nil
+		},
+	}
+	server := testutils.CreateMockServer(config)
 	defer server.Close()
 
 	client := NewAlchemyClient("test-key")

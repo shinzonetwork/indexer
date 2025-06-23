@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 )
@@ -42,11 +43,6 @@ func CreateMockServer(config MockServerConfig) *httptest.Server {
 
 		w.Write([]byte(config.ResponseBody))
 	}))
-}
-
-// CreateGraphQLMockServer creates a mock server that returns a GraphQL response
-func CreateGraphQLMockServer(responseBody string) *httptest.Server {
-	return CreateMockServer(DefaultMockServerConfig(responseBody))
 }
 
 // CreateGraphQLCreateResponse creates a standard GraphQL create response
@@ -91,4 +87,20 @@ func CreateErrorServer(statusCode int, errorMessage string) *httptest.Server {
 		StatusCode:   statusCode,
 		Headers:      map[string]string{},
 	})
+}
+
+// CreateRPCNodeResponse creates a standard JSON-RPC response
+// result: the result data (can be nil for null responses)
+func CreateRPCNodeResponse(result interface{}) string {
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		// Fallback to "null" if marshaling fails
+		resultJSON = []byte("null")
+	}
+	
+	return `{
+		"jsonrpc": "2.0",
+		"id": 1,
+		"result": ` + string(resultJSON) + `
+	}`
 }

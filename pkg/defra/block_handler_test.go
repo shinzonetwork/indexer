@@ -65,7 +65,7 @@ func TestConvertHexToInt(t *testing.T) {
 func TestCreateBlock_MockServer(t *testing.T) {
 	// Create a mock DefraDB server using the helper
 	response := testutils.CreateGraphQLCreateResponse("Block", "test-block-doc-id")
-	server := testutils.CreateGraphQLMockServer(response)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	// Create handler with test server URL
@@ -102,7 +102,7 @@ func TestCreateBlock_MockServer(t *testing.T) {
 
 func TestCreateTransaction_MockServer(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
-	server := testutils.CreateGraphQLMockServer(response)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -137,7 +137,7 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 
 func TestUpdateTransactionRelationships_MockServer(t *testing.T) {
 	response := testutils.CreateGraphQLUpdateResponse("Transaction", "updated-tx-doc-id")
-	server := testutils.CreateGraphQLMockServer(response)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -163,7 +163,7 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 			"number": 12345
 		}
 	]`)
-	server := testutils.CreateGraphQLMockServer(response)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -182,7 +182,7 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 
 func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
 	response := testutils.CreateGraphQLQueryResponse("Block", "[]")
-	server := testutils.CreateGraphQLMockServer(response)
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -304,20 +304,8 @@ func TestSendToGraphql_Success(t *testing.T) {
 }
 
 func TestCreateLog_MockServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"data": {
-				"create_Log": [
-					{
-						"_docID": "test-log-doc-id"
-					}
-				]
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -350,20 +338,8 @@ func TestCreateLog_MockServer(t *testing.T) {
 }
 
 func TestCreateEvent_MockServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"data": {
-				"create_Event": [
-					{
-						"_docID": "test-event-doc-id"
-					}
-				]
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	response := testutils.CreateGraphQLCreateResponse("Event", "test-event-doc-id")
+	server := testutils.CreateMockServer(testutils.DefaultMockServerConfig(response))
 	defer server.Close()
 
 	handler := &BlockHandler{
