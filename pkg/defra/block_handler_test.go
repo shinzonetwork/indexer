@@ -66,9 +66,11 @@ func TestCreateBlock_MockServer(t *testing.T) {
 		// Mock successful block creation response
 		response := `{
 			"data": {
-				"create_Block": {
-					"_docID": "test-block-doc-id"
-				}
+				"create_Block": [
+					{
+						"_docID": "test-block-doc-id"
+					}
+				]
 			}
 		}`
 		w.Header().Set("Content-Type", "application/json")
@@ -113,9 +115,11 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := `{
 			"data": {
-				"create_Transaction": {
-					"_docID": "test-tx-doc-id"
-				}
+				"create_Transaction": [
+					{
+						"_docID": "test-tx-doc-id"
+					}
+				]
 			}
 		}`
 		w.Header().Set("Content-Type", "application/json")
@@ -358,9 +362,11 @@ func TestCreateLog_MockServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := `{
 			"data": {
-				"create_Log": {
-					"_docID": "test-log-doc-id"
-				}
+				"create_Log": [
+					{
+						"_docID": "test-log-doc-id"
+					}
+				]
 			}
 		}`
 		w.Header().Set("Content-Type", "application/json")
@@ -402,9 +408,11 @@ func TestCreateEvent_MockServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := `{
 			"data": {
-				"create_Event": {
-					"_docID": "test-event-doc-id"
-				}
+				"create_Event": [
+					{
+						"_docID": "test-event-doc-id"
+					}
+				]
 			}
 		}`
 		w.Header().Set("Content-Type", "application/json")

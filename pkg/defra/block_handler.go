@@ -260,12 +260,12 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	createField := fmt.Sprintf("create_%s", collection)
 	items, ok := response.Data[createField]
 	if !ok {
-		sugar.Errorf("create_", collection, " field not found in response")
+		sugar.Errorf("create_%s field not found in response", collection)
 		sugar.Debug("Response data: ", response.Data)
 		return ""
 	}
 	if len(items) == 0 {
-		sugar.Warnf("no document ID returned for create_", collection)
+		sugar.Warnf("no document ID returned for create_%s", collection)
 		return ""
 	}
 	return items[0].DocID
