@@ -26,3 +26,9 @@ test:
 
 testrpc:
 	go test ./pkg/rpc -v
+
+coverage:
+	go test -coverprofile=coverage.out ./... || true
+	go tool cover -html=coverage.out -o coverage.html
+	open coverage.html
+	rm coverage.out

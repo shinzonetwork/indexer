@@ -39,3 +39,6 @@ todo.txt
 logs/logfile
 
 notes/
+
+# Go test coverage viewer
+coverage.html
