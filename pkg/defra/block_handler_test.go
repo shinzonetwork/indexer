@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"shinzo/version1/pkg/testutils"
 	"shinzo/version1/pkg/types"
 	"strings"
@@ -267,17 +266,21 @@ func TestSendToGraphql_Success(t *testing.T) {
 	expectedQuery := "query { test }"
 	var receivedQuery string
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Capture the request body to verify the query
-		body := make([]byte, r.ContentLength)
-		r.Body.Read(body)
-		receivedQuery = string(body)
-
-		response := `{"data": {"test": "result"}}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	config := testutils.MockServerConfig{
+		ResponseBody: `{"data": {"test": "result"}}`,
+		StatusCode:   http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		ValidateRequest: func(r *http.Request) error {
+			// Capture the request body to verify the query
+			body := make([]byte, r.ContentLength)
+			r.Body.Read(body)
+			receivedQuery = string(body)
+			return nil
+		},
+	}
+	server := testutils.CreateMockServer(config)
 	defer server.Close()
 
 	handler := &BlockHandler{
