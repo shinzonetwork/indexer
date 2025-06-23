@@ -11,6 +11,10 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global configuration
+DEFRADB_GRAPHQL_PLAYGROUND_URL = "http://127.0.0.1:9181/api/v0/graphql"
+API_ORIGIN = "http://127.0.0.1:8000"
+
 app = FastAPI()
 
 # Configure CORS
@@ -42,12 +46,12 @@ async def fetch_graphql_data(client, query):
     """Helper function to fetch data from DefraDB"""
     try:
         response = await client.post(
-            "http://127.0.0.1:9181/api/v0/graphql",
+            DEFRADB_GRAPHQL_PLAYGROUND_URL,
             json={"query": query},
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "Origin": "http://127.0.0.1:8000"
+                "Origin": API_ORIGIN
             }
         )
         logger.info(f"GraphQL response status: {response.status_code}")
