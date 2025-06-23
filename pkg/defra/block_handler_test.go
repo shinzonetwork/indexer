@@ -2,8 +2,10 @@ package defra
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"shinzo/version1/pkg/testutils"
 	"shinzo/version1/pkg/types"
 	"strings"
 	"testing"
@@ -61,22 +63,9 @@ func TestConvertHexToInt(t *testing.T) {
 }
 
 func TestCreateBlock_MockServer(t *testing.T) {
-	// Create a mock DefraDB server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Mock successful block creation response
-		response := `{
-			"data": {
-				"create_Block": [
-					{
-						"_docID": "test-block-doc-id"
-					}
-				]
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	// Create a mock DefraDB server using the helper
+	response := testutils.CreateGraphQLCreateResponse("Block", "test-block-doc-id")
+	server := testutils.CreateGraphQLMockServer(response)
 	defer server.Close()
 
 	// Create handler with test server URL
@@ -112,20 +101,8 @@ func TestCreateBlock_MockServer(t *testing.T) {
 }
 
 func TestCreateTransaction_MockServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"data": {
-				"create_Transaction": [
-					{
-						"_docID": "test-tx-doc-id"
-					}
-				]
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
+	server := testutils.CreateGraphQLMockServer(response)
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -159,20 +136,8 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 }
 
 func TestUpdateTransactionRelationships_MockServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"data": {
-				"update_Transaction": [
-					{
-						"_docID": "updated-tx-doc-id"
-					}
-				]
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	response := testutils.CreateGraphQLUpdateResponse("Transaction", "updated-tx-doc-id")
+	server := testutils.CreateGraphQLMockServer(response)
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -193,20 +158,12 @@ func TestUpdateTransactionRelationships_MockServer(t *testing.T) {
 }
 
 func TestGetHighestBlockNumber_MockServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"data": {
-				"Block": [
-					{
-						"number": 12345
-					}
-				]
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	response := testutils.CreateGraphQLQueryResponse("Block", `[
+		{
+			"number": 12345
+		}
+	]`)
+	server := testutils.CreateGraphQLMockServer(response)
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -224,16 +181,8 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 }
 
 func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := `{
-			"data": {
-				"Block": []
-			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+	response := testutils.CreateGraphQLQueryResponse("Block", "[]")
+	server := testutils.CreateGraphQLMockServer(response)
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -251,30 +200,25 @@ func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
 }
 
 func TestPostToCollection_Success(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify request method and content type
-		if r.Method != "POST" {
-			t.Errorf("Expected POST request, got %s", r.Method)
-		}
-
-		contentType := r.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			t.Errorf("Expected Content-Type application/json, got %s", contentType)
-		}
-
-		response := `{
-			"data": {
-				"create_TestCollection": [
-					{
-						"_docID": "test-doc-id"
-					}
-				]
+	// Create a mock server with request validation
+	config := testutils.MockServerConfig{
+		ResponseBody: testutils.CreateGraphQLCreateResponse("TestCollection", "test-doc-id"),
+		StatusCode:   http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		ValidateRequest: func(r *http.Request) error {
+			if r.Method != "POST" {
+				return fmt.Errorf("Expected POST request, got %s", r.Method)
 			}
-		}`
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
-	}))
+			contentType := r.Header.Get("Content-Type")
+			if contentType != "application/json" {
+				return fmt.Errorf("Expected Content-Type application/json, got %s", contentType)
+			}
+			return nil
+		},
+	}
+	server := testutils.CreateMockServer(config)
 	defer server.Close()
 
 	handler := &BlockHandler{
@@ -297,10 +241,7 @@ func TestPostToCollection_Success(t *testing.T) {
 }
 
 func TestPostToCollection_ServerError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Internal Server Error"))
-	}))
+	server := testutils.CreateErrorServer(http.StatusInternalServerError, "Internal Server Error")
 	defer server.Close()
 
 	handler := &BlockHandler{
