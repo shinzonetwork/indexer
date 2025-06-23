@@ -163,27 +163,7 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 		return ""
 	}
 
-	// Parse response
-	var response types.Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		sugar.Errorf("failed to decode response: %v", err)
-		sugar.Debug("Raw response: ", string(resp))
-		return ""
-	}
-
-	// Get document ID
-	updateField := "update_Transaction"
-	items, ok := response.Data[updateField]
-	if !ok {
-		sugar.Errorf("update_Transaction field not found in response")
-		sugar.Debug("Response data: ", response.Data)
-		return ""
-	}
-	if len(items) == 0 {
-		sugar.Warn("no document ID returned for update_Transaction")
-		return ""
-	}
-	return items[0].DocID
+	return h.parseGraphQLResponse(resp, "update_Transaction", sugar)
 }
 
 // shinzo stuct
@@ -209,27 +189,7 @@ func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId strin
 		return ""
 	}
 
-	// Parse response
-	var response types.Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		sugar.Errorf("failed to decode response: %v", err)
-		sugar.Debug("Raw response: ", string(resp))
-		return ""
-	}
-
-	// Get document ID
-	updateField := "update_Log"
-	items, ok := response.Data[updateField]
-	if !ok {
-		sugar.Errorf("update_Log field not found in response")
-		sugar.Debug("Response data: ", response.Data)
-		return ""
-	}
-	if len(items) == 0 {
-		sugar.Warn("no document ID returned for update_Log")
-		return ""
-	}
-	return items[0].DocID
+	return h.parseGraphQLResponse(resp, "update_Log", sugar)
 }
 
 func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId string, txHash string, logIndex string, sugar *zap.SugaredLogger) string {
@@ -248,27 +208,7 @@ func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId st
 		return ""
 	}
 
-	// Parse response
-	var response types.Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		sugar.Errorf("failed to decode response: %v", err)
-		sugar.Debug("Raw response: ", string(resp))
-		return ""
-	}
-
-	// Get document ID
-	updateField := "update_Event"
-	items, ok := response.Data[updateField]
-	if !ok {
-		sugar.Errorf("update_Event field not found in response")
-		sugar.Debug("Response data: ", response.Data)
-		return ""
-	}
-	if len(items) == 0 {
-		sugar.Warn("no document ID returned for update_Event")
-		return ""
-	}
-	return items[0].DocID
+	return h.parseGraphQLResponse(resp, "update_Event", sugar)
 }
 
 func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, data map[string]interface{}, sugar *zap.SugaredLogger) string {
@@ -310,27 +250,8 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		return ""
 	}
 
-	// Parse response
-	var response types.Response
-	if err := json.Unmarshal(resp, &response); err != nil {
-		sugar.Errorf("failed to decode response: %v", err)
-		sugar.Debug("Raw response: ", string(resp))
-		return ""
-	}
-
-	// Get document ID
 	createField := fmt.Sprintf("create_%s", collection)
-	items, ok := response.Data[createField]
-	if !ok {
-		sugar.Errorf("create_%s field not found in response", collection)
-		sugar.Debug("Response data: ", response.Data)
-		return ""
-	}
-	if len(items) == 0 {
-		sugar.Warnf("no document ID returned for create_%s", collection)
-		return ""
-	}
-	return items[0].DocID
+	return h.parseGraphQLResponse(resp, createField, sugar)
 }
 
 // Graph golang client check in defra
@@ -373,6 +294,30 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request, sug
 	// Debug: Print the response
 	sugar.Debug("DefraDB Response: ", string(respBody), "\n")
 	return respBody
+}
+
+// parseGraphQLResponse is a helper function to parse GraphQL responses and extract document IDs
+func (h *BlockHandler) parseGraphQLResponse(resp []byte, fieldName string, sugar *zap.SugaredLogger) string {
+	// Parse response
+	var response types.Response
+	if err := json.Unmarshal(resp, &response); err != nil {
+		sugar.Errorf("failed to decode response: %v", err)
+		sugar.Debug("Raw response: ", string(resp))
+		return ""
+	}
+
+	// Get document ID
+	items, ok := response.Data[fieldName]
+	if !ok {
+		sugar.Errorf("%s field not found in response", fieldName)
+		sugar.Debug("Response data: ", response.Data)
+		return ""
+	}
+	if len(items) == 0 {
+		sugar.Warnf("no document ID returned for %s", fieldName)
+		return ""
+	}
+	return items[0].DocID
 }
 
 // GetHighestBlockNumber returns the highest block number stored in DefraDB
