@@ -36,20 +36,20 @@ func (h *BlockHandler) ConvertHexToInt(s string, sugar *zap.SugaredLogger) int64
 		sugar.Error("Empty hex string provided")
 		return 0
 	}
-	
+
 	// Remove "0x" prefix if present
 	hexStr := s
 	if strings.HasPrefix(s, "0x") {
 		hexStr = s[2:]
 	}
-	
+
 	// Parse the hex string
 	blockInt, err := strconv.ParseInt(hexStr, 16, 64)
 	if err != nil {
 		sugar.Errorf("Failed to parse hex string '%s': %v", s, err)
 		return 0
 	}
-	
+
 	return blockInt
 }
 
@@ -157,13 +157,33 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 		}
 	}`, txHash, blockId)}
 
-	docId := h.SendToGraphql(ctx, mutation, sugar)
-	if docId == nil {
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
 		sugar.Errorf("failed to update transaction relationships: ", mutation)
 		return ""
 	}
 
-	return string(docId)
+	// Parse response
+	var response types.Response
+	if err := json.Unmarshal(resp, &response); err != nil {
+		sugar.Errorf("failed to decode response: %v", err)
+		sugar.Debug("Raw response: ", string(resp))
+		return ""
+	}
+
+	// Get document ID
+	updateField := "update_Transaction"
+	items, ok := response.Data[updateField]
+	if !ok {
+		sugar.Errorf("update_Transaction field not found in response")
+		sugar.Debug("Response data: ", response.Data)
+		return ""
+	}
+	if len(items) == 0 {
+		sugar.Warn("no document ID returned for update_Transaction")
+		return ""
+	}
+	return items[0].DocID
 }
 
 // shinzo stuct
@@ -183,12 +203,33 @@ func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId strin
 		}
 	}`, logIndex, txHash, blockId, txId)}
 
-	docId := h.SendToGraphql(ctx, mutation, sugar)
-	if docId == nil {
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
 		sugar.Warn("log relationship update failure")
 		return ""
 	}
-	return string(docId)
+
+	// Parse response
+	var response types.Response
+	if err := json.Unmarshal(resp, &response); err != nil {
+		sugar.Errorf("failed to decode response: %v", err)
+		sugar.Debug("Raw response: ", string(resp))
+		return ""
+	}
+
+	// Get document ID
+	updateField := "update_Log"
+	items, ok := response.Data[updateField]
+	if !ok {
+		sugar.Errorf("update_Log field not found in response")
+		sugar.Debug("Response data: ", response.Data)
+		return ""
+	}
+	if len(items) == 0 {
+		sugar.Warn("no document ID returned for update_Log")
+		return ""
+	}
+	return items[0].DocID
 }
 
 func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId string, txHash string, logIndex string, sugar *zap.SugaredLogger) string {
@@ -201,12 +242,33 @@ func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId st
 		}
 	}`, logIndex, txHash, logDocId)}
 
-	docId := h.SendToGraphql(ctx, mutation, sugar)
-	if docId == nil {
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
 		sugar.Warn("log relationship update failure")
 		return ""
 	}
-	return string(docId)
+
+	// Parse response
+	var response types.Response
+	if err := json.Unmarshal(resp, &response); err != nil {
+		sugar.Errorf("failed to decode response: %v", err)
+		sugar.Debug("Raw response: ", string(resp))
+		return ""
+	}
+
+	// Get document ID
+	updateField := "update_Event"
+	items, ok := response.Data[updateField]
+	if !ok {
+		sugar.Errorf("update_Event field not found in response")
+		sugar.Debug("Response data: ", response.Data)
+		return ""
+	}
+	if len(items) == 0 {
+		sugar.Warn("no document ID returned for update_Event")
+		return ""
+	}
+	return items[0].DocID
 }
 
 func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, data map[string]interface{}, sugar *zap.SugaredLogger) string {
@@ -344,6 +406,5 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.Sug
 		return 0 // Return 0 if no blocks exist
 	}
 
-	// Return the highest block number + 1
-	return result.Data.Block[0].Number + 1
+	return result.Data.Block[0].Number
 }

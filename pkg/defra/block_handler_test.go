@@ -162,9 +162,11 @@ func TestUpdateTransactionRelationships_MockServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := `{
 			"data": {
-				"update_Transaction": {
-					"_docID": "updated-tx-doc-id"
-				}
+				"update_Transaction": [
+					{
+						"_docID": "updated-tx-doc-id"
+					}
+				]
 			}
 		}`
 		w.Header().Set("Content-Type", "application/json")
@@ -196,7 +198,7 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 			"data": {
 				"Block": [
 					{
-						"number": "12345"
+						"number": 12345
 					}
 				]
 			}
@@ -262,9 +264,11 @@ func TestPostToCollection_Success(t *testing.T) {
 
 		response := `{
 			"data": {
-				"create_TestCollection": {
-					"_docID": "test-doc-id"
-				}
+				"create_TestCollection": [
+					{
+						"_docID": "test-doc-id"
+					}
+				]
 			}
 		}`
 		w.Header().Set("Content-Type", "application/json")
