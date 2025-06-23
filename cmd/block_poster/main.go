@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"shinzo/version1/config"
 	"shinzo/version1/pkg/defra"
@@ -58,7 +57,7 @@ func main() {
 			blockHex := utils.NumberToHex(blockNum)
 
 			sugar.Info("Processing block: ", blockNum, ", hex: ", blockHex)
-			
+
 			// Get block with retry logic
 			block, err := utils.RequestResourceWithRetries(
 				context.Background(),
@@ -68,7 +67,7 @@ func main() {
 				},
 				fmt.Sprintf("get block %d", blockNum),
 			)
-			
+
 			if err != nil {
 				sugar.Error("Skipping block %d after all retries failed: %v", blockNum, err)
 				<-workerPool
