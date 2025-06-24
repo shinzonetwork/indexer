@@ -287,8 +287,14 @@ func TestPostToCollection_Success(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 
 	data := map[string]interface{}{
-		"field1": "value1",
-		"field2": 123,
+		"string":       "value1",
+		"number":       123,
+		"bool":         true,
+		"stringArray":  []string{"dog", "cat", "bearded dragon"},
+		"somethingElse": map[string]interface{}{
+			"foo": "bar",
+			"baz": 42,
+		},
 	}
 	docID := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
 
@@ -756,5 +762,36 @@ func TestUpdateTransactionRelationships_NilResponse(t *testing.T) {
 	}
 	if !strings.Contains(buffer.String(), "failed to update transaction relationships") {
 		t.Errorf("Expected log to mention failed to update transaction relationships, got: %s", buffer.String())
+	}
+}
+
+func TestGetHighestBlockNumber_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close() // Simulate network error, SendToGraphql returns nil
+
+	logger, buffer := newTestLogger()
+	result := handler.GetHighestBlockNumber(context.Background(), logger)
+	if result != 0 {
+		t.Errorf("Expected 0 for nil response, got %d", result)
+	}
+	if !strings.Contains(buffer.String(), "failed to query block numbers error") {
+		t.Errorf("Expected log to mention failed to query block numbers error, got: %s", buffer.String())
+	}
+}
+
+func TestPostToCollection_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close() // Simulate network error, SendToGraphql returns nil
+
+	logger, buffer := newTestLogger()
+	data := map[string]interface{}{
+		"field1": "value1",
+	}
+	result := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
+	if result != "" {
+		t.Errorf("Expected empty string for nil response, got '%s'", result)
+	}
+	if !strings.Contains(buffer.String(), "Received nil response from GraphQL") {
+		t.Errorf("Expected log to mention nil response from GraphQL, got: %s", buffer.String())
 	}
 }
