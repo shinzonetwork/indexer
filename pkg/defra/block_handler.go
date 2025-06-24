@@ -188,7 +188,7 @@ func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId strin
 
 	resp := h.SendToGraphql(ctx, mutation, sugar)
 	if resp == nil {
-		sugar.Warn("log relationship update failure")
+		sugar.Errorf("log relationship update failure: ", mutation)
 		return ""
 	}
 
@@ -207,7 +207,7 @@ func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId st
 
 	resp := h.SendToGraphql(ctx, mutation, sugar)
 	if resp == nil {
-		sugar.Warn("log relationship update failure")
+		sugar.Errorf("event relationship update failure: ", mutation)
 		return ""
 	}
 

@@ -716,3 +716,45 @@ func TestUpdateLogRelationships_Success(t *testing.T) {
 		t.Errorf("Expected 'log-doc-id', got '%s'", result)
 	}
 }
+
+func TestUpdateEventRelationships_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for nil response")
+	}
+	if !strings.Contains(buffer.String(), "event relationship update failure") {
+		t.Errorf("Expected log to mention relationship update failure, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateLogRelationships_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for nil response")
+	}
+	if !strings.Contains(buffer.String(), "log relationship update failure") {
+		t.Errorf("Expected log to mention relationship update failure, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateTransactionRelationships_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
+	if result != "" {
+		t.Error("Expected empty string for nil response")
+	}
+	if !strings.Contains(buffer.String(), "failed to update transaction relationships") {
+		t.Errorf("Expected log to mention failed to update transaction relationships, got: %s", buffer.String())
+	}
+}
