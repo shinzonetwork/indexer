@@ -1,6 +1,7 @@
 package defra
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -9,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.uber.org/zap"
 	"net/http/httptest"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // createBlockHandlerWithMocksConfig creates a mock server and returns it along with a BlockHandler configured to use it, using a custom MockServerConfig.
@@ -77,6 +80,42 @@ func TestConvertHexToInt(t *testing.T) {
 	}
 }
 
+func TestConvertHexToInt_UnhappyPaths(t *testing.T) {
+	// Create a test logger
+	logger, buffer := newTestLogger()
+	handler := NewBlockHandler("localhost", 9181)
+
+	tests := []struct {
+		name        string
+		input       string
+		expectedLog string
+	}{
+		{"Empty string", "", "Empty hex string provided"},
+		{"Invalid hex", "invalid hex", "Failed to parse hex string"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := handler.ConvertHexToInt(tt.input, logger)
+			if result != 0 {
+				t.Errorf("ConvertHexToInt(%s) = %d, want %d", tt.input, result, 0)
+			}
+			logs := buffer.String()
+			if !strings.Contains(logs, tt.expectedLog) {
+				t.Errorf("Expected log to contain error message '%s', got: %s", tt.expectedLog, logs)
+			}
+		})
+	}
+}
+
+func newTestLogger() (*zap.SugaredLogger, *bytes.Buffer) {
+	buf := new(bytes.Buffer)
+	encoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
+	core := zapcore.NewCore(encoder, zapcore.AddSync(buf), zapcore.DebugLevel)
+	logger := zap.New(core)
+	return logger.Sugar(), buf
+}
+
 func TestCreateBlock_MockServer(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Block", "test-block-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
@@ -105,6 +144,43 @@ func TestCreateBlock_MockServer(t *testing.T) {
 
 	if docID != "test-block-doc-id" {
 		t.Errorf("Expected docID 'test-block-doc-id', got '%s'", docID)
+	}
+}
+
+func TestCreateBlock_InvalidBlock(t *testing.T) {
+	response := testutils.CreateGraphQLCreateResponse("Block", "test-block-doc-id")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+
+	block := &types.Block{
+		Hash:         "0x1234567890abcdef",
+		Number:       "invalid block number",
+		Timestamp:    "1600000000",
+		ParentHash:   "0xabcdef1234567890",
+		Difficulty:   "1000000",
+		GasUsed:      "4000000",
+		GasLimit:     "8000000",
+		Nonce:        "123456789",
+		Miner:        "0xminer",
+		Size:         "1024",
+		StateRoot:    "0xstateroot",
+		Sha3Uncles:   "0xsha3uncles",
+		ReceiptsRoot: "0xreceiptsroot",
+		ExtraData:    "extra",
+	}
+
+	docID := handler.CreateBlock(context.Background(), block, logger)
+
+	if docID != "" {
+		t.Error("Expected an error; should've received null response")
+	}
+
+	expected := "failed to parse block number"
+	logs := buffer.String()
+	if !strings.Contains(logs, expected) {
+		t.Errorf("Got unexpected error message: %s | expected should contain: %s", logs, expected)
 	}
 }
 
@@ -332,5 +408,197 @@ func TestCreateEvent_MockServer(t *testing.T) {
 
 	if docID != "test-event-doc-id" {
 		t.Errorf("Expected docID 'test-event-doc-id', got '%s'", docID)
+	}
+}
+
+func TestCreateBlock_InvalidJSON(t *testing.T) {
+	response := "not a json"
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+	block := &types.Block{Hash: "0x1", Number: "1"}
+	result := handler.CreateBlock(context.Background(), block, logger)
+	if result != "" {
+		t.Errorf("Expected empty string for invalid JSON, got '%s'", result)
+	}
+}
+
+func TestCreateBlock_MissingField(t *testing.T) {
+	response := `{"data": {}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+	block := &types.Block{Hash: "0x1", Number: "1"}
+	result := handler.CreateBlock(context.Background(), block, logger)
+	if result != "" {
+		t.Errorf("Expected empty string for missing field, got '%s'", result)
+	}
+}
+
+func TestCreateBlock_EmptyField(t *testing.T) {
+	response := `{"data": {"create_Block": []}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+	block := &types.Block{Hash: "0x1", Number: "1"}
+	result := handler.CreateBlock(context.Background(), block, logger)
+	if result != "" {
+		t.Errorf("Expected empty string for empty field, got '%s'", result)
+	}
+}
+
+func TestUpdateTransactionRelationships_InvalidJSON(t *testing.T) {
+	response := "not a json"
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
+	if result != "" {
+		t.Errorf("Expected empty string for invalid JSON, got '%s'", result)
+	}
+}
+
+func TestUpdateTransactionRelationships_MissingField(t *testing.T) {
+	response := `{"data": {}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
+	if result != "" {
+		t.Errorf("Expected empty string for missing field, got '%s'", result)
+	}
+}
+
+func TestUpdateTransactionRelationships_EmptyField(t *testing.T) {
+	response := `{"data": {"update_Transaction": []}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
+	if result != "" {
+		t.Errorf("Expected empty string for empty field, got '%s'", result)
+	}
+}
+
+func TestSendToGraphql_NetworkError(t *testing.T) {
+	// Create a server and close it before making the request
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close()
+
+	logger := zap.NewNop().Sugar()
+	request := types.Request{Query: "query { test }", Type: "POST"}
+	result := handler.SendToGraphql(context.Background(), request, logger)
+	if result != nil && string(result) != "" {
+		t.Errorf("Expected nil or empty result for network error, got '%s'", string(result))
+	}
+}
+
+func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
+	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+
+	tx := &types.Transaction{
+		Hash:             "0xtxhash",
+		BlockHash:        "0xblockhash",
+		BlockNumber:      "invalid block number",
+		From:             "0xfrom",
+		To:               "0xto",
+		Value:            "1000",
+		Gas:              "21000",
+		GasPrice:         "20000000000",
+		Input:            "0xinput",
+		Nonce:            "1",
+		TransactionIndex: "0",
+		Status:           true,
+	}
+
+	blockID := "test-block-id"
+	docID := handler.CreateTransaction(context.Background(), tx, blockID, logger)
+
+	if docID != "" {
+		t.Error("Expected an error; should've received null response")
+	}
+
+	expected := "failed to parse block number"
+	logs := buffer.String()
+	if !strings.Contains(logs, expected) {
+		t.Errorf("Got unexpected error message: %s | expected should contain: %s", logs, expected)
+	}
+}
+
+func TestCreateLog_InvalidBlockNumber(t *testing.T) {
+	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+
+	logEntry := &types.Log{
+		Address:          "0xcontract",
+		Topics:           []string{"0xtopic1", "0xtopic2"},
+		Data:             "0xlogdata",
+		BlockNumber:      "invalid block number",
+		TransactionHash:  "0xtxhash",
+		TransactionIndex: "0",
+		BlockHash:        "0xblockhash",
+		LogIndex:         "0",
+		Removed:          false,
+	}
+
+	blockID := "test-block-id"
+	txID := "test-tx-id"
+
+	docID := handler.CreateLog(context.Background(), logEntry, blockID, txID, logger)
+
+	if docID != "" {
+		t.Error("Expected an error; should've received null response")
+	}
+
+	expected := "failed to parse block number"
+	logs := buffer.String()
+	if !strings.Contains(logs, expected) {
+		t.Errorf("Got unexpected error message: %s | expected should contain: %s", logs, expected)
+	}
+}
+
+func TestCreateEvent_InvalidBlockNumber(t *testing.T) {
+	response := testutils.CreateGraphQLCreateResponse("Event", "test-event-doc-id")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+
+	event := &types.Event{
+		ContractAddress:  "0xcontract",
+		EventName:        "Transfer",
+		Parameters:       "0xeventdata",
+		TransactionHash:  "0xtxhash",
+		BlockHash:        "0xblockhash",
+		BlockNumber:      "invalid block number",
+		TransactionIndex: "0",
+		LogIndex:         "0",
+	}
+
+	logID := "test-log-id"
+
+	docID := handler.CreateEvent(context.Background(), event, logID, logger)
+
+	if docID != "" {
+		t.Error("Expected an error; should've received null response")
+	}
+
+	expected := "failed to parse block number"
+	logs := buffer.String()
+	if !strings.Contains(logs, expected) {
+		t.Errorf("Got unexpected error message: %s | expected should contain: %s", logs, expected)
 	}
 }

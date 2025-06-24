@@ -57,7 +57,8 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, suga
 	// Convert string number to int
 	blockInt, err := strconv.ParseInt(block.Number, 0, 64)
 	if err != nil {
-		sugar.Fatalf("failed to parse block number: %w", err)
+		sugar.Errorf("failed to parse block number: %w", err)
+		return ""
 	}
 
 	blockData := map[string]interface{}{
@@ -84,7 +85,8 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, suga
 func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transaction, block_id string, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(tx.BlockNumber, 0, 64)
 	if err != nil {
-		sugar.Fatalf("failed to parse block number: ", err)
+		sugar.Errorf("failed to parse block number: ", err)
+		return ""
 	}
 
 	txData := map[string]interface{}{
@@ -108,7 +110,8 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, tx_Id string, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(log.BlockNumber, 0, 64)
 	if err != nil {
-		sugar.Fatalf("failed to parse block number: ", err)
+		sugar.Errorf("failed to parse block number: ", err)
+		return ""
 	}
 
 	logData := map[string]interface{}{
@@ -283,6 +286,7 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request, sug
 	resp, err := h.client.Do(httpReq)
 	if err != nil {
 		sugar.Errorf("failed to send request: ", err)
+		return nil
 	}
 	defer resp.Body.Close()
 
