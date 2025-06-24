@@ -602,3 +602,117 @@ func TestCreateEvent_InvalidBlockNumber(t *testing.T) {
 		t.Errorf("Got unexpected error message: %s | expected should contain: %s", logs, expected)
 	}
 }
+
+func TestUpdateEventRelationships_InvalidJSON(t *testing.T) {
+	response := "not a json"
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for invalid JSON")
+	}
+	if !strings.Contains(buffer.String(), "failed to decode response") {
+		t.Errorf("Expected log to contain decode error, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateEventRelationships_MissingField(t *testing.T) {
+	response := `{"data": {}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for missing field")
+	}
+	if !strings.Contains(buffer.String(), "update_Event field not found in response") {
+		t.Errorf("Expected log to mention missing field, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateEventRelationships_EmptyField(t *testing.T) {
+	response := `{"data": {"update_Event": []}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for empty field")
+	}
+	if !strings.Contains(buffer.String(), "no document ID returned for update_Event") {
+		t.Errorf("Expected log to mention no document ID, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateEventRelationships_Success(t *testing.T) {
+	response := `{"data": {"update_Event": [{"_docID": "event-doc-id"}]}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, _ := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "event-doc-id" {
+		t.Errorf("Expected 'event-doc-id', got '%s'", result)
+	}
+}
+
+func TestUpdateLogRelationships_InvalidJSON(t *testing.T) {
+	response := "not a json"
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for invalid JSON")
+	}
+	if !strings.Contains(buffer.String(), "failed to decode response") {
+		t.Errorf("Expected log to contain decode error, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateLogRelationships_MissingField(t *testing.T) {
+	response := `{"data": {}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for missing field")
+	}
+	if !strings.Contains(buffer.String(), "update_Log field not found in response") {
+		t.Errorf("Expected log to mention missing field, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateLogRelationships_EmptyField(t *testing.T) {
+	response := `{"data": {"update_Log": []}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for empty field")
+	}
+	if !strings.Contains(buffer.String(), "no document ID returned for update_Log") {
+		t.Errorf("Expected log to mention no document ID, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateLogRelationships_Success(t *testing.T) {
+	response := `{"data": {"update_Log": [{"_docID": "log-doc-id"}]}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, _ := newTestLogger()
+	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
+	if result != "log-doc-id" {
+		t.Errorf("Expected 'log-doc-id', got '%s'", result)
+	}
+}
