@@ -228,7 +228,7 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		case []string:
 			jsonBytes, err := json.Marshal(v)
 			if err != nil {
-				sugar.Fatalf("failed to marshal field ", key, "err: ", err)
+				sugar.Errorf("failed to marshal field ", key, "err: ", err)
 				return ""
 			}
 			inputFields = append(inputFields, fmt.Sprintf("%s: %s", key, string(jsonBytes)))
@@ -280,6 +280,7 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request, sug
 	httpReq, err := http.NewRequestWithContext(ctx, req.Type, h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		sugar.Errorf("failed to create request: ", err)
+		return nil
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	// Send request
