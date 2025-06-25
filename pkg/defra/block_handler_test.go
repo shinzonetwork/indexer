@@ -184,239 +184,6 @@ func TestCreateBlock_InvalidBlock(t *testing.T) {
 	}
 }
 
-func TestCreateTransaction_MockServer(t *testing.T) {
-	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	tx := &types.Transaction{
-		Hash:             "0xtxhash",
-		BlockHash:        "0xblockhash",
-		BlockNumber:      "12345",
-		From:             "0xfrom",
-		To:               "0xto",
-		Value:            "1000",
-		Gas:              "21000",
-		GasPrice:         "20000000000",
-		Input:            "0xinput",
-		Nonce:            "1",
-		TransactionIndex: "0",
-		Status:           true,
-	}
-
-	blockID := "test-block-id"
-	docID := handler.CreateTransaction(context.Background(), tx, blockID, logger)
-
-	if docID != "test-tx-doc-id" {
-		t.Errorf("Expected docID 'test-tx-doc-id', got '%s'", docID)
-	}
-}
-
-func TestUpdateTransactionRelationships_MockServer(t *testing.T) {
-	response := testutils.CreateGraphQLUpdateResponse("Transaction", "updated-tx-doc-id")
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	blockID := "test-block-id"
-	txHash := "0xtxhash"
-
-	docID := handler.UpdateTransactionRelationships(context.Background(), blockID, txHash, logger)
-
-	if docID != "updated-tx-doc-id" {
-		t.Errorf("Expected docID 'updated-tx-doc-id', got '%s'", docID)
-	}
-}
-
-func TestGetHighestBlockNumber_MockServer(t *testing.T) {
-	response := testutils.CreateGraphQLQueryResponse("Block", `[
-		{
-			"number": 12345
-		}
-	]`)
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	blockNumber := handler.GetHighestBlockNumber(context.Background(), logger)
-
-	if blockNumber != 12345 {
-		t.Errorf("Expected block number 12345, got %d", blockNumber)
-	}
-}
-
-func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
-	response := testutils.CreateGraphQLQueryResponse("Block", "[]")
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	blockNumber := handler.GetHighestBlockNumber(context.Background(), logger)
-
-	if blockNumber != 0 {
-		t.Errorf("Expected block number 0 for empty response, got %d", blockNumber)
-	}
-}
-
-func TestPostToCollection_Success(t *testing.T) {
-	config := testutils.MockServerConfig{
-		ResponseBody: testutils.CreateGraphQLCreateResponse("TestCollection", "test-doc-id"),
-		StatusCode:   http.StatusOK,
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-		},
-		ValidateRequest: func(r *http.Request) error {
-			if r.Method != "POST" {
-				return fmt.Errorf("Expected POST request, got %s", r.Method)
-			}
-			contentType := r.Header.Get("Content-Type")
-			if contentType != "application/json" {
-				return fmt.Errorf("Expected Content-Type application/json, got %s", contentType)
-			}
-			return nil
-		},
-	}
-	server, handler := createBlockHandlerWithMocksConfig(config)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	data := map[string]interface{}{
-		"string":       "value1",
-		"number":       123,
-		"bool":         true,
-		"stringArray":  []string{"dog", "cat", "bearded dragon"},
-		"somethingElse": map[string]interface{}{
-			"foo": "bar",
-			"baz": 42,
-		},
-	}
-	docID := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
-
-	if docID != "test-doc-id" {
-		t.Errorf("Expected docID 'test-doc-id', got '%s'", docID)
-	}
-}
-
-func TestPostToCollection_ServerError(t *testing.T) {
-	server := testutils.CreateErrorServer(http.StatusInternalServerError, "Internal Server Error")
-	defer server.Close()
-
-	handler := &BlockHandler{
-		defraURL: server.URL,
-		client:   &http.Client{},
-	}
-
-	logger := zap.NewNop().Sugar()
-
-	data := map[string]interface{}{
-		"field1": "value1",
-	}
-	docID := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
-
-	if docID != "" {
-		t.Errorf("Expected empty docID on error, got '%s'", docID)
-	}
-}
-
-func TestSendToGraphql_Success(t *testing.T) {
-	expectedQuery := "query { test }"
-	var receivedQuery string
-
-	config := testutils.MockServerConfig{
-		ResponseBody: `{"data": {"test": "result"}}`,
-		StatusCode:   http.StatusOK,
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-		},
-		ValidateRequest: func(r *http.Request) error {
-			body := make([]byte, r.ContentLength)
-			r.Body.Read(body)
-			receivedQuery = string(body)
-			return nil
-		},
-	}
-	server, handler := createBlockHandlerWithMocksConfig(config)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	request := types.Request{
-		Query: expectedQuery,
-	}
-
-	result := handler.SendToGraphql(context.Background(), request, logger)
-
-	if result == nil {
-		t.Fatal("Result should not be nil")
-	}
-
-	if !strings.Contains(receivedQuery, expectedQuery) {
-		t.Errorf("Request body should contain query '%s', got '%s'", expectedQuery, receivedQuery)
-	}
-}
-
-func TestCreateLog_MockServer(t *testing.T) {
-	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	log := &types.Log{
-		Address:          "0xcontract",
-		Topics:           []string{"0xtopic1", "0xtopic2"},
-		Data:             "0xlogdata",
-		BlockNumber:      "12345",
-		TransactionHash:  "0xtxhash",
-		TransactionIndex: "0",
-		BlockHash:        "0xblockhash",
-		LogIndex:         "0",
-		Removed:          false,
-	}
-
-	blockID := "test-block-id"
-	txID := "test-tx-id"
-
-	docID := handler.CreateLog(context.Background(), log, blockID, txID, logger)
-
-	if docID != "test-log-doc-id" {
-		t.Errorf("Expected docID 'test-log-doc-id', got '%s'", docID)
-	}
-}
-
-func TestCreateEvent_MockServer(t *testing.T) {
-	response := testutils.CreateGraphQLCreateResponse("Event", "test-event-doc-id")
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-
-	event := &types.Event{
-		ContractAddress:  "0xcontract",
-		EventName:        "Transfer",
-		Parameters:       "0xeventdata",
-		TransactionHash:  "0xtxhash",
-		BlockHash:        "0xblockhash",
-		BlockNumber:      "12345",
-		TransactionIndex: "0",
-		LogIndex:         "0",
-	}
-
-	logID := "test-log-id"
-
-	docID := handler.CreateEvent(context.Background(), event, logID, logger)
-
-	if docID != "test-event-doc-id" {
-		t.Errorf("Expected docID 'test-event-doc-id', got '%s'", docID)
-	}
-}
-
 func TestCreateBlock_InvalidJSON(t *testing.T) {
 	response := "not a json"
 	server, handler := createBlockHandlerWithMocks(response)
@@ -456,52 +223,33 @@ func TestCreateBlock_EmptyField(t *testing.T) {
 	}
 }
 
-func TestUpdateTransactionRelationships_InvalidJSON(t *testing.T) {
-	response := "not a json"
+func TestCreateTransaction_MockServer(t *testing.T) {
+	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
 	logger := zap.NewNop().Sugar()
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
-	if result != "" {
-		t.Errorf("Expected empty string for invalid JSON, got '%s'", result)
+
+	tx := &types.Transaction{
+		Hash:             "0xtxhash",
+		BlockHash:        "0xblockhash",
+		BlockNumber:      "12345",
+		From:             "0xfrom",
+		To:               "0xto",
+		Value:            "1000",
+		Gas:              "21000",
+		GasPrice:         "20000000000",
+		Input:            "0xinput",
+		Nonce:            "1",
+		TransactionIndex: "0",
+		Status:           true,
 	}
-}
 
-func TestUpdateTransactionRelationships_MissingField(t *testing.T) {
-	response := `{"data": {}}`
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
+	blockID := "test-block-id"
+	docID := handler.CreateTransaction(context.Background(), tx, blockID, logger)
 
-	logger := zap.NewNop().Sugar()
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
-	if result != "" {
-		t.Errorf("Expected empty string for missing field, got '%s'", result)
-	}
-}
-
-func TestUpdateTransactionRelationships_EmptyField(t *testing.T) {
-	response := `{"data": {"update_Transaction": []}}`
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	logger := zap.NewNop().Sugar()
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
-	if result != "" {
-		t.Errorf("Expected empty string for empty field, got '%s'", result)
-	}
-}
-
-func TestSendToGraphql_NetworkError(t *testing.T) {
-	// Create a server and close it before making the request
-	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
-	server.Close()
-
-	logger := zap.NewNop().Sugar()
-	request := types.Request{Query: "query { test }", Type: "POST"}
-	result := handler.SendToGraphql(context.Background(), request, logger)
-	if result != nil && string(result) != "" {
-		t.Errorf("Expected nil or empty result for network error, got '%s'", string(result))
+	if docID != "test-tx-doc-id" {
+		t.Errorf("Expected docID 'test-tx-doc-id', got '%s'", docID)
 	}
 }
 
@@ -541,6 +289,35 @@ func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
 	}
 }
 
+func TestCreateLog_MockServer(t *testing.T) {
+	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+
+	log := &types.Log{
+		Address:          "0xcontract",
+		Topics:           []string{"0xtopic1", "0xtopic2"},
+		Data:             "0xlogdata",
+		BlockNumber:      "12345",
+		TransactionHash:  "0xtxhash",
+		TransactionIndex: "0",
+		BlockHash:        "0xblockhash",
+		LogIndex:         "0",
+		Removed:          false,
+	}
+
+	blockID := "test-block-id"
+	txID := "test-tx-id"
+
+	docID := handler.CreateLog(context.Background(), log, blockID, txID, logger)
+
+	if docID != "test-log-doc-id" {
+		t.Errorf("Expected docID 'test-log-doc-id', got '%s'", docID)
+	}
+}
+
 func TestCreateLog_InvalidBlockNumber(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
@@ -573,6 +350,33 @@ func TestCreateLog_InvalidBlockNumber(t *testing.T) {
 	logs := buffer.String()
 	if !strings.Contains(logs, expected) {
 		t.Errorf("Got unexpected error message: %s | expected should contain: %s", logs, expected)
+	}
+}
+
+func TestCreateEvent_MockServer(t *testing.T) {
+	response := testutils.CreateGraphQLCreateResponse("Event", "test-event-doc-id")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+
+	event := &types.Event{
+		ContractAddress:  "0xcontract",
+		EventName:        "Transfer",
+		Parameters:       "0xeventdata",
+		TransactionHash:  "0xtxhash",
+		BlockHash:        "0xblockhash",
+		BlockNumber:      "12345",
+		TransactionIndex: "0",
+		LogIndex:         "0",
+	}
+
+	logID := "test-log-id"
+
+	docID := handler.CreateEvent(context.Background(), event, logID, logger)
+
+	if docID != "test-event-doc-id" {
+		t.Errorf("Expected docID 'test-event-doc-id', got '%s'", docID)
 	}
 }
 
@@ -609,60 +413,82 @@ func TestCreateEvent_InvalidBlockNumber(t *testing.T) {
 	}
 }
 
-func TestUpdateEventRelationships_InvalidJSON(t *testing.T) {
+func TestUpdateTransactionRelationships_MockServerSuccess(t *testing.T) {
+	response := testutils.CreateGraphQLUpdateResponse("Transaction", "updated-tx-doc-id")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+
+	blockID := "test-block-id"
+	txHash := "0xtxhash"
+
+	docID := handler.UpdateTransactionRelationships(context.Background(), blockID, txHash, logger)
+
+	if docID != "updated-tx-doc-id" {
+		t.Errorf("Expected docID 'updated-tx-doc-id', got '%s'", docID)
+	}
+}
+
+func TestUpdateTransactionRelationships_InvalidJSON(t *testing.T) {
 	response := "not a json"
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	logger, buffer := newTestLogger()
-	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	logger := zap.NewNop().Sugar()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
 	if result != "" {
-		t.Error("Expected empty string for invalid JSON")
-	}
-	if !strings.Contains(buffer.String(), "failed to decode response") {
-		t.Errorf("Expected log to contain decode error, got: %s", buffer.String())
+		t.Errorf("Expected empty string for invalid JSON, got '%s'", result)
 	}
 }
 
-func TestUpdateEventRelationships_MissingField(t *testing.T) {
+func TestUpdateTransactionRelationships_MissingField(t *testing.T) {
 	response := `{"data": {}}`
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	logger, buffer := newTestLogger()
-	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	logger := zap.NewNop().Sugar()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
 	if result != "" {
-		t.Error("Expected empty string for missing field")
-	}
-	if !strings.Contains(buffer.String(), "update_Event field not found in response") {
-		t.Errorf("Expected log to mention missing field, got: %s", buffer.String())
+		t.Errorf("Expected empty string for missing field, got '%s'", result)
 	}
 }
 
-func TestUpdateEventRelationships_EmptyField(t *testing.T) {
-	response := `{"data": {"update_Event": []}}`
+func TestUpdateTransactionRelationships_EmptyField(t *testing.T) {
+	response := `{"data": {"update_Transaction": []}}`
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	logger, buffer := newTestLogger()
-	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	logger := zap.NewNop().Sugar()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
 	if result != "" {
-		t.Error("Expected empty string for empty field")
-	}
-	if !strings.Contains(buffer.String(), "no document ID returned for update_Event") {
-		t.Errorf("Expected log to mention no document ID, got: %s", buffer.String())
+		t.Errorf("Expected empty string for empty field, got '%s'", result)
 	}
 }
 
-func TestUpdateEventRelationships_Success(t *testing.T) {
-	response := `{"data": {"update_Event": [{"_docID": "event-doc-id"}]}}`
+func TestUpdateTransactionRelationships_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
+	if result != "" {
+		t.Error("Expected empty string for nil response")
+	}
+	if !strings.Contains(buffer.String(), "failed to update transaction relationships") {
+		t.Errorf("Expected log to mention failed to update transaction relationships, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateLogRelationships_MockServerSuccess(t *testing.T) {
+	response := `{"data": {"update_Log": [{"_docID": "log-doc-id"}]}}`
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
 	logger, _ := newTestLogger()
-	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
-	if result != "event-doc-id" {
-		t.Errorf("Expected 'event-doc-id', got '%s'", result)
+	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
+	if result != "log-doc-id" {
+		t.Errorf("Expected 'log-doc-id', got '%s'", result)
 	}
 }
 
@@ -711,15 +537,74 @@ func TestUpdateLogRelationships_EmptyField(t *testing.T) {
 	}
 }
 
-func TestUpdateLogRelationships_Success(t *testing.T) {
-	response := `{"data": {"update_Log": [{"_docID": "log-doc-id"}]}}`
+func TestUpdateLogRelationships_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for nil response")
+	}
+	if !strings.Contains(buffer.String(), "log relationship update failure") {
+		t.Errorf("Expected log to mention relationship update failure, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateEventRelationships_MockServerSuccess(t *testing.T) {
+	response := `{"data": {"update_Event": [{"_docID": "event-doc-id"}]}}`
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
 	logger, _ := newTestLogger()
-	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
-	if result != "log-doc-id" {
-		t.Errorf("Expected 'log-doc-id', got '%s'", result)
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "event-doc-id" {
+		t.Errorf("Expected 'event-doc-id', got '%s'", result)
+	}
+}
+
+func TestUpdateEventRelationships_InvalidJSON(t *testing.T) {
+	response := "not a json"
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for invalid JSON")
+	}
+	if !strings.Contains(buffer.String(), "failed to decode response") {
+		t.Errorf("Expected log to contain decode error, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateEventRelationships_MissingField(t *testing.T) {
+	response := `{"data": {}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for missing field")
+	}
+	if !strings.Contains(buffer.String(), "update_Event field not found in response") {
+		t.Errorf("Expected log to mention missing field, got: %s", buffer.String())
+	}
+}
+
+func TestUpdateEventRelationships_EmptyField(t *testing.T) {
+	response := `{"data": {"update_Event": []}}`
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger, buffer := newTestLogger()
+	result := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex", logger)
+	if result != "" {
+		t.Error("Expected empty string for empty field")
+	}
+	if !strings.Contains(buffer.String(), "no document ID returned for update_Event") {
+		t.Errorf("Expected log to mention no document ID, got: %s", buffer.String())
 	}
 }
 
@@ -737,45 +622,64 @@ func TestUpdateEventRelationships_NilResponse(t *testing.T) {
 	}
 }
 
-func TestUpdateLogRelationships_NilResponse(t *testing.T) {
-	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
-	server.Close()
-
-	logger, buffer := newTestLogger()
-	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex", logger)
-	if result != "" {
-		t.Error("Expected empty string for nil response")
+func TestPostToCollection_Success(t *testing.T) {
+	config := testutils.MockServerConfig{
+		ResponseBody: testutils.CreateGraphQLCreateResponse("TestCollection", "test-doc-id"),
+		StatusCode:   http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		ValidateRequest: func(r *http.Request) error {
+			if r.Method != "POST" {
+				return fmt.Errorf("Expected POST request, got %s", r.Method)
+			}
+			contentType := r.Header.Get("Content-Type")
+			if contentType != "application/json" {
+				return fmt.Errorf("Expected Content-Type application/json, got %s", contentType)
+			}
+			return nil
+		},
 	}
-	if !strings.Contains(buffer.String(), "log relationship update failure") {
-		t.Errorf("Expected log to mention relationship update failure, got: %s", buffer.String())
+	server, handler := createBlockHandlerWithMocksConfig(config)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+
+	data := map[string]interface{}{
+		"string":      "value1",
+		"number":      123,
+		"bool":        true,
+		"stringArray": []string{"dog", "cat", "bearded dragon"},
+		"somethingElse": map[string]interface{}{
+			"foo": "bar",
+			"baz": 42,
+		},
+	}
+	docID := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
+
+	if docID != "test-doc-id" {
+		t.Errorf("Expected docID 'test-doc-id', got '%s'", docID)
 	}
 }
 
-func TestUpdateTransactionRelationships_NilResponse(t *testing.T) {
-	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
-	server.Close()
+func TestPostToCollection_ServerError(t *testing.T) {
+	server := testutils.CreateErrorServer(http.StatusInternalServerError, "Internal Server Error")
+	defer server.Close()
 
-	logger, buffer := newTestLogger()
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash", logger)
-	if result != "" {
-		t.Error("Expected empty string for nil response")
+	handler := &BlockHandler{
+		defraURL: server.URL,
+		client:   &http.Client{},
 	}
-	if !strings.Contains(buffer.String(), "failed to update transaction relationships") {
-		t.Errorf("Expected log to mention failed to update transaction relationships, got: %s", buffer.String())
-	}
-}
 
-func TestGetHighestBlockNumber_NilResponse(t *testing.T) {
-	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
-	server.Close() // Simulate network error, SendToGraphql returns nil
+	logger := zap.NewNop().Sugar()
 
-	logger, buffer := newTestLogger()
-	result := handler.GetHighestBlockNumber(context.Background(), logger)
-	if result != 0 {
-		t.Errorf("Expected 0 for nil response, got %d", result)
+	data := map[string]interface{}{
+		"field1": "value1",
 	}
-	if !strings.Contains(buffer.String(), "failed to query block numbers error") {
-		t.Errorf("Expected log to mention failed to query block numbers error, got: %s", buffer.String())
+	docID := handler.PostToCollection(context.Background(), "TestCollection", data, logger)
+
+	if docID != "" {
+		t.Errorf("Expected empty docID on error, got '%s'", docID)
 	}
 }
 
@@ -793,5 +697,101 @@ func TestPostToCollection_NilResponse(t *testing.T) {
 	}
 	if !strings.Contains(buffer.String(), "Received nil response from GraphQL") {
 		t.Errorf("Expected log to mention nil response from GraphQL, got: %s", buffer.String())
+	}
+}
+
+func TestSendToGraphql_Success(t *testing.T) {
+	expectedQuery := "query { test }"
+	var receivedQuery string
+
+	config := testutils.MockServerConfig{
+		ResponseBody: `{"data": {"test": "result"}}`,
+		StatusCode:   http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		ValidateRequest: func(r *http.Request) error {
+			body := make([]byte, r.ContentLength)
+			r.Body.Read(body)
+			receivedQuery = string(body)
+			return nil
+		},
+	}
+	server, handler := createBlockHandlerWithMocksConfig(config)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+
+	request := types.Request{
+		Query: expectedQuery,
+	}
+
+	result := handler.SendToGraphql(context.Background(), request, logger)
+
+	if result == nil {
+		t.Fatal("Result should not be nil")
+	}
+
+	if !strings.Contains(receivedQuery, expectedQuery) {
+		t.Errorf("Request body should contain query '%s', got '%s'", expectedQuery, receivedQuery)
+	}
+}
+
+func TestSendToGraphql_NetworkError(t *testing.T) {
+	// Create a server and close it before making the request
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close()
+
+	logger := zap.NewNop().Sugar()
+	request := types.Request{Query: "query { test }", Type: "POST"}
+	result := handler.SendToGraphql(context.Background(), request, logger)
+	if result != nil && string(result) != "" {
+		t.Errorf("Expected nil or empty result for network error, got '%s'", string(result))
+	}
+}
+
+func TestGetHighestBlockNumber_MockServer(t *testing.T) {
+	response := testutils.CreateGraphQLQueryResponse("Block", `[
+		{
+			"number": 12345
+		}
+	]`)
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+
+	blockNumber := handler.GetHighestBlockNumber(context.Background(), logger)
+
+	if blockNumber != 12345 {
+		t.Errorf("Expected block number 12345, got %d", blockNumber)
+	}
+}
+
+func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
+	response := testutils.CreateGraphQLQueryResponse("Block", "[]")
+	server, handler := createBlockHandlerWithMocks(response)
+	defer server.Close()
+
+	logger := zap.NewNop().Sugar()
+
+	blockNumber := handler.GetHighestBlockNumber(context.Background(), logger)
+
+	if blockNumber != 0 {
+		t.Errorf("Expected block number 0 for empty response, got %d", blockNumber)
+	}
+}
+
+func TestGetHighestBlockNumber_NilResponse(t *testing.T) {
+	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
+	server.Close() // Simulate network error, SendToGraphql returns nil
+
+	logger, buffer := newTestLogger()
+	result := handler.GetHighestBlockNumber(context.Background(), logger)
+	if result != 0 {
+		t.Errorf("Expected 0 for nil response, got %d", result)
+	}
+	if !strings.Contains(buffer.String(), "failed to query block numbers error") {
+		t.Errorf("Expected log to mention failed to query block numbers error, got: %s", buffer.String())
 	}
 }
