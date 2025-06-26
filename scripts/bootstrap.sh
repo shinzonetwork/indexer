@@ -13,8 +13,10 @@ if [[ -z "$DEFRA_PATH" ]]; then
 fi
 
 DEFRA_ROOT="$(cd "$DEFRA_PATH" && pwd)"
-DEFRA_LOG_PATH="defradb_logs.txt"
-BLOCK_POSTER_LOG_PATH="blockposter_logs.txt"
+DEFRA_LOG_PATH="logs/defradb_logs.txt"
+BLOCK_POSTER_LOG_PATH="logs/blockposter_logs.txt"
+
+mkdir -p logs
 
 # Build and run DefraDB
 echo "===> Building DefraDB from $DEFRA_ROOT"

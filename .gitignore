@@ -36,8 +36,6 @@ bin/*
 
 todo.txt
 
-logs/logfile
-
 notes/
 
 # Go test coverage viewer
@@ -47,5 +45,4 @@ coverage.html
 .history/
 
 # Logs
-blockposter_logs.txt
-defradb_logs.txt
+logs/
