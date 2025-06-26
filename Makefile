@@ -2,9 +2,6 @@
 
 DEFRA_PATH ?=
 
-DEFRA_ROOT := $(abspath $(DEFRA_PATH))
-ROOTDIR := $(abspath .defra)
-
 deps:
 	go mod download
 
