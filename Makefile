@@ -1,4 +1,9 @@
-.PHONY: deps env build start clean defradb
+.PHONY: deps env build start clean defradb gitpush test testrpc coverage bootstrap playground stop
+
+DEFRA_PATH ?=
+
+DEFRA_ROOT := $(abspath $(DEFRA_PATH))
+ROOTDIR := $(abspath .defra)
 
 deps:
 	go mod download
@@ -32,3 +37,23 @@ coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	open coverage.html
 	rm coverage.out
+
+bootstrap:
+	@if [ -z "$(DEFRA_PATH)" ]; then \
+		echo "ERROR: You must pass DEFRA_PATH. Usage:"; \
+		echo "  make bootstrap DEFRA_PATH=../path/to/defradb"; \
+		exit 1; \
+	fi
+	@scripts/bootstrap.sh "$(DEFRA_PATH)" "$(PLAYGROUND)"
+
+playground:
+	@if [ -z "$(DEFRA_PATH)" ]; then \
+		echo "ERROR: You must pass DEFRA_PATH. Usage:"; \
+		echo "  make playground DEFRA_PATH=../path/to/defradb"; \
+		exit 1; \
+	fi
+	@$(MAKE) bootstrap PLAYGROUND=1 DEFRA_PATH="$(DEFRA_PATH)"
+
+stop:
+	@echo "===> Stopping defradb if running..."
+	@pkill -f "defradb start" || echo "defradb not running"

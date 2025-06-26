@@ -45,3 +45,7 @@ coverage.html
 
 # VSCode
 .history/
+
+# Logs
+blockposter_logs.txt
+defradb_logs.txt
