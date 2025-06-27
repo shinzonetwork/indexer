@@ -55,9 +55,13 @@ if [[ "$PLAYGROUND" == "1" ]]; then
   fi
 fi
 
-# When the process is killed (via Control + C or other means), this trap statement will execute, shutting down the DefraDB and block_poster instances
+# Create an empty file to indicate that services are ready - this is used to signal to other scripts that rely on the services that they are ready
+echo "===> Ready"
+touch "$ROOTDIR/ready"
+
+# When the process is killed (via Control + C or other means), this trap statement will execute, shutting down the DefraDB and block_poster instances and deleting the ready file
 trap 'echo "Stopping defradb (PID $DEFRA_PID)..."; kill $DEFRA_PID 2>/dev/null || true; rm -f "$ROOTDIR/defradb.pid"; \
-      echo "Stopping block_poster (PID $POSTER_PID)..."; kill $POSTER_PID 2>/dev/null || true; rm -f "$ROOTDIR/block_poster.pid"; exit 0;' INT TERM
+      echo "Stopping block_poster (PID $POSTER_PID)..."; kill $POSTER_PID 2>/dev/null || true; rm -f "$ROOTDIR/block_poster.pid"; rm -f "$ROOTDIR/ready"; exit 0;' INT TERM
 
 wait $DEFRA_PID $POSTER_PID
 
