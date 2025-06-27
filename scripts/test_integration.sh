@@ -52,4 +52,8 @@ for i in {1..30}; do
 done
 
 # Run integration tests
-GO111MODULE=on go test -tags=integration ./integration/... 
+GO111MODULE=on go test -tags=integration ./integration/... > integration_test_output.txt 2>&1
+echo -e "\n\n===> Integration test output:"
+cat integration_test_output.txt
+rm integration_test_output.txt
+echo -e "\n\n===> Starting cleanup..."
