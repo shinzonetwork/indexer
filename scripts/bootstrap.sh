@@ -55,9 +55,33 @@ if [[ "$PLAYGROUND" == "1" ]]; then
   fi
 fi
 
-# When the process is killed (via Control + C or other means), this trap statement will execute, shutting down the DefraDB and block_poster instances
-trap 'echo "Stopping defradb (PID $DEFRA_PID)..."; kill $DEFRA_PID 2>/dev/null || true; rm -f "$ROOTDIR/defradb.pid"; \
-      echo "Stopping block_poster (PID $POSTER_PID)..."; kill $POSTER_PID 2>/dev/null || true; rm -f "$ROOTDIR/block_poster.pid"; exit 0;' INT TERM
+# Create an empty file to indicate that services are ready - this is used to signal to other scripts that rely on the services that they are ready
+echo "===> Ready"
+touch "$ROOTDIR/ready"
 
-wait $DEFRA_PID $POSTER_PID
+# Define cleanup function for robust process cleanup
+cleanup() {
+  DEFRA_ROOTDIR="$(pwd)/.defra"
+  echo "Stopping defradb processes using $DEFRA_ROOTDIR..."
+  ps aux | grep "[d]efradb start --rootdir " | grep "$DEFRA_ROOTDIR" | awk '{print $2}' | xargs -r kill -9 2>/dev/null || true
+  rm -f "$DEFRA_ROOTDIR/defradb.pid"
+  echo "Stopping block_poster processes..."
+  ps aux | grep "[b]lock_poster" | awk '{print $2}' | xargs -r kill -9 2>/dev/null || true
+  rm -f "$DEFRA_ROOTDIR/block_poster.pid"
+  rm -f "$DEFRA_ROOTDIR/ready"
+  exit 0
+}
+trap cleanup INT TERM
 
+# Check if processes are running
+if ! kill -0 $DEFRA_PID 2>/dev/null; then
+  echo "ERROR: defradb failed to start (PID $DEFRA_PID not running)" >&2
+  exit 1
+fi
+if ! kill -0 $POSTER_PID 2>/dev/null; then
+  echo "ERROR: block_poster failed to start (PID $POSTER_PID not running)" >&2
+  exit 1
+fi
+
+# Wait forever until killed, so trap always runs
+while true; do sleep 1; done
