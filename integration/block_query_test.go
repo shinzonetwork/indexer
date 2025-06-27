@@ -4,11 +4,25 @@
 package integration
 
 import (
+	"path/filepath"
 	"testing"
 )
 
+const queryFile = "queries/blocks.graphql"
+
+var queryPath string
+
+func init() {
+	// Initialize queryPath once for all tests
+	queryPath = filepath.Join(getProjectRoot(nil), queryFile)
+}
+
+// Helper to get the latest block number
 func getLatestBlockNumber(t *testing.T) int {
-	query := `query { Block(order: {number: DESC}, limit: 1) { number } }`
+	query, err := loadGraphQLQuery(queryPath, "GetHighestBlockNumber")
+	if err != nil {
+		t.Fatalf("Failed to load query: %v", err)
+	}
 	result := postGraphQLQuery(t, query, nil)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
 	if !ok || len(blockList) == 0 {
@@ -30,7 +44,10 @@ func TestGetHighestBlockNumber(t *testing.T) {
 }
 
 func TestGetLatestBlocks(t *testing.T) {
-	query := `query { Block(order: {number: DESC}, limit: 10) { hash number parentHash difficulty gasUsed gasLimit nonce miner size stateRoot transactionsRoot receiptsRoot extraData } }`
+	query, err := loadGraphQLQuery(queryPath, "GetLatestBlocks")
+	if err != nil {
+		t.Fatalf("Failed to load query: %v", err)
+	}
 	result := postGraphQLQuery(t, query, nil)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
 	if !ok {
@@ -52,9 +69,11 @@ func TestGetLatestBlocks(t *testing.T) {
 
 func TestGetBlockWithTransactions(t *testing.T) {
 	blockNumber := getLatestBlockNumber(t)
-
-	query := `query($blockNumber: Int!) { Block(filter: {number: {_eq: $blockNumber}}) { hash number parentHash difficulty gasUsed gasLimit nonce miner size stateRoot transactionsRoot receiptsRoot extraData transactions { hash blockHash blockNumber from to value gasPrice inputData nonce transactionIndex logs { address topics data blockNumber transactionHash transactionIndex blockHash logIndex removed } } } }`
-	variables := map[string]interface{}{ "blockNumber": blockNumber }
+	query, err := loadGraphQLQuery(queryPath, "GetBlockWithTransactions")
+	if err != nil {
+		t.Fatalf("Failed to load query: %v", err)
+	}
+	variables := map[string]interface{}{"blockNumber": blockNumber}
 	result := postGraphQLQuery(t, query, variables)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
 	if !ok || len(blockList) == 0 {

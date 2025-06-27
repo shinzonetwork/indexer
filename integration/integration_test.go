@@ -6,8 +6,12 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -52,4 +56,45 @@ func postGraphQLQuery(t *testing.T, query string, variables map[string]interface
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 	return result
+}
+
+// Helper to find the project root by looking for go.mod
+func getProjectRoot(t *testing.T) string {
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("Could not find project root (go.mod)")
+		}
+		dir = parent
+	}
+}
+
+// Helper to extract a named query from a .graphql file
+func loadGraphQLQuery(filename, queryName string) (string, error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+	content := string(data)
+	start := strings.Index(content, "query "+queryName)
+	if start == -1 {
+		return "", fmt.Errorf("query %s not found", queryName)
+	}
+	// Find the next "query " after start, or end of file
+	next := strings.Index(content[start+1:], "query ")
+	var query string
+	if next == -1 {
+		query = content[start:]
+	} else {
+		query = content[start : start+next+1]
+	}
+	query = strings.TrimSpace(query)
+	return query, nil
 }
