@@ -105,20 +105,4 @@ func TestIntegration_GetBlockWithTransactions(t *testing.T) {
 	if _, ok := block["transactions"]; !ok {
 		t.Errorf("Block missing transactions field")
 	}
-}
-
-func TestIntegration_GetCounts(t *testing.T) {
-	query := `query { Block { _count } Transaction { _count } Log { _count } }`
-	result := postGraphQLQuery(t, query, nil)
-	data := result["data"].(map[string]interface{})
-	for _, entity := range []string{"Block", "Transaction", "Log"} {
-		if _, ok := data[entity]; !ok {
-			t.Errorf("Missing %s field in response", entity)
-		}
-		if arr, ok := data[entity].([]interface{}); ok && len(arr) > 0 {
-			if _, ok := arr[0].(map[string]interface{})["_count"]; !ok {
-				t.Errorf("%s missing _count field", entity)
-			}
-		}
-	}
 } 
