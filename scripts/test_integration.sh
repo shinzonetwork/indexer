@@ -16,6 +16,12 @@ if [[ -z "$DEFRA_PATH_ARG" ]]; then
   shift
 fi
 
+# Remove .defra/ready if it exists
+READY_FILE=".defra/ready"
+if [ -f "$READY_FILE" ]; then
+  rm -f "$READY_FILE"
+fi
+
 # Start services in the background
 ./scripts/bootstrap.sh "$DEFRA_PATH_ARG" "$@" &
 BOOTSTRAP_PID=$!
@@ -29,7 +35,6 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Wait for ready file from bootstrap.sh
-READY_FILE=".defra/ready"
 echo "===> Waiting for $READY_FILE to be created by bootstrap.sh..."
 for i in {1..30}; do
   if [ -f "$READY_FILE" ]; then
