@@ -10,20 +10,17 @@ import (
 
 const queryFile = "queries/blocks.graphql"
 
-var queryPath string
+var blockQueryPath string
 
 func init() {
-	// Initialize queryPath once for all tests
-	queryPath = filepath.Join(getProjectRoot(nil), queryFile)
+	// Initialize blockQueryPath
+	// once for all tests
+	blockQueryPath = filepath.Join(getProjectRoot(nil), queryFile)
 }
 
 // Helper to get the latest block number
 func getLatestBlockNumber(t *testing.T) int {
-	query, err := loadGraphQLQuery(queryPath, "GetHighestBlockNumber")
-	if err != nil {
-		t.Fatalf("Failed to load query: %v", err)
-	}
-	result := postGraphQLQuery(t, query, nil)
+	result := MakeQuery(t, blockQueryPath, "GetHighestBlockNumber", nil)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
 	if !ok || len(blockList) == 0 {
 		t.Fatalf("No blocks returned: %v", result)
@@ -44,11 +41,7 @@ func TestGetHighestBlockNumber(t *testing.T) {
 }
 
 func TestGetLatestBlocks(t *testing.T) {
-	query, err := loadGraphQLQuery(queryPath, "GetLatestBlocks")
-	if err != nil {
-		t.Fatalf("Failed to load query: %v", err)
-	}
-	result := postGraphQLQuery(t, query, nil)
+	result := MakeQuery(t, blockQueryPath, "GetLatestBlocks", nil)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
 	if !ok {
 		t.Fatalf("No Block field or wrong type in response: %v", result)
@@ -69,12 +62,8 @@ func TestGetLatestBlocks(t *testing.T) {
 
 func TestGetBlockWithTransactions(t *testing.T) {
 	blockNumber := getLatestBlockNumber(t)
-	query, err := loadGraphQLQuery(queryPath, "GetBlockWithTransactions")
-	if err != nil {
-		t.Fatalf("Failed to load query: %v", err)
-	}
 	variables := map[string]interface{}{"blockNumber": blockNumber}
-	result := postGraphQLQuery(t, query, variables)
+	result := MakeQuery(t, blockQueryPath, "GetBlockWithTransactions", variables)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
 	if !ok || len(blockList) == 0 {
 		t.Fatalf("No block with number %v found; cannot test transactions.", blockNumber)
