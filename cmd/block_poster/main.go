@@ -67,15 +67,30 @@ func main() {
 
 		// Process transactions
 		for _, tx := range transactions {
-			// Note: Transaction receipts would need to be fetched separately if needed
-			// For now, we'll skip receipt processing to get the basic indexing working
-
-			// Create transaction in DefraDB
+			// Create transaction in DefraDB (includes block relationship)
 			txDocId := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId, sugar)
 			sugar.Info("Created transaction with DocID: ", txDocId)
 
-			// Update transaction relationships
-			blockHandler.UpdateTransactionRelationships(context.Background(), blockDocId, tx.Hash, sugar)
+			// Fetch transaction receipt to get logs and events
+			receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
+			if err != nil {
+				sugar.Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
+				continue
+			}
+
+			// Process logs from the receipt
+			for _, log := range receipt.Logs {
+				// Create log in DefraDB (includes block and transaction relationships)
+				logDocId := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId, sugar)
+				sugar.Info("Created log with DocID: ", logDocId)
+
+				// Process events from the log (if any)
+				for _, event := range log.Events {
+					// Create event in DefraDB (includes log relationship)
+					eventDocId := blockHandler.CreateEvent(context.Background(), &event, logDocId, sugar)
+					sugar.Info("Created event with DocID: ", eventDocId)
+				}
+			}
 		}
 
 		sugar.Info("Successfully processed block: ", blockNum)

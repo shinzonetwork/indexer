@@ -115,6 +115,85 @@ func (c *GRPCEthereumClient) GetNetworkID(ctx context.Context) (*big.Int, error)
 	return c.httpClient.NetworkID(ctx)
 }
 
+// GetTransactionReceipt fetches a transaction receipt by hash
+func (c *GRPCEthereumClient) GetTransactionReceipt(ctx context.Context, txHash string) (*types.TransactionReceipt, error) {
+	if c.httpClient == nil {
+		return nil, fmt.Errorf("no HTTP client available")
+	}
+
+	hash := common.HexToHash(txHash)
+	receipt, err := c.httpClient.TransactionReceipt(ctx, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
+	}
+
+	return c.convertGethReceipt(receipt), nil
+}
+
+// convertGethReceipt converts go-ethereum receipt to our custom receipt type
+func (c *GRPCEthereumClient) convertGethReceipt(receipt *ethtypes.Receipt) *types.TransactionReceipt {
+	if receipt == nil {
+		return nil
+	}
+
+	// Convert logs
+	logs := make([]types.Log, len(receipt.Logs))
+	for i, log := range receipt.Logs {
+		logs[i] = c.convertGethLog(log)
+	}
+
+	return &types.TransactionReceipt{
+		TransactionHash:   receipt.TxHash.Hex(),
+		TransactionIndex:  fmt.Sprintf("%d", receipt.TransactionIndex),
+		BlockHash:         receipt.BlockHash.Hex(),
+		BlockNumber:       fmt.Sprintf("%d", receipt.BlockNumber.Uint64()),
+		From:              "", // Will be populated from transaction
+		To:                "", // Will be populated from transaction
+		CumulativeGasUsed: fmt.Sprintf("%d", receipt.CumulativeGasUsed),
+		GasUsed:           fmt.Sprintf("%d", receipt.GasUsed),
+		ContractAddress:   getContractAddress(receipt),
+		Logs:              logs,
+		Status:            getReceiptStatus(receipt),
+	}
+}
+
+// convertGethLog converts go-ethereum log to our custom log type
+func (c *GRPCEthereumClient) convertGethLog(log *ethtypes.Log) types.Log {
+	// Convert topics
+	topics := make([]string, len(log.Topics))
+	for i, topic := range log.Topics {
+		topics[i] = topic.Hex()
+	}
+
+	return types.Log{
+		Address:          log.Address.Hex(),
+		Topics:           topics,
+		Data:             common.Bytes2Hex(log.Data),
+		BlockNumber:      fmt.Sprintf("%d", log.BlockNumber),
+		TransactionHash:  log.TxHash.Hex(),
+		TransactionIndex: fmt.Sprintf("%d", log.TxIndex),
+		BlockHash:        log.BlockHash.Hex(),
+		LogIndex:         fmt.Sprintf("%d", log.Index),
+		Removed:          log.Removed,
+		Events:           []types.Event{}, // Will be populated by event decoder
+	}
+}
+
+// Helper functions for receipt conversion
+func getContractAddress(receipt *ethtypes.Receipt) string {
+	if receipt.ContractAddress == (common.Address{}) {
+		return ""
+	}
+	return receipt.ContractAddress.Hex()
+}
+
+func getReceiptStatus(receipt *ethtypes.Receipt) string {
+	if receipt.Status == ethtypes.ReceiptStatusSuccessful {
+		return "1"
+	}
+	return "0"
+}
+
 // convertGethBlock converts go-ethereum Block to our custom Block type
 func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Block {
 	if gethBlock == nil {
@@ -135,6 +214,12 @@ func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.
 		transactions = append(transactions, localTx)
 	}
 
+	// Convert uncles
+	uncles := make([]string, len(gethBlock.Uncles()))
+	for i, uncle := range gethBlock.Uncles() {
+		uncles[i] = uncle.Hash().Hex()
+	}
+
 	// Convert the block
 	return &types.Block{
 		Hash:             gethBlock.Hash().Hex(),
@@ -142,16 +227,22 @@ func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.
 		Timestamp:        fmt.Sprintf("%d", gethBlock.Time()),
 		ParentHash:       gethBlock.ParentHash().Hex(),
 		Difficulty:       gethBlock.Difficulty().String(),
+		TotalDifficulty:  "", // Will be populated separately if needed
 		GasUsed:          fmt.Sprintf("%d", gethBlock.GasUsed()),
 		GasLimit:         fmt.Sprintf("%d", gethBlock.GasLimit()),
+		BaseFeePerGas:    getBaseFeePerGas(gethBlock),
 		Nonce:            fmt.Sprintf("%d", gethBlock.Nonce()),
 		Miner:            gethBlock.Coinbase().Hex(),
+		Coinbase:         gethBlock.Coinbase().Hex(),
 		Size:             fmt.Sprintf("%d", gethBlock.Size()),
 		StateRoot:        gethBlock.Root().Hex(),
 		Sha3Uncles:       gethBlock.UncleHash().Hex(),
 		TransactionsRoot: gethBlock.TxHash().Hex(),
 		ReceiptsRoot:     gethBlock.ReceiptHash().Hex(),
+		LogsBloom:        common.Bytes2Hex(gethBlock.Bloom().Bytes()),
 		ExtraData:        common.Bytes2Hex(gethBlock.Extra()),
+		MixHash:          gethBlock.MixDigest().Hex(),
+		Uncles:           uncles,
 		Transactions:     transactions,
 	}
 }
@@ -177,19 +268,45 @@ func (c *GRPCEthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBl
 		gasPrice = tx.GasPrice()
 	}
 
+	// Extract signature components
+	v, r, s := tx.RawSignatureValues()
+
+	// Get access list for EIP-2930/EIP-1559 transactions
+	accessList := make([]types.AccessListEntry, 0)
+	if tx.AccessList() != nil {
+		for _, entry := range tx.AccessList() {
+			storageKeys := make([]string, len(entry.StorageKeys))
+			for i, key := range entry.StorageKeys {
+				storageKeys[i] = key.Hex()
+			}
+			accessList = append(accessList, types.AccessListEntry{
+				Address:     entry.Address.Hex(),
+				StorageKeys: storageKeys,
+			})
+		}
+	}
+
 	localTx := types.Transaction{
-		Hash:             tx.Hash().Hex(),
-		BlockHash:        gethBlock.Hash().Hex(),
-		BlockNumber:      fmt.Sprintf("%d", gethBlock.NumberU64()),
-		From:             fromAddr.Hex(),
-		To:               toAddr,
-		Value:            tx.Value().String(),
-		Gas:              fmt.Sprintf("%d", tx.Gas()),
-		GasPrice:         gasPrice.String(),
-		Input:            common.Bytes2Hex(tx.Data()),
-		Nonce:            fmt.Sprintf("%d", tx.Nonce()),
-		TransactionIndex: fmt.Sprintf("%d", index),
-		Status:           true, // Default to true, will be updated from receipt
+		Hash:                 tx.Hash().Hex(),
+		BlockHash:            gethBlock.Hash().Hex(),
+		BlockNumber:          fmt.Sprintf("%d", gethBlock.NumberU64()),
+		From:                 fromAddr.Hex(),
+		To:                   toAddr,
+		Value:                tx.Value().String(),
+		Gas:                  fmt.Sprintf("%d", tx.Gas()),
+		GasPrice:             gasPrice.String(),
+		MaxFeePerGas:         getMaxFeePerGas(tx),
+		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),
+		Input:                common.Bytes2Hex(tx.Data()),
+		Nonce:                fmt.Sprintf("%d", tx.Nonce()),
+		TransactionIndex:     fmt.Sprintf("%d", index),
+		Type:                 fmt.Sprintf("%d", tx.Type()),
+		ChainId:              getChainId(tx),
+		AccessList:           accessList,
+		V:                    v.String(),
+		R:                    r.String(),
+		S:                    s.String(),
+		Status:               true, // Default to true, will be updated from receipt
 	}
 
 	return localTx, nil
@@ -219,6 +336,38 @@ func getToAddress(tx *ethtypes.Transaction) string {
 		return "" // Contract creation
 	}
 	return tx.To().Hex()
+}
+
+// getBaseFeePerGas extracts base fee from EIP-1559 blocks
+func getBaseFeePerGas(block *ethtypes.Block) string {
+	if block.BaseFee() == nil {
+		return "" // Not an EIP-1559 block
+	}
+	return block.BaseFee().String()
+}
+
+// getMaxFeePerGas extracts max fee per gas from EIP-1559 transactions
+func getMaxFeePerGas(tx *ethtypes.Transaction) string {
+	if tx.Type() == ethtypes.DynamicFeeTxType {
+		return tx.GasFeeCap().String()
+	}
+	return ""
+}
+
+// getMaxPriorityFeePerGas extracts max priority fee per gas from EIP-1559 transactions
+func getMaxPriorityFeePerGas(tx *ethtypes.Transaction) string {
+	if tx.Type() == ethtypes.DynamicFeeTxType {
+		return tx.GasTipCap().String()
+	}
+	return ""
+}
+
+// getChainId extracts chain ID from transaction
+func getChainId(tx *ethtypes.Transaction) string {
+	if tx.ChainId() == nil {
+		return ""
+	}
+	return tx.ChainId().String()
 }
 
 // Close closes the connections

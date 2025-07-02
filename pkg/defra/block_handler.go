@@ -52,16 +52,22 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, suga
 		"timestamp":        block.Timestamp,
 		"parentHash":       block.ParentHash,
 		"difficulty":       block.Difficulty,
+		"totalDifficulty":  block.TotalDifficulty,
 		"gasUsed":          block.GasUsed,
 		"gasLimit":         block.GasLimit,
+		"baseFeePerGas":    block.BaseFeePerGas,
 		"nonce":            block.Nonce,
 		"miner":            block.Miner,
+		"coinbase":         block.Coinbase,
 		"size":             block.Size,
 		"stateRoot":        block.StateRoot,
 		"sha3Uncles":       block.Sha3Uncles,
 		"transactionsRoot": block.TransactionsRoot,
 		"receiptsRoot":     block.ReceiptsRoot,
+		"logsBloom":        block.LogsBloom,
 		"extraData":        block.ExtraData,
+		"mixHash":          block.MixHash,
+		"uncles":           block.Uncles,
 	}
 	sugar.Debug("Posting blockdata to collection endpoint: ", blockData)
 	return h.PostToCollection(ctx, "Block", blockData, sugar)
@@ -73,18 +79,36 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		sugar.Fatalf("failed to parse block number: ", err)
 	}
 
+	txInt, err := strconv.ParseInt(tx.TransactionIndex, 0, 64)
+	if err != nil {
+		sugar.Fatalf("failed to parse transaction index: ", err)
+	}
+
 	txData := map[string]interface{}{
-		"hash":             tx.Hash,
-		"blockHash":        tx.BlockHash,
-		"blockNumber":      blockInt,
-		"from":             tx.From,
-		"to":               tx.To,
-		"value":            tx.Value,
-		"gasUsed":          tx.Gas,
-		"gasPrice":         tx.GasPrice,
-		"inputData":        tx.Input,
-		"nonce":            tx.Nonce,
-		"transactionIndex": tx.TransactionIndex,
+		"hash":                 tx.Hash,
+		"blockNumber":          blockInt,
+		"blockHash":            tx.BlockHash,
+		"transactionIndex":     txInt,
+		"from":                 tx.From,
+		"to":                   tx.To,
+		"value":                tx.Value,
+		"gas":                  tx.Gas,
+		"gasPrice":             tx.GasPrice,
+		"maxFeePerGas":         tx.MaxFeePerGas,
+		"maxPriorityFeePerGas": tx.MaxPriorityFeePerGas,
+		"input":                tx.Input,
+		"nonce":                tx.Nonce,
+		"type":                 tx.Type,
+		"chainId":              tx.ChainId,
+		"accessList":           tx.AccessList,
+		"v":                    tx.V,
+		"r":                    tx.R,
+		"s":                    tx.S,
+		"gasUsed":              tx.GasUsed,
+		"cumulativeGasUsed":    tx.CumulativeGasUsed,
+		"effectiveGasPrice":    tx.EffectiveGasPrice,
+		"status":               tx.Status,
+		"block":                block_id, // Include block relationship directly
 	}
 	sugar.Debug("Creating transaction: ", txData)
 	return h.PostToCollection(ctx, "Transaction", txData, sugar)
@@ -142,13 +166,40 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 		}
 	}`, txHash, blockId)}
 
-	docId := h.SendToGraphql(ctx, mutation, sugar)
-	if docId == nil {
+	resp := h.SendToGraphql(ctx, mutation, sugar)
+	if resp == nil {
 		sugar.Errorf("failed to update transaction relationships: ", mutation)
 		return ""
 	}
 
-	return string(docId)
+	// Parse response to extract docID
+	var rawResponse map[string]interface{}
+	if err := json.Unmarshal(resp, &rawResponse); err != nil {
+		sugar.Errorf("failed to decode response: %v", err)
+		return ""
+	}
+
+	// Extract data field
+	data, ok := rawResponse["data"].(map[string]interface{})
+	if !ok {
+		sugar.Error("data field not found in response")
+		return ""
+	}
+
+	// Extract update_Transaction field
+	updateData, ok := data["update_Transaction"].(map[string]interface{})
+	if !ok {
+		sugar.Error("update_Transaction field not found in response")
+		return ""
+	}
+
+	// Extract _docID
+	if docID, ok := updateData["_docID"].(string); ok {
+		return docID
+	}
+
+	sugar.Error("_docID not found in update_Transaction response")
+	return ""
 }
 
 // shinzo stuct
@@ -233,27 +284,52 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		return ""
 	}
 
-	// Parse response
-	var response types.Response
-	if err := json.Unmarshal(resp, &response); err != nil {
+	// Parse response - handle both single object and array formats
+	var rawResponse map[string]interface{}
+	if err := json.Unmarshal(resp, &rawResponse); err != nil {
 		sugar.Errorf("failed to decode response: %v", err)
 		sugar.Debug("Raw response: ", string(resp))
 		return ""
 	}
 
+	// Extract data field
+	data, ok := rawResponse["data"].(map[string]interface{})
+	if !ok {
+		sugar.Error("data field not found in response")
+		sugar.Debug("Response: ", rawResponse)
+		return ""
+	}
+
 	// Get document ID
 	createField := fmt.Sprintf("create_%s", collection)
-	items, ok := response.Data[createField]
+	createData, ok := data[createField]
 	if !ok {
-		sugar.Errorf("create_", collection, " field not found in response")
-		sugar.Debug("Response data: ", response.Data)
+		sugar.Errorf("create_%s field not found in response", collection)
+		sugar.Debug("Response data: ", data)
 		return ""
 	}
-	if len(items) == 0 {
-		sugar.Warnf("no document ID returned for create_", collection)
-		return ""
+
+	// Handle both single object and array responses
+	switch v := createData.(type) {
+	case map[string]interface{}:
+		// Single object response
+		if docID, ok := v["_docID"].(string); ok {
+			return docID
+		}
+	case []interface{}:
+		// Array response
+		if len(v) > 0 {
+			if item, ok := v[0].(map[string]interface{}); ok {
+				if docID, ok := item["_docID"].(string); ok {
+					return docID
+				}
+			}
+		}
 	}
-	return items[0].DocID
+
+	sugar.Errorf("unable to extract _docID from create_%s response", collection)
+	sugar.Debug("Create data: ", createData)
+	return ""
 }
 
 // Graph golang client check in defra
@@ -312,24 +388,62 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context, sugar *zap.Sug
 	resp := h.SendToGraphql(ctx, query, sugar)
 	if resp == nil {
 		sugar.Errorf("failed to query block numbers error: ", resp)
+		return 0
 	}
 
-	var result struct {
-		Data struct {
-			Block []struct {
-				Number int64 `json:"number"`
-			} `json:"Block"`
-		} `json:"data"`
+	// Parse response to handle both string and integer number formats
+	var rawResponse map[string]interface{}
+	if err := json.Unmarshal(resp, &rawResponse); err != nil {
+		sugar.Errorf("failed to decode response: %v", err)
+		return 0
 	}
 
-	if err := json.Unmarshal(resp, &result); err != nil {
-		sugar.Errorf("failed to decode response: ", err)
+	// Extract data field
+	data, ok := rawResponse["data"].(map[string]interface{})
+	if !ok {
+		sugar.Error("data field not found in response")
+		return 0
 	}
 
-	if len(result.Data.Block) == 0 {
+	// Extract Block array
+	blockArray, ok := data["Block"].([]interface{})
+	if !ok {
+		sugar.Error("Block field not found in response")
+		return 0
+	}
+
+	if len(blockArray) == 0 {
 		return 0 // Return 0 if no blocks exist
 	}
 
-	// Return the highest block number + 1
-	return result.Data.Block[0].Number + 1
+	// Extract first block
+	block, ok := blockArray[0].(map[string]interface{})
+	if !ok {
+		sugar.Error("Invalid block format in response")
+		return 0
+	}
+
+	// Extract number field (handle both string and integer)
+	numberValue := block["number"]
+	switch v := numberValue.(type) {
+	case string:
+		// Try hex conversion first if string starts with 0x
+		if strings.HasPrefix(v, "0x") {
+			return h.ConvertHexToInt(v, sugar)
+		}
+		if num, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return num
+		}
+		sugar.Errorf("failed to parse number string: %v", v)
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	default:
+		sugar.Errorf("unexpected number type: %T", numberValue)
+	}
+
+	return 0
 }
