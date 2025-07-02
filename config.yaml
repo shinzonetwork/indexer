@@ -14,7 +14,7 @@ defradb:
     path: "./data"
 
 geth:
-  node_url: "http://localhost:8545"
+  node_url: "https://eth.llamarpc.com"
 
 indexer:
   block_polling_interval: 12.0

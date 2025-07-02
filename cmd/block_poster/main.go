@@ -33,19 +33,20 @@ func main() {
 	// Create DefraDB block handler
 	blockHandler := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
 
-	// Instead of looping over a range, always query the latest block from Geth
+	sugar.Info("Starting indexer - will process latest blocks from Geth")
+
+	// Main indexing loop - always get latest block from Geth
 	for {
-		// Fetch the latest block
+		// Always get the latest block from Geth as source of truth
 		gethBlock, err := client.GetLatestBlock(context.Background())
-		// gethBlock, err := client.Call(&lastBlock)
 		if err != nil {
-			sugar.Error("Failed to get latest block: ", err)
+			sugar.Error("Failed to get latest block from Geth: ", err)
 			time.Sleep(time.Second * 3)
 			continue
 		}
 
 		blockNum := gethBlock.Number
-		sugar.Info("Processing latest block: ", blockNum)
+		sugar.Info("Processing latest block from Geth: ", blockNum)
 
 		// Get network ID for transaction conversion (skip if it fails)
 		networkID, err := client.GetNetworkID(context.Background())
@@ -94,6 +95,8 @@ func main() {
 		}
 
 		sugar.Info("Successfully processed block: ", blockNum)
+		
+		// Short sleep before checking for next latest block
 		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
 	}
 }
