@@ -13,8 +13,6 @@ const queryFile = "queries/blocks.graphql"
 var blockQueryPath string
 
 func init() {
-	// Initialize blockQueryPath
-	// once for all tests
 	blockQueryPath = filepath.Join(getProjectRoot(nil), queryFile)
 }
 
