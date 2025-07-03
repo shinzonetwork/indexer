@@ -63,3 +63,13 @@ cover:
 
 test-all:
 	go test ./...
+
+geth-start:
+	cd $GETH_DIR && geth --http --authrpc.jwtsecret=$HOME/.ethereum/jwt.hex --datadir=$HOME/.ethereum
+
+prysm-start:
+	cd $PRYSM_DIR && ./prysm.sh beacon-chain \
+  --execution-endpoint=http://localhost:8551 \
+  --jwt-secret=$HOME/.ethereum/jwt.hex \
+  --checkpoint-sync-url=https://mainnet.checkpoint-sync.ethpandaops.io \
+  --suggested-fee-recipient=0x8E4902d854e6A7eaF44A98D6f1E600413C99Ce07
