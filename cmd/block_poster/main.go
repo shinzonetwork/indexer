@@ -3,15 +3,19 @@ package main
 import (
 	"context"
 	"log"
-	"time"
 
 	"shinzo/version1/config"
 	"shinzo/version1/pkg/defra"
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/rpc"
 	"shinzo/version1/pkg/types"
+	"shinzo/version1/pkg/utils"
 
 	"math/big"
+)
+
+const (
+	BlocksToIndexAtOnce = 10
 )
 
 func main() {
@@ -33,7 +37,9 @@ func main() {
 	// Create DefraDB block handler
 	blockHandler := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
 
+
 	sugar.Info("Starting indexer - will process latest blocks from Geth")
+
 
 	// Main indexing loop - always get latest block from Geth
 	for {
@@ -44,6 +50,7 @@ func main() {
 			time.Sleep(time.Second * 3)
 			continue
 		}
+
 
 		blockNum := gethBlock.Number
 		sugar.Info("Processing latest block from Geth: ", blockNum)
@@ -61,6 +68,7 @@ func main() {
 
 		// Build the complete block
 		block := buildBlock(gethBlock, transactions)
+
 
 		// Create block in DefraDB
 		blockDocId := blockHandler.CreateBlock(context.Background(), block, sugar)
@@ -92,7 +100,9 @@ func main() {
 					sugar.Info("Created event with DocID: ", eventDocId)
 				}
 			}
+
 		}
+
 
 		sugar.Info("Successfully processed block: ", blockNum)
 		
