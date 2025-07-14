@@ -6,6 +6,9 @@ DEFRA_PATH="$1"
 ROOTDIR="$(pwd)/.defra"
 PLAYGROUND="$2"
 
+# Expand ~ to $HOME if present
+DEFRA_PATH="${DEFRA_PATH/#\~/$HOME}"
+
 if [[ -z "$DEFRA_PATH" ]]; then
   echo "ERROR: You must pass DEFRA_PATH. Usage:"
   echo "  ./scripts/bootstrap.sh /path/to/defradb [PLAYGROUND]"
