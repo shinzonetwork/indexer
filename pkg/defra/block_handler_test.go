@@ -1,18 +1,15 @@
 package defra
 
 import (
-	"context"
-	"net/http"
-	"net/http/httptest"
 	"bytes"
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"shinzo/version1/pkg/testutils"
 	"shinzo/version1/pkg/types"
 	"strings"
 	"testing"
-
 
 	"net/http/httptest"
 
@@ -34,7 +31,6 @@ func createBlockHandlerWithMocksConfig(config testutils.MockServerConfig) (*http
 func createBlockHandlerWithMocks(response string) (*httptest.Server, *BlockHandler) {
 	return createBlockHandlerWithMocksConfig(testutils.DefaultMockServerConfig(response))
 }
-
 
 func TestNewBlockHandler(t *testing.T) {
 	host := "localhost"
@@ -73,7 +69,6 @@ func TestConvertHexToInt(t *testing.T) {
 		{"Block number", "0x1234", 4660},
 		{"All characters, lowercase", "0x1234567890abcdef", 1311768467294899695},
 		{"All characters, uppercase", "0x1234567890ABCDEF", 1311768467294899695},
-
 	}
 
 	for _, tt := range tests {
@@ -85,7 +80,6 @@ func TestConvertHexToInt(t *testing.T) {
 		})
 	}
 }
-
 
 func TestCreateBlock_MockServer(t *testing.T) {
 	// Create a mock DefraDB server
@@ -113,21 +107,21 @@ func TestCreateBlock_MockServer(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 
 	block := &types.Block{
-		Hash:        "0x1234567890abcdef",
-		Number:      "12345",
-		Timestamp:   "1600000000",
-		ParentHash:  "0xabcdef1234567890",
-		Difficulty:  "1000000",
-		GasUsed:     "4000000",
-		GasLimit:    "8000000",
-		Nonce:       "123456789",
-		Miner:       "0xminer",
-		Size:        "1024",
-		StateRoot:   "0xstateroot",
-		Sha3Uncles:  "0xsha3uncles",
+		Hash:         "0x1234567890abcdef",
+		Number:       "12345",
+		Timestamp:    "1600000000",
+		ParentHash:   "0xabcdef1234567890",
+		Difficulty:   "1000000",
+		GasUsed:      "4000000",
+		GasLimit:     "8000000",
+		Nonce:        "123456789",
+		Miner:        "0xminer",
+		Size:         "1024",
+		StateRoot:    "0xstateroot",
+		Sha3Uncles:   "0xsha3uncles",
 		ReceiptsRoot: "0xreceiptsroot",
-		ExtraData:   "extra",
-    }
+		ExtraData:    "extra",
+	}
 
 	docID := handler.CreateBlock(context.Background(), block, logger)
 
@@ -171,7 +165,6 @@ func newTestLogger() (*zap.SugaredLogger, *bytes.Buffer) {
 	logger := zap.New(core)
 	return logger.Sugar(), buf
 }
-
 
 func TestCreateBlock_InvalidBlock(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Block", "test-block-doc-id")
@@ -254,7 +247,6 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-
 	logger := zap.NewNop().Sugar()
 
 	tx := &types.Transaction{
@@ -274,13 +266,10 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 
 	blockID := "test-block-id"
 	docID := handler.CreateTransaction(context.Background(), tx, blockID, logger)
-
 	if docID != "test-tx-doc-id" {
 		t.Errorf("Expected docID 'test-tx-doc-id', got '%s'", docID)
 	}
 }
-
-
 
 func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
 	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
@@ -710,7 +699,6 @@ func TestPostToCollection_ServerError(t *testing.T) {
 		t.Errorf("Expected empty docID on error, got '%s'", docID)
 	}
 }
-
 
 func TestPostToCollection_NilResponse(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)

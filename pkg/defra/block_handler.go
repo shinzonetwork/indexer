@@ -51,7 +51,6 @@ func (h *BlockHandler) ConvertHexToInt(s string, sugar *zap.SugaredLogger) int64
 		return 0
 	}
 
-
 	return blockInt
 }
 
@@ -124,7 +123,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 
 	}
 	sugar.Debug("Creating transaction: ", txData)
-	sugar.Debug("Transaction Input: ", txData["input"])
+	// sugar.Debug("Transaction Input: ", txData["input"])
 	return h.PostToCollection(ctx, "Transaction", txData, sugar)
 }
 
@@ -187,7 +186,6 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 		return ""
 	}
 
-
 	// Parse response to extract docID
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(resp, &rawResponse); err != nil {
@@ -216,8 +214,6 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 
 	sugar.Error("_docID not found in update_Transaction response")
 	return ""
-
-
 
 }
 
@@ -307,7 +303,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	//TODO create access list and link to the transaction.
 	sugar.Debug("DefraDB Response: ", string(resp))
 
-
 	// Parse response - handle both single object and array formats
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(resp, &rawResponse); err != nil {
@@ -338,6 +333,7 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	case map[string]interface{}:
 		// Single object response
 		if docID, ok := v["_docID"].(string); ok {
+			// return good
 			return docID
 		}
 	case []interface{}:
@@ -345,6 +341,7 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		if len(v) > 0 {
 			if item, ok := v[0].(map[string]interface{}); ok {
 				if docID, ok := item["_docID"].(string); ok {
+					// return good
 					return docID
 				}
 			}
@@ -354,7 +351,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	sugar.Errorf("unable to extract _docID from create_%s response", collection)
 	sugar.Debug("Create data: ", createData)
 	return ""
-
 }
 
 // Graph golang client check in defra

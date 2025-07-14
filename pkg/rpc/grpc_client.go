@@ -126,7 +126,7 @@ func (c *GRPCEthereumClient) GetTransactionReceipt(ctx context.Context, txHash s
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
 	}
-	log.Printf("Receipt", receipt)
+	// log.Printf("Receipt", receipt)
 	return c.convertGethReceipt(receipt), nil
 }
 
@@ -147,8 +147,6 @@ func (c *GRPCEthereumClient) convertGethReceipt(receipt *ethtypes.Receipt) *type
 		TransactionIndex:  fmt.Sprintf("%d", receipt.TransactionIndex),
 		BlockHash:         receipt.BlockHash.Hex(),
 		BlockNumber:       fmt.Sprintf("%d", receipt.BlockNumber.Uint64()),
-		From:              "", // Will be populated from transaction
-		To:                "", // Will be populated from transaction
 		CumulativeGasUsed: fmt.Sprintf("%d", receipt.CumulativeGasUsed),
 		GasUsed:           fmt.Sprintf("%d", receipt.GasUsed),
 		ContractAddress:   getContractAddress(receipt),
