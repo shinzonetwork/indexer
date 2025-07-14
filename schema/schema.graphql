@@ -8,9 +8,8 @@ type Block {
     gasUsed: String
     gasLimit: String
     baseFeePerGas: String
-    nonce: String
+    nonce: Int
     miner: String
-    coinbase: String
     size: String
     stateRoot: String
     sha3Uncles: String
@@ -36,9 +35,9 @@ type Transaction {
     gasPrice: String
     maxFeePerGas: String
     maxPriorityFeePerGas: String
-    inputData: String
+    input: String
     nonce: String
-    transactionIndex: String
+    transactionIndex: Int @index
     type: String
     chainId: String
     v: String
@@ -59,8 +58,8 @@ type Log {
     transactionHash: String
     blockHash: String
     blockNumber: Int @index
-    transactionIndex: String
-    logIndex: String
+    transactionIndex: Int
+    logIndex: Int
     removed: String
     # Relationships
     block: Block @index @relation(name: "block_transactions")

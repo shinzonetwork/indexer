@@ -75,7 +75,6 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block, suga
 		"baseFeePerGas":    block.BaseFeePerGas,
 		"nonce":            block.Nonce,
 		"miner":            block.Miner,
-		"coinbase":         block.Coinbase,
 		"size":             block.Size,
 		"stateRoot":        block.StateRoot,
 		"sha3Uncles":       block.Sha3Uncles,
@@ -97,16 +96,11 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		return ""
 	}
 
-	txInt, err := strconv.ParseInt(tx.TransactionIndex, 0, 64)
-	if err != nil {
-		sugar.Fatalf("failed to parse transaction index: ", err)
-	}
-
 	txData := map[string]interface{}{
 		"hash":                 tx.Hash,
 		"blockNumber":          blockInt,
 		"blockHash":            tx.BlockHash,
-		"transactionIndex":     txInt,
+		"transactionIndex":     tx.TransactionIndex,
 		"from":                 tx.From,
 		"to":                   tx.To,
 		"value":                tx.Value,
@@ -114,21 +108,23 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		"gasPrice":             tx.GasPrice,
 		"maxFeePerGas":         tx.MaxFeePerGas,
 		"maxPriorityFeePerGas": tx.MaxPriorityFeePerGas,
-		"input":                tx.Input,
-		"nonce":                tx.Nonce,
+		"input":                string(tx.Input),
+		"nonce":                fmt.Sprintf("%v", tx.Nonce),
 		"type":                 tx.Type,
 		"chainId":              tx.ChainId,
-		"accessList":           tx.AccessList,
-		"v":                    tx.V,
-		"r":                    tx.R,
-		"s":                    tx.S,
-		"gasUsed":              tx.GasUsed,
-		"cumulativeGasUsed":    tx.CumulativeGasUsed,
-		"effectiveGasPrice":    tx.EffectiveGasPrice,
-		"status":               tx.Status,
-		"block":                block_id, // Include block relationship directly
+		// "accessList":           tx.AccessList,
+		"v":                 tx.V,
+		"r":                 tx.R,
+		"s":                 tx.S,
+		"gasUsed":           tx.GasUsed,
+		"cumulativeGasUsed": tx.CumulativeGasUsed,
+		"effectiveGasPrice": tx.EffectiveGasPrice,
+		"status":            tx.Status,
+		"block_id":          block_id, // Include block relationship directly
+
 	}
 	sugar.Debug("Creating transaction: ", txData)
+	sugar.Debug("Transaction Input: ", txData["input"])
 	return h.PostToCollection(ctx, "Transaction", txData, sugar)
 }
 
@@ -308,6 +304,8 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		sugar.Error("Received nil response from GraphQL")
 		return ""
 	}
+	//TODO create access list and link to the transaction.
+	sugar.Debug("DefraDB Response: ", string(resp))
 
 
 	// Parse response - handle both single object and array formats

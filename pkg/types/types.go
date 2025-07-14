@@ -31,9 +31,8 @@ type Block struct {
 	GasUsed          string        `json:"gasUsed"`
 	GasLimit         string        `json:"gasLimit"`
 	BaseFeePerGas    string        `json:"baseFeePerGas,omitempty"`
-	Nonce            string        `json:"nonce"`
+	Nonce            int           `json:"nonce"`
 	Miner            string        `json:"miner"`
-	Coinbase         string        `json:"coinbase"`
 	Size             string        `json:"size"`
 	StateRoot        string        `json:"stateRoot"`
 	Sha3Uncles       string        `json:"sha3Uncles"`
@@ -47,30 +46,30 @@ type Block struct {
 }
 
 type Transaction struct {
-	Hash              string `json:"hash"`
-	BlockHash         string `json:"blockHash"`
-	BlockNumber       string `json:"blockNumber"`
-	From              string `json:"from"`
-	To                string `json:"to"`
-	Value             string `json:"value"`
-	Gas               string `json:"gas"`
-	GasPrice          string `json:"gasPrice"`
-	MaxFeePerGas      string `json:"maxFeePerGas,omitempty"`
-	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas,omitempty"`
-	Input             string `json:"input"`
-	Nonce             string `json:"nonce"`
-	TransactionIndex  string `json:"transactionIndex"`
-	Type              string `json:"type"`
-	ChainId           string `json:"chainId,omitempty"`
-	AccessList        []AccessListEntry `json:"accessList,omitempty"`
-	V                 string `json:"v"`
-	R                 string `json:"r"`
-	S                 string `json:"s"`
-	Status            bool   `json:"status"`
-	GasUsed           string `json:"gasUsed,omitempty"`
-	CumulativeGasUsed string `json:"cumulativeGasUsed,omitempty"`
-	EffectiveGasPrice string `json:"effectiveGasPrice,omitempty"`
-	Logs              []Log  `json:"logs,omitempty"`
+	Hash                 string            `json:"hash"`
+	BlockHash            string            `json:"blockHash"`
+	BlockNumber          string            `json:"blockNumber"`
+	From                 string            `json:"from"`
+	To                   string            `json:"to"`
+	Value                string            `json:"value"`
+	Gas                  string            `json:"gas"`
+	GasPrice             string            `json:"gasPrice"`
+	MaxFeePerGas         string            `json:"maxFeePerGas,omitempty"`
+	MaxPriorityFeePerGas string            `json:"maxPriorityFeePerGas,omitempty"`
+	Input                string            `json:"input"`
+	Nonce                int               `json:"nonce"`
+	TransactionIndex     int               `json:"transactionIndex"`
+	Type                 string            `json:"type"`
+	ChainId              string            `json:"chainId,omitempty"`
+	AccessList           []AccessListEntry `json:"accessList,omitempty"`
+	V                    string            `json:"v"`
+	R                    string            `json:"r"`
+	S                    string            `json:"s"`
+	Status               bool              `json:"status"`
+	GasUsed              string            `json:"gasUsed,omitempty"`
+	CumulativeGasUsed    string            `json:"cumulativeGasUsed,omitempty"`
+	EffectiveGasPrice    string            `json:"effectiveGasPrice,omitempty"`
+	Logs                 []Log             `json:"logs,omitempty"`
 }
 
 type Log struct {
@@ -79,9 +78,9 @@ type Log struct {
 	Data             string   `json:"data"`
 	BlockNumber      string   `json:"blockNumber"`
 	TransactionHash  string   `json:"transactionHash"`
-	TransactionIndex string   `json:"transactionIndex"`
+	TransactionIndex int      `json:"transactionIndex"`
 	BlockHash        string   `json:"blockHash"`
-	LogIndex         string   `json:"logIndex"`
+	LogIndex         int      `json:"logIndex"`
 	Removed          bool     `json:"removed"`
 	Events           []Event  `json:"events,omitempty"`
 }

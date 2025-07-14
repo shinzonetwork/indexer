@@ -14,7 +14,7 @@ defradb:
     path: "./data"
 
 geth:
-  node_url: "https://eth.llamarpc.com"
+  node_url: "https://ethereum-rpc.publicnode.com"
 
 indexer:
   block_polling_interval: 12.0

@@ -126,7 +126,7 @@ func (c *GRPCEthereumClient) GetTransactionReceipt(ctx context.Context, txHash s
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
 	}
-
+	log.Printf("Receipt", receipt)
 	return c.convertGethReceipt(receipt), nil
 }
 
@@ -171,9 +171,9 @@ func (c *GRPCEthereumClient) convertGethLog(log *ethtypes.Log) types.Log {
 		Data:             common.Bytes2Hex(log.Data),
 		BlockNumber:      fmt.Sprintf("%d", log.BlockNumber),
 		TransactionHash:  log.TxHash.Hex(),
-		TransactionIndex: fmt.Sprintf("%d", log.TxIndex),
+		TransactionIndex: int(log.TxIndex),
 		BlockHash:        log.BlockHash.Hex(),
-		LogIndex:         fmt.Sprintf("%d", log.Index),
+		LogIndex:         int(log.Index),
 		Removed:          log.Removed,
 		Events:           []types.Event{}, // Will be populated by event decoder
 	}
@@ -205,6 +205,7 @@ func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.
 
 	for i, tx := range gethBlock.Transactions() {
 		// Skip transaction conversion if it fails (continue with others)
+		log.Printf("Transaction", tx)
 		localTx, err := c.convertTransaction(tx, gethBlock, i)
 		if err != nil {
 			log.Printf("Warning: Failed to convert transaction %s: %v", tx.Hash().Hex(), err)
@@ -231,9 +232,8 @@ func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.
 		GasUsed:          fmt.Sprintf("%d", gethBlock.GasUsed()),
 		GasLimit:         fmt.Sprintf("%d", gethBlock.GasLimit()),
 		BaseFeePerGas:    getBaseFeePerGas(gethBlock),
-		Nonce:            fmt.Sprintf("%d", gethBlock.Nonce()),
+		Nonce:            int(gethBlock.Nonce()),
 		Miner:            gethBlock.Coinbase().Hex(),
-		Coinbase:         gethBlock.Coinbase().Hex(),
 		Size:             fmt.Sprintf("%d", gethBlock.Size()),
 		StateRoot:        gethBlock.Root().Hex(),
 		Sha3Uncles:       gethBlock.UncleHash().Hex(),
@@ -298,8 +298,8 @@ func (c *GRPCEthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBl
 		MaxFeePerGas:         getMaxFeePerGas(tx),
 		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),
 		Input:                common.Bytes2Hex(tx.Data()),
-		Nonce:                fmt.Sprintf("%d", tx.Nonce()),
-		TransactionIndex:     fmt.Sprintf("%d", index),
+		Nonce:                int(tx.Nonce()),
+		TransactionIndex:     index,
 		Type:                 fmt.Sprintf("%d", tx.Type()),
 		ChainId:              getChainId(tx),
 		AccessList:           accessList,

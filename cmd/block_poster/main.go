@@ -105,7 +105,7 @@ func main() {
 
 
 		sugar.Info("Successfully processed block: ", blockNum)
-		
+
 		// Short sleep before checking for next latest block
 		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
 	}
