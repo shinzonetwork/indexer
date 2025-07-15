@@ -173,7 +173,6 @@ func (c *GRPCEthereumClient) convertGethLog(log *ethtypes.Log) types.Log {
 		BlockHash:        log.BlockHash.Hex(),
 		LogIndex:         int(log.Index),
 		Removed:          log.Removed,
-		Events:           []types.Event{}, // Will be populated by event decoder
 	}
 }
 

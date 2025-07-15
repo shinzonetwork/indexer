@@ -49,6 +49,13 @@ type Transaction {
     # Relationships
     block: Block @relation(name: "block_transactions")
     logs: [Log] @relation(name: "transaction_logs")
+    accessList: [AccessListEntry] @relation(name: "transaction_accessList")
+}
+
+type AccessListEntry {
+    address: String
+    storageKeys: [String]
+    transaction: Transaction @relation(name: "transaction_accessList")
 }
 
 type Log {
@@ -64,18 +71,5 @@ type Log {
     # Relationships
     block: Block @index @relation(name: "block_transactions")
     transaction: Transaction @index @relation(name: "transaction_logs")
-    events: [Event] @relation(name: "log_events")
 }
 
-type Event {
-    contractAddress: String
-    eventName: String
-    parameters: String
-    transactionHash: String @index
-    blockHash: String
-    blockNumber: Int @index
-    transactionIndex: String
-    logIndex: String
-    # Relationships
-    log: Log @index @relation(name: "log_events")
-}

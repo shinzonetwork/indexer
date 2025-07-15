@@ -83,6 +83,12 @@ func main() {
 				continue
 			}
 
+			//accessentrylist
+			for _, accessListEntry := range tx.AccessList {
+				ALEDocId := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId, sugar)
+				sugar.Info("Created access list entry with DocID: ", ALEDocId)
+			}
+
 			// Process logs from the receipt
 			for _, log := range receipt.Logs {
 				// Create log in DefraDB (includes block and transaction relationships)
@@ -90,11 +96,11 @@ func main() {
 				sugar.Info("Created log with DocID: ", logDocId)
 
 				// Process events from the log (if any)
-				for _, event := range log.Events {
-					// Create event in DefraDB (includes log relationship)
-					eventDocId := blockHandler.CreateEvent(context.Background(), &event, logDocId, sugar)
-					sugar.Info("Created event with DocID: ", eventDocId)
-				}
+				// for _, event := range log.Events {
+				// 	// Create event in DefraDB (includes log relationship)
+				// 	eventDocId := blockHandler.CreateEvent(context.Background(), &event, logDocId, sugar)
+				// 	sugar.Info("Created event with DocID: ", eventDocId)
+				// }
 			}
 
 		}

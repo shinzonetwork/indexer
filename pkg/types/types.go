@@ -82,9 +82,9 @@ type Log struct {
 	BlockHash        string   `json:"blockHash"`
 	LogIndex         int      `json:"logIndex"`
 	Removed          bool     `json:"removed"`
-	Events           []Event  `json:"events,omitempty"`
 }
 
+// unused
 type Event struct {
 	ContractAddress  string `json:"contractAddress"`
 	EventName        string `json:"eventName"`

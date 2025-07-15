@@ -236,7 +236,6 @@ func ConvertLogWithAutoABI(l *gethtypes.Log) Log {
 		BlockHash:        l.BlockHash.Hex(),
 		LogIndex:         int(l.Index),
 		Removed:          l.Removed,
-		Events:           events,
 	}
 }
 
@@ -253,12 +252,6 @@ func ConvertLogWithABI(l *gethtypes.Log, contractABIs map[string]*abi.ABI) Log {
 		topics[i] = t.Hex()
 	}
 
-	// Extract events if ABI is provided
-	var events []Event
-	if contractABIs != nil {
-		events = ExtractEventsFromLog(l, contractABIs)
-	}
-
 	return Log{
 		Address:          l.Address.Hex(),
 		Topics:           topics,
@@ -269,6 +262,5 @@ func ConvertLogWithABI(l *gethtypes.Log, contractABIs map[string]*abi.ABI) Log {
 		BlockHash:        l.BlockHash.Hex(),
 		LogIndex:         int(l.Index),
 		Removed:          l.Removed,
-		Events:           events,
 	}
 }

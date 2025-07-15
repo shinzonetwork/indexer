@@ -127,6 +127,15 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 	return h.PostToCollection(ctx, "Transaction", txData, sugar)
 }
 
+func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntry *types.AccessListEntry, tx_Id string, sugar *zap.SugaredLogger) string {
+	ALEData := map[string]interface{}{
+		"address":        accessListEntry.Address,
+		"storageKeys":    accessListEntry.StorageKeys,
+		"transaction_id": tx_Id,
+	}
+	return h.PostToCollection(ctx, "AccessListEntry", ALEData, sugar)
+}
+
 func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, tx_Id string, sugar *zap.SugaredLogger) string {
 	blockInt, err := strconv.ParseInt(log.BlockNumber, 0, 64)
 	if err != nil {
