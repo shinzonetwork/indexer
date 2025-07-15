@@ -98,3 +98,12 @@ func loadGraphQLQuery(filename, queryName string) (string, error) {
 	query = strings.TrimSpace(query)
 	return query, nil
 }
+
+func MakeQuery(t *testing.T, queryPath string, query string, args map[string]interface{}) map[string]interface{} {
+	query, err := loadGraphQLQuery(queryPath, query)
+	if err != nil {
+		t.Errorf("Failed to load query %v", err)
+	}
+	result := postGraphQLQuery(t, query, args)
+	return result
+}
