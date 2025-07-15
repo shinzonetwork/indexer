@@ -5,8 +5,9 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"shinzo/version1/pkg/logger"
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -24,10 +25,8 @@ func TestNewGRPCEthereumClient_HTTPOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Convert HTTP URL to WS URL format expected by ethclient
-	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
-
-	client, err := NewGRPCEthereumClient("", wsURL)
+	// Test HTTP-only functionality using mock server
+	client, err := NewGRPCEthereumClient("", server.URL)
 	if err != nil {
 		t.Fatalf("NewGRPCEthereumClient failed: %v", err)
 	}
@@ -41,8 +40,8 @@ func TestNewGRPCEthereumClient_HTTPOnly(t *testing.T) {
 		t.Error("gRPC connection should be nil when no gRPC address provided")
 	}
 
-	if client.nodeURL != wsURL {
-		t.Errorf("Expected nodeURL %s, got %s", wsURL, client.nodeURL)
+	if client.nodeURL != server.URL {
+		t.Errorf("Expected nodeURL %s, got %s", server.URL, client.nodeURL)
 	}
 }
 
@@ -65,7 +64,7 @@ func TestGRPCEthereumClient_GetNetworkID_MockClient(t *testing.T) {
 
 	// We can't easily mock ethclient.Client, so we'll test the client creation only
 	client := &GRPCEthereumClient{
-		nodeURL: server.URL,
+		nodeURL: "https://ethereum-rpc.publicnode.com",
 	}
 
 	// This would typically require a real Ethereum node or complex mocking
@@ -77,6 +76,9 @@ func TestGRPCEthereumClient_GetNetworkID_MockClient(t *testing.T) {
 }
 
 func TestConvertGethBlock(t *testing.T) {
+	// Initialize logger for testing
+	logger.Init(true)
+
 	// Create a mock Geth block
 	header := &ethtypes.Header{
 		Number:      big.NewInt(1234567),
@@ -135,12 +137,12 @@ func TestConvertGethBlock(t *testing.T) {
 func TestConvertTransaction(t *testing.T) {
 	// Create a mock Geth transaction
 	tx := ethtypes.NewTransaction(
-		1,                                           // nonce
-		common.HexToAddress("0xto"),                // to
-		big.NewInt(1000),                           // value
-		21000,                                      // gas
-		big.NewInt(20000000000),                   // gas price
-		[]byte("test data"),                        // data
+		1,                           // nonce
+		common.HexToAddress("0xto"), // to
+		big.NewInt(1000),            // value
+		21000,                       // gas
+		big.NewInt(20000000000),     // gas price
+		[]byte("test data"),         // data
 	)
 
 	// Create a mock block
@@ -176,10 +178,10 @@ func TestConvertTransaction(t *testing.T) {
 func TestConvertTransaction_ContractCreation(t *testing.T) {
 	// Create a contract creation transaction (to = nil)
 	tx := ethtypes.NewContractCreation(
-		1,                          // nonce
-		big.NewInt(0),             // value
-		21000,                     // gas
-		big.NewInt(20000000000),   // gas price
+		1,                           // nonce
+		big.NewInt(0),               // value
+		21000,                       // gas
+		big.NewInt(20000000000),     // gas price
 		[]byte("contract bytecode"), // data
 	)
 
@@ -222,7 +224,7 @@ func TestGetFromAddress(t *testing.T) {
 	// This will likely fail because the transaction isn't properly signed
 	// but it shouldn't panic
 	address := getFromAddress(tx)
-	
+
 	// The address might be the zero address due to invalid signature
 	if address == (common.Address{}) {
 		t.Log("Got zero address, which is expected for unsigned transaction")
@@ -278,7 +280,7 @@ func TestClose(t *testing.T) {
 
 func TestGRPCEthereumClient_NilBlock(t *testing.T) {
 	client := &GRPCEthereumClient{}
-	
+
 	// Test convertGethBlock with nil block
 	result := client.convertGethBlock(nil)
 	if result != nil {

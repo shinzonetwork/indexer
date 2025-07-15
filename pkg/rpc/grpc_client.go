@@ -3,9 +3,9 @@ package rpc
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/big"
 
+	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -32,9 +32,9 @@ func NewGRPCEthereumClient(grpcAddr, httpNodeURL string) (*GRPCEthereumClient, e
 
 	// Try to establish gRPC connection
 	if grpcAddr != "" {
-		conn, err := grpc.Dial(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			log.Printf("Failed to connect to gRPC, will use HTTP fallback: %v", err)
+			fmt.Printf("Failed to connect to gRPC, will use HTTP fallback: %v", err)
 		} else {
 			client.grpcConn = conn
 		}
@@ -79,9 +79,9 @@ func (c *GRPCEthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, 
 		if err != nil {
 			if retries < 2 && (err.Error() == "transaction type not supported" ||
 				err.Error() == "invalid transaction type") {
-				log.Printf("Retry %d: Transaction type error, trying again...", retries+1)
+				logger.Sugar.Warnf("Retry %d: Transaction type error, trying again...", retries+1)
 				// Try a block that's 1 block behind
-				latestHeader.Number = new(big.Int).Sub(latestHeader.Number, big.NewInt(1))
+				latestHeader.Number = big.NewInt(1).Sub(latestHeader.Number, big.NewInt(1))
 				continue
 			}
 			return nil, fmt.Errorf("failed to get latest block: %w", err)
@@ -126,7 +126,6 @@ func (c *GRPCEthereumClient) GetTransactionReceipt(ctx context.Context, txHash s
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
 	}
-	// log.Printf("Receipt", receipt)
 	return c.convertGethReceipt(receipt), nil
 }
 
@@ -202,10 +201,10 @@ func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.
 
 	for i, tx := range gethBlock.Transactions() {
 		// Skip transaction conversion if it fails (continue with others)
-		log.Printf("Transaction", tx)
+		logger.Sugar.Info("Transaction", tx)
 		localTx, err := c.convertTransaction(tx, gethBlock, i)
 		if err != nil {
-			log.Printf("Warning: Failed to convert transaction %s: %v", tx.Hash().Hex(), err)
+			logger.Sugar.Warnf("Warning: Failed to convert transaction %s: %v", tx.Hash().Hex(), err)
 			continue
 		}
 

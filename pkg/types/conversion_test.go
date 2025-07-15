@@ -3,6 +3,7 @@ package types
 import (
 	"math/big"
 	"testing"
+
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
@@ -60,10 +61,10 @@ func TestConvertTransaction(t *testing.T) {
 func TestConvertReceipt(t *testing.T) {
 	txHash := common.HexToHash("0xabc123")
 	receipt := &gethtypes.Receipt{
-		TxHash:           txHash,
-		TransactionIndex: 2,
-		BlockHash:        common.HexToHash("0xdef456"),
-		BlockNumber:      big.NewInt(999), // Ensure BlockNumber is set
+		TxHash:            txHash,
+		TransactionIndex:  2,
+		BlockHash:         common.HexToHash("0xdef456"),
+		BlockNumber:       big.NewInt(999), // Ensure BlockNumber is set
 		CumulativeGasUsed: 100000,
 		GasUsed:           21000,
 		ContractAddress:   common.HexToAddress("0xdeadbeef"),
@@ -107,7 +108,7 @@ func TestConvertLog(t *testing.T) {
 	if local.TransactionHash != log.TxHash.Hex() {
 		t.Errorf("Log TxHash mismatch: got %s, want %s", local.TransactionHash, log.TxHash.Hex())
 	}
-	if local.LogIndex != "5" {
-		t.Errorf("LogIndex mismatch: got %s, want %s", local.LogIndex, "5")
+	if local.LogIndex != 5 {
+		t.Errorf("LogIndex mismatch: got %d, want %d", local.LogIndex, 5)
 	}
 }

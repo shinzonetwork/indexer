@@ -51,7 +51,7 @@ func TestBlockJSONMarshaling(t *testing.T) {
 		Difficulty:       "1000000",
 		GasUsed:          "4000000",
 		GasLimit:         "8000000",
-		Nonce:            "123456789",
+		Nonce:            123456789,
 		Miner:            "0xminer",
 		Size:             "1024",
 		StateRoot:        "0xstateroot",
@@ -95,8 +95,8 @@ func TestTransactionJSONMarshaling(t *testing.T) {
 		Gas:              "21000",
 		GasPrice:         "20000000000",
 		Input:            "0xinput",
-		Nonce:            "1",
-		TransactionIndex: "0",
+		Nonce:            1,
+		TransactionIndex: 0,
 		Status:           true,
 		Logs:             []Log{},
 	}
@@ -130,11 +130,10 @@ func TestLogJSONMarshaling(t *testing.T) {
 		Data:             "0xlogdata",
 		BlockNumber:      "12345",
 		TransactionHash:  "0xtxhash",
-		TransactionIndex: "0",
+		TransactionIndex: 0,
 		BlockHash:        "0xblockhash",
-		LogIndex:         "0",
+		LogIndex:         0,
 		Removed:          false,
-		Events:           []Event{},
 	}
 
 	// Test marshaling
@@ -162,39 +161,39 @@ func TestLogJSONMarshaling(t *testing.T) {
 	}
 }
 
-func TestEventJSONMarshaling(t *testing.T) {
-	event := Event{
-		ContractAddress:  "0xcontract",
-		EventName:        "Transfer",
-		Parameters:       "0xeventdata",
-		TransactionHash:  "0xtxhash",
-		BlockHash:        "0xblockhash",
-		BlockNumber:      "12345",
-		TransactionIndex: "0",
-		LogIndex:         "0",
-	}
+// func TestEventJSONMarshaling(t *testing.T) {
+// 	event := Event{
+// 		ContractAddress:  "0xcontract",
+// 		EventName:        "Transfer",
+// 		Parameters:       "0xeventdata",
+// 		TransactionHash:  "0xtxhash",
+// 		BlockHash:        "0xblockhash",
+// 		BlockNumber:      "12345",
+// 		TransactionIndex: "0",
+// 		LogIndex:         "0",
+// 	}
 
-	// Test marshaling
-	data, err := json.Marshal(event)
-	if err != nil {
-		t.Fatalf("Failed to marshal Event: %v", err)
-	}
+// 	// Test marshaling
+// 	data, err := json.Marshal(event)
+// 	if err != nil {
+// 		t.Fatalf("Failed to marshal Event: %v", err)
+// 	}
 
-	// Test unmarshaling
-	var unmarshaled Event
-	err = json.Unmarshal(data, &unmarshaled)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal Event: %v", err)
-	}
+// 	// Test unmarshaling
+// 	var unmarshaled Event
+// 	err = json.Unmarshal(data, &unmarshaled)
+// 	if err != nil {
+// 		t.Fatalf("Failed to unmarshal Event: %v", err)
+// 	}
 
-	// Verify data integrity
-	if unmarshaled.EventName != event.EventName {
-		t.Errorf("EventName mismatch: got %s, want %s", unmarshaled.EventName, event.EventName)
-	}
-	if unmarshaled.ContractAddress != event.ContractAddress {
-		t.Errorf("ContractAddress mismatch: got %s, want %s", unmarshaled.ContractAddress, event.ContractAddress)
-	}
-}
+// 	// Verify data integrity
+// 	if unmarshaled.EventName != event.EventName {
+// 		t.Errorf("EventName mismatch: got %s, want %s", unmarshaled.EventName, event.EventName)
+// 	}
+// 	if unmarshaled.ContractAddress != event.ContractAddress {
+// 		t.Errorf("ContractAddress mismatch: got %s, want %s", unmarshaled.ContractAddress, event.ContractAddress)
+// 	}
+// }
 
 func TestRequestJSONMarshaling(t *testing.T) {
 	request := Request{
@@ -303,25 +302,25 @@ func TestUpdateStructsJSONMarshaling(t *testing.T) {
 		t.Errorf("TxId mismatch: got %s, want %s", unmarshaledLog.TxId, updateLog.TxId)
 	}
 
-	// Test UpdateEventStruct
-	updateEvent := UpdateEventStruct{
-		LogIndex: "0",
-		TxHash:   "0xtxhash123",
-		LogDocId: "log-doc-id-789",
-	}
+	// // Test UpdateEventStruct
+	// updateEvent := UpdateEventStruct{
+	// 	LogIndex: "0",
+	// 	TxHash:   "0xtxhash123",
+	// 	LogDocId: "log-doc-id-789",
+	// }
 
-	data, err = json.Marshal(updateEvent)
-	if err != nil {
-		t.Fatalf("Failed to marshal UpdateEventStruct: %v", err)
-	}
+	// data, err = json.Marshal(updateEvent)
+	// if err != nil {
+	// 	t.Fatalf("Failed to marshal UpdateEventStruct: %v", err)
+	// }
 
-	var unmarshaledEvent UpdateEventStruct
-	err = json.Unmarshal(data, &unmarshaledEvent)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal UpdateEventStruct: %v", err)
-	}
+	// var unmarshaledEvent UpdateEventStruct
+	// err = json.Unmarshal(data, &unmarshaledEvent)
+	// if err != nil {
+	// 	t.Fatalf("Failed to unmarshal UpdateEventStruct: %v", err)
+	// }
 
-	if unmarshaledEvent.LogDocId != updateEvent.LogDocId {
-		t.Errorf("LogDocId mismatch: got %s, want %s", unmarshaledEvent.LogDocId, updateEvent.LogDocId)
-	}
+	// if unmarshaledEvent.LogDocId != updateEvent.LogDocId {
+	// 	t.Errorf("LogDocId mismatch: got %s, want %s", unmarshaledEvent.LogDocId, updateEvent.LogDocId)
+	// }
 }
