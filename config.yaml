@@ -1,7 +1,3 @@
-author:
-  name: "Duncan Brown"
-  email: "duncan@source.network"
-
 defradb:
   host: "localhost"
   port: 9181
@@ -13,8 +9,9 @@ defradb:
   store:
     path: "./data"
 
-geth:
-  node_url: "https://ethereum-rpc.publicnode.com"
+alchemy:
+  api_key: "${ALCHEMY_API_KEY}" # Add your Alchemy API key here
+  network: "${NETWORK_NAME}"
 
 indexer:
   block_polling_interval: 12.0
@@ -30,6 +27,3 @@ indexer:
     store_data:
       workers: 4
       buffer_size: 100
-
-logger:
-  development: true

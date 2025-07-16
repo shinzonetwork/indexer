@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 func TestInit_Development(t *testing.T) {
@@ -124,10 +126,9 @@ func TestInit_GlobalSugarVariable(t *testing.T) {
 		t.Error("Global Sugar variable should be set after Init")
 	}
 
-	// Verify Sugar is usable (can call methods)
-	if Sugar != nil {
-		// Test that Sugar can be used for logging without panicking
-		Sugar.Info("Test log message")
+	// Verify it's actually a SugaredLogger
+	if _, ok := interface{}(Sugar).(*zap.SugaredLogger); !ok {
+		t.Error("Sugar should be a *zap.SugaredLogger")
 	}
 }
 

@@ -2,15 +2,17 @@ package main
 
 import (
 	"context"
-	"time"
+	"fmt"
+	"log"
 
 	"shinzo/version1/config"
 	"shinzo/version1/pkg/defra"
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/rpc"
 	"shinzo/version1/pkg/types"
+	"shinzo/version1/pkg/utils"
 
-	"math/big"
+	"go.uber.org/zap"
 )
 
 const (
@@ -19,94 +21,201 @@ const (
 
 func main() {
 	// Load config
-	cfg, err := config.LoadConfig("config.yaml")
+	cfg, err := config.LoadConfig("config/config.yaml")
 	if err != nil {
-		logger.Sugar.Fatalf("Failed to load config: ", err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 	logger.Init(cfg.Logger.Development)
+	sugar := logger.Sugar
 
-	// Connect to Geth RPC node (with gRPC support and HTTP fallback)
-	client, err := rpc.NewGRPCEthereumClient("", cfg.Geth.NodeURL) // Empty gRPC addr for now, will use HTTP fallback
-	if err != nil {
-		logger.Sugar.Fatalf("Failed to connect to Geth node: %v", err)
-	}
-	defer client.Close()
+	// Create Alchemy client
+	alchemy := rpc.NewAlchemyClient(cfg.Alchemy.APIKey)
 
 	// Create DefraDB block handler
 	blockHandler := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
 
-	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
+	// Starting block number (in decimal)
+	// Get the highest block number from DefraDB
+	startBlock := blockHandler.GetHighestBlockNumber(context.Background(), sugar)
+	if startBlock == 0 {
+		startBlock = int64(cfg.Indexer.StartHeight)
+	}
 
-	// Main indexing loop - always get latest block from Geth
-	for {
-		// Always get the latest block from Geth as source of truth
-		gethBlock, err := client.GetLatestBlock(context.Background())
-		if err != nil {
-			logger.Sugar.Error("Failed to get latest block from Geth: ", err)
-			time.Sleep(time.Second * 3)
-			continue
-		}
+	endBlock := startBlock + BlocksToIndexAtOnce
 
-		blockNum := gethBlock.Number
-		logger.Sugar.Info("Processing latest block from Geth: ", blockNum)
+	//go routines start here
+	// reduced from 4 to 2
+	// nil pointer error when using map
+	// todo; convert to config value
+	workerPool := make(chan struct{}, 2)
 
-		// Get network ID for transaction conversion (skip if it fails)
-		networkID, err := client.GetNetworkID(context.Background())
-		if err != nil {
-			logger.Sugar.Warn("Failed to get network ID (continuing anyway): ", err)
-			networkID = big.NewInt(1) // Default to mainnet
-		}
-		_ = networkID // Use networkID if needed for transaction processing
+	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
 
-		// Convert Geth transactions to local transactions (already done in convertGethBlock)
-		transactions := gethBlock.Transactions
+		workerPool <- struct{}{}
 
-		// Build the complete block
-		block := buildBlock(gethBlock, transactions)
+		go func(blockNum int64) {
+			blockHex := utils.NumberToHex(blockNum)
 
-		// Create block in DefraDB
-		blockDocId := blockHandler.CreateBlock(context.Background(), block)
-		logger.Sugar.Info("Created block with DocID: ", blockDocId)
+			sugar.Info("Processing block: ", blockNum, ", hex: ", blockHex)
 
-		// Process transactions
-		for _, tx := range transactions {
-			// Create transaction in DefraDB (includes block relationship)
-			txDocId := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
-			logger.Sugar.Info("Created transaction with DocID: ", txDocId)
+			// Get block with retry logic
+			block, err := utils.RequestResourceWithRetries(
+				context.Background(),
+				sugar,
+				func() (*types.Block, error) {
+					return alchemy.GetBlock(context.Background(), blockHex)
+				},
+				fmt.Sprintf("get block %d", blockNum),
+			)
 
-			// Fetch transaction receipt to get logs and events
-			receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
 			if err != nil {
-				logger.Sugar.Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
-				continue
+				sugar.Error("Skipping block %d after all retries failed: %v", blockNum, err)
+				<-workerPool
+				return
 			}
 
-			//accessentrylist
-			for _, accessListEntry := range tx.AccessList {
-				ALEDocId := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
-				logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
+			sugar.Debug("Received block from Alchemy")
+
+			// Process all transactions first
+			var transactions []types.Transaction
+			var allLogs []types.Log
+			var allEvents []types.Event
+			var count int
+			// First pass: collect all data
+			for _, tx := range block.Transactions {
+				sugar.Debug("count: ", count+1)
+				receipt, err := getTransactionReceipt(context.Background(), alchemy, tx.Hash, sugar)
+
+				if err != nil {
+					sugar.Error("Skipping transaction ", tx.Hash, ": ", err)
+					return
+				}
+
+				// Build logs and events
+				logs, events := processLogsAndEvents(receipt, sugar)
+
+				allLogs = append(allLogs, logs...)
+				allEvents = append(allEvents, events...)
+
+				transactions = append(transactions, buildTransaction(tx, receipt, logs))
+				count++
+			}
+			// Create block once
+			sugar.Debug("...Build a Block")
+			block = buildBlock(block, transactions)
+			sugar.Debug("done...CreateBlock")
+			blockDocID := blockHandler.CreateBlock(context.Background(), block, sugar)
+			if blockDocID == "" {
+				sugar.Error("Failed to create block, skipping relationships")
+				return
+			}
+			// Create all transactions
+			txIDMap := make(map[string]string) // hash -> docID
+			for _, tx := range transactions {
+				txID := blockHandler.CreateTransaction(context.Background(), &tx, blockDocID, sugar)
+				if txID != "" {
+					txIDMap[tx.Hash] = txID
+				}
 			}
 
-			// Process logs from the receipt
-			for _, log := range receipt.Logs {
-				// Create log in DefraDB (includes block and transaction relationships)
-				logDocId := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
-				logger.Sugar.Info("Created log with DocID: ", logDocId)
-
-				// Process events from the log (if any)
-				// for _, event := range log.Events {
-				// 	// Create event in DefraDB (includes log relationship)
-				// 	eventDocId := blockHandler.CreateEvent(context.Background(), &event, logDocId)
-				// 	logger.Sugar.Info("Created event with DocID: ", eventDocId)
-				// }
+			// Create all logs and update relationships
+			logIDMap := make(map[string]string) // logIndex -> docID
+			for _, log := range allLogs {
+				if logID := blockHandler.CreateLog(context.Background(), &log, blockDocID, txIDMap[log.TransactionHash], sugar); logID != "" {
+					logIDMap[log.LogIndex] = logID
+				}
 			}
 
+			// Create all events and update relationships
+			for _, event := range allEvents {
+				_ = blockHandler.CreateEvent(context.Background(), &event, logIDMap[event.LogIndex], sugar)
+			}
+
+			sugar.Info("Successfully processed block - ", blockNum, " with DocID - ", blockDocID, " (#", len(transactions), " transactions)")
+
+			<-workerPool
+		}(blockNum)
+
+	}
+}
+
+// Helper functions to move complexity out of main loop
+func getTransactionReceipt(ctx context.Context, alchemy *rpc.AlchemyClient, hash string, sugar *zap.SugaredLogger) (*types.TransactionReceipt, error) {
+	return utils.RequestResourceWithRetries(
+		ctx,
+		sugar,
+		func() (*types.TransactionReceipt, error) {
+			return alchemy.GetTransactionReceipt(ctx, hash)
+		},
+		fmt.Sprintf("get transaction receipt for %s", hash),
+	)
+}
+
+func processLogsAndEvents(receipt *types.TransactionReceipt, sugar *zap.SugaredLogger) ([]types.Log, []types.Event) {
+	var processedLogs []types.Log
+	var processedEvents []types.Event
+	sugar.Debug("Processing Logs: ")
+	for _, rcptLog := range receipt.Logs {
+		// Create events from log
+		var events []types.Event
+		if len(rcptLog.Topics) > 0 {
+			sugar.Debug("Single log: ", rcptLog.LogIndex, " with topics: ", rcptLog.Topics)
+
+			// First topic is always the event signature
+			eventSig := rcptLog.Topics[0]
+			// Create event
+			event := types.Event{
+				ContractAddress:  rcptLog.Address,
+				EventName:        eventSig,     // We could decode this to human-readable name if we had ABI
+				Parameters:       rcptLog.Data, // Raw data, could be decoded with ABI
+				TransactionHash:  rcptLog.TransactionHash,
+				BlockHash:        rcptLog.BlockHash,
+				BlockNumber:      receipt.BlockNumber,
+				TransactionIndex: rcptLog.TransactionIndex,
+				LogIndex:         rcptLog.LogIndex,
+			}
+			sugar.Debug("Gathered event: " + event.EventName)
+			events = append(events, event)
+			sugar.Debug("...Appeneded")
 		}
 
-		logger.Sugar.Info("Successfully processed block: ", blockNum)
+		// Build log with events
+		sugar.Debug("... Adding log: ", rcptLog.LogIndex, " with topics: ", rcptLog.Topics)
+		processedLogs = append(processedLogs, types.Log{
+			Address:          rcptLog.Address,
+			Topics:           rcptLog.Topics,
+			Data:             rcptLog.Data,
+			BlockNumber:      rcptLog.BlockNumber,
+			TransactionHash:  rcptLog.TransactionHash,
+			TransactionIndex: rcptLog.TransactionIndex,
+			BlockHash:        rcptLog.BlockHash,
+			LogIndex:         rcptLog.LogIndex,
+			Removed:          rcptLog.Removed,
+			Events:           events,
+		})
 
-		// Short sleep before checking for next latest block
-		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
+		processedEvents = append(processedEvents, events...)
+		sugar.Debug("done...")
+	}
+	sugar.Debug("Processed ", len(processedLogs), " logs and ", len(processedEvents), " events")
+	return processedLogs, processedEvents
+}
+
+func buildTransaction(tx types.Transaction, receipt *types.TransactionReceipt, logs []types.Log) types.Transaction {
+	return types.Transaction{
+		Hash:             tx.Hash,
+		BlockHash:        tx.BlockHash,
+		BlockNumber:      tx.BlockNumber,
+		From:             tx.From,
+		To:               tx.To,
+		Value:            tx.Value,
+		Gas:              tx.Gas,
+		GasPrice:         tx.GasPrice,
+		Input:            tx.Input,
+		Nonce:            tx.Nonce,
+		TransactionIndex: tx.TransactionIndex,
+		Status:           receipt.Status == "0x1",
+		Logs:             logs,
 	}
 }
 

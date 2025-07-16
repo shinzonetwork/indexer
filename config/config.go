@@ -26,9 +26,10 @@ type Config struct {
 		} `yaml:"store"`
 	} `yaml:"defradb"`
 
-	Geth struct {
-		NodeURL string `yaml:"node_url"`
-	} `yaml:"geth"`
+	Alchemy struct {
+		APIKey  string `yaml:"api_key"`
+		Network string `yaml:"network"`
+	} `yaml:"alchemy"`
 
 	Indexer struct {
 		BlockPollingInterval float64 `yaml:"block_polling_interval"`
@@ -84,6 +85,14 @@ func LoadConfig(path string) (*Config, error) {
 	// Override with environment variables
 	if keyringSecret := os.Getenv("DEFRA_KEYRING_SECRET"); keyringSecret != "" {
 		cfg.DefraDB.KeyringSecret = keyringSecret
+	}
+
+	if apiKey := os.Getenv("ALCHEMY_API_KEY"); apiKey != "" {
+		cfg.Alchemy.APIKey = apiKey
+	}
+
+	if network := os.Getenv("ALCHEMY_NETWORK"); network != "" {
+		cfg.Alchemy.Network = network
 	}
 
 	if port := os.Getenv("DEFRA_PORT"); port != "" {
