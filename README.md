@@ -23,7 +23,8 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 - Go 1.20+
 - [DefraDB](https://github.com/sourcenetwork/defradb)
 - [Source Network CLI](https://docs.sourcenetwork.io/cli)
-- [Alchemy API Key](https://www.alchemy.com/docs)
+- [Geth](https://geth.ethereum.org/docs/) 
+  - either run locally or hosted.
 
 ## Prerequisit setup
 
@@ -48,8 +49,6 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 3. Create environment variables in `.env`:
    ```bash
     DEFRA_KEYRING_SECRET=<DefraDB_SECRET> # DEFRA KEY RING PASSWORD
-    ALCHEMY_API_KEY=<Alchemy_API_KEY> # Alchemy API key
-    ALCHEMY_NETWORK=<Alchemy_NETWORK> # RPC network 
     VERSION=<VERSION> # verisoning 
     DEFRA_LOGGING_DEVELOPMENT=<DEFRA_LOGGING_DEVELOPMENT> # logging switch
     DEFRA_DEVELOPMENT=<DEFRA_DEVELOPMENT>
@@ -67,8 +66,9 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 2. Update `config/config.yaml` with your settings:
    ```yaml
-   alchemy:
-     api_key: ${ALCHEMY_API_KEY}
+   geth:
+       node_url: "localhost:<PORT>" || "https://ethereum-rpc.publicnode.com"
+
    defra:
      url: ${DEFRA_URL}
    ```
@@ -152,7 +152,7 @@ Example query:
 
 - [DefraDB Documentation](https://github.com/sourcenetwork/defradb)
 - [Source Network Documentation](https://docs.sourcenetwork.io)
-- [Alchemy API Documentation](https://docs.alchemy.com/reference/api-overview)
+- [Geth Documentation](https://geth.ethereum.org/docs/)
 
 ## Contributing
 
