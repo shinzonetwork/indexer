@@ -7,6 +7,13 @@ import (
 
 var Sugar *zap.SugaredLogger
 
+// using the logger looks like this:
+
+// logger.Sugar.Info("here is a log example");
+// or
+// logger := logger.Sugar()
+// logger.Info("here is a log example")
+
 func Init(development bool) {
 	var zapLevel zap.AtomicLevel
 	if development {
@@ -23,7 +30,7 @@ func Init(development bool) {
 		Development:      development,
 		Encoding:         "console",
 		EncoderConfig:    encoderConfig,
-		OutputPaths:      []string{"stdout", "logs/logfile"},
+		OutputPaths:      []string{"stdout"},
 		ErrorOutputPaths: []string{"stderr"},
 	}
 	logger, err := config.Build()
