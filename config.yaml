@@ -1,7 +1,3 @@
-author:
-  name: "Duncan Brown"
-  email: "duncan@source.network"
-
 defradb:
   host: "localhost"
   port: 9181
