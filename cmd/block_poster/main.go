@@ -59,7 +59,7 @@ func main() {
 		_ = networkID // Use networkID if needed for transaction processing
 		logger.Sugar.Debug("Network ID: ", networkID)
 
-		// Convert Geth transactions to local transactions (already done in convertGethBlock)
+		// get transactions from Geth variable
 		transactions := gethBlock.Transactions
 
 		// Build the complete block
@@ -99,7 +99,7 @@ func main() {
 
 		logger.Sugar.Info("Successfully processed block: ", blockNum)
 
-		// Short sleep before checking for next latest block
+		// Sleep for 12 seconds before checking for next latest block [block time is 13 seconds on avg]
 		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
 	}
 }
