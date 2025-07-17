@@ -31,7 +31,6 @@ type Transaction {
     to: String
     value: String
     gas: String
-    gasUsed: String
     gasPrice: String
     maxFeePerGas: String
     maxPriorityFeePerGas: String
