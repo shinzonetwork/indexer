@@ -64,7 +64,7 @@ A high-performance blockchain indexing solution built with Source Network, Defra
    - Main schema defines relationships between blocks, transactions, logs, and events
    - Each entity has its own schema file in `schema/types/blockchain/`
 
-2. Update `config/config.yaml` with your settings:
+2. Update `config.yaml` with your settings:
    ```yaml
    geth:
        node_url: "localhost:<PORT>" || "https://ethereum-rpc.publicnode.com"
