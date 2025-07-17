@@ -53,10 +53,11 @@ func main() {
 		// Get network ID for transaction conversion (skip if it fails)
 		networkID, err := client.GetNetworkID(context.Background())
 		if err != nil {
-			logger.Sugar.Warn("Failed to get network ID (continuing anyway): ", err)
+			logger.Sugar.Warn("Failed to get Mainnet network ID... defaulting to 1: ", err)
 			networkID = big.NewInt(1) // Default to mainnet
 		}
 		_ = networkID // Use networkID if needed for transaction processing
+		logger.Sugar.Debug("Network ID: ", networkID)
 
 		// Convert Geth transactions to local transactions (already done in convertGethBlock)
 		transactions := gethBlock.Transactions
