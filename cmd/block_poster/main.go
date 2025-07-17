@@ -93,13 +93,6 @@ func main() {
 				// Create log in DefraDB (includes block and transaction relationships)
 				logDocId := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
 				logger.Sugar.Info("Created log with DocID: ", logDocId)
-
-				// Process events from the log (if any)
-				// for _, event := range log.Events {
-				// 	// Create event in DefraDB (includes log relationship)
-				// 	eventDocId := blockHandler.CreateEvent(context.Background(), &event, logDocId)
-				// 	logger.Sugar.Info("Created event with DocID: ", eventDocId)
-				// }
 			}
 
 		}

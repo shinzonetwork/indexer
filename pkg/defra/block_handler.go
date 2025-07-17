@@ -122,7 +122,6 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 
 	}
 	logger.Sugar.Debug("Creating transaction: ", txData)
-	// sugar.Debug("Transaction Input: ", txData["input"])
 	return h.PostToCollection(ctx, "Transaction", txData)
 }
 
@@ -186,11 +185,6 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 	return h.parseGraphQLResponse(resp, "update_Transaction")
 
 }
-
-// shinzo stuct
-// alchemy client interface
-// call start and measure what i am storing in defra
-// mock alchemy block data { alter diff fields to create diff scenarios}
 
 func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId string, txId string, txHash string, logIndex string) string {
 
@@ -270,7 +264,7 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		logger.Sugar.Error("Received nil response from GraphQL")
 		return ""
 	}
-	//TODO create access list and link to the transaction.
+
 	logger.Sugar.Debug("DefraDB Response: ", string(resp))
 
 	// Parse response - handle both single object and array formats
@@ -284,8 +278,7 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	// Extract data field
 	data, ok := rawResponse["data"].(map[string]interface{})
 	if !ok {
-		logger.Sugar.Error("data field not found in response")
-		logger.Sugar.Debug("Response: ", rawResponse)
+		logger.Sugar.Error("data field not found in response\n", "Response: ", rawResponse)
 		return ""
 	}
 
@@ -293,8 +286,7 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	createField := fmt.Sprintf("create_%s", collection)
 	createData, ok := data[createField]
 	if !ok {
-		logger.Sugar.Errorf("create_%s field not found in response", collection)
-		logger.Sugar.Debug("Response data: ", data)
+		logger.Sugar.Errorf("create_", collection, " field not found in response\n", "Response data: ", data)
 		return ""
 	}
 
@@ -318,12 +310,9 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		}
 	}
 
-	logger.Sugar.Errorf("unable to extract _docID from create_%s response", collection)
-	logger.Sugar.Debug("Create data: ", createData)
+	logger.Sugar.Errorf("unable to extract _docID from create_"+collection+" response\n", "Create data: ", createData)
 	return ""
 }
-
-// Graph golang client check in defra
 
 func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) []byte {
 
@@ -372,16 +361,14 @@ func (h *BlockHandler) parseGraphQLResponse(resp []byte, fieldName string) strin
 	// Parse response
 	var response types.Response
 	if err := json.Unmarshal(resp, &response); err != nil {
-		logger.Sugar.Errorf("failed to decode response: %v", err)
-		logger.Sugar.Debug("Raw response: ", string(resp))
+		logger.Sugar.Errorf("failed to decode response: ", err, "\n", "Raw response: ", string(resp))
 		return ""
 	}
 
 	// Get document ID
 	items, ok := response.Data[fieldName]
 	if !ok {
-		logger.Sugar.Errorf("%s field not found in response", fieldName)
-		logger.Sugar.Debug("Response data: ", response.Data)
+		logger.Sugar.Errorf("%s field not found in response\n", fieldName, "Response data: ", response.Data)
 		return ""
 	}
 	if len(items) == 0 {
