@@ -84,18 +84,6 @@ type Log struct {
 	Removed          bool     `json:"removed"`
 }
 
-// unused
-type Event struct {
-	ContractAddress  string `json:"contractAddress"`
-	EventName        string `json:"eventName"`
-	Parameters       string `json:"parameters"`
-	TransactionHash  string `json:"transactionHash"`
-	BlockHash        string `json:"blockHash"`
-	BlockNumber      string `json:"blockNumber"`
-	TransactionIndex string `json:"transactionIndex"`
-	LogIndex         string `json:"logIndex"`
-}
-
 type Response struct {
 	Data map[string][]struct {
 		DocID string `json:"_docID"` // the document ID of the item in the collection

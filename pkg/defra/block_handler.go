@@ -168,30 +168,6 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 	return h.PostToCollection(ctx, "Log", logData)
 }
 
-// DEPRICATED
-// TODO: remove
-func (h *BlockHandler) CreateEvent(ctx context.Context, event *types.Event, log_id string) string {
-	blockInt, err := strconv.ParseInt(event.BlockNumber, 0, 64)
-	if err != nil {
-		logger.Sugar.Errorf("failed to parse block number: %w", err)
-		return ""
-	}
-
-	eventData := map[string]interface{}{
-		"contractAddress":  event.ContractAddress,
-		"eventName":        event.EventName,
-		"parameters":       event.Parameters,
-		"transactionHash":  event.TransactionHash,
-		"blockHash":        event.BlockHash,
-		"blockNumber":      blockInt,
-		"transactionIndex": event.TransactionIndex,
-		"logIndex":         event.LogIndex,
-		"log_id":           log_id,
-	}
-	logger.Sugar.Debug("Creating event: ", eventData)
-	return h.PostToCollection(ctx, "Event", eventData)
-}
-
 func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, blockId string, txHash string) string {
 
 	// Update transaction with block relationship

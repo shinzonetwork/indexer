@@ -1,17 +1,10 @@
 package types
 
 import (
-	"encoding/json"
-	"fmt"
-	"strings"
-
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-
-	"shinzo/version1/pkg/utils"
 )
 
 // ConvertBlock converts a geth Block to local Block type
@@ -101,152 +94,8 @@ func ConvertReceipt(receipt *gethtypes.Receipt) *TransactionReceipt {
 	}
 }
 
-// ExtractEventsFromLog extracts events from a log using ABI decoding
-func ExtractEventsFromLog(l *gethtypes.Log, contractABIs map[string]*abi.ABI) []Event {
-	var events []Event
-
-	// Get the contract address
-	contractAddr := l.Address.Hex()
-
-	// Look up ABI for this contract
-	contractABI, exists := contractABIs[strings.ToLower(contractAddr)]
-	if !exists {
-		// If no ABI found, try to extract basic event info from topics
-		if len(l.Topics) > 0 {
-			event := Event{
-				ContractAddress:  contractAddr,
-				EventName:        "UnknownEvent",
-				Parameters:       fmt.Sprintf("topic0: %s, data: %s", l.Topics[0].Hex(), common.Bytes2Hex(l.Data)),
-				TransactionHash:  l.TxHash.Hex(),
-				BlockHash:        l.BlockHash.Hex(),
-				BlockNumber:      big.NewInt(int64(l.BlockNumber)).String(),
-				TransactionIndex: big.NewInt(int64(l.TxIndex)).String(),
-				LogIndex:         big.NewInt(int64(l.Index)).String(),
-			}
-			events = append(events, event)
-		}
-		return events
-	}
-
-	// If we have topics, try to decode the event
-	if len(l.Topics) > 0 {
-		eventSig := l.Topics[0]
-
-		// Find the event by signature
-		for eventName, event := range contractABI.Events {
-			if event.ID == eventSig {
-				// Found matching event, decode it
-				decodedEvent, err := decodeEvent(event, l)
-				if err == nil {
-					decodedEvent.ContractAddress = contractAddr
-					decodedEvent.EventName = eventName
-					decodedEvent.TransactionHash = l.TxHash.Hex()
-					decodedEvent.BlockHash = l.BlockHash.Hex()
-					decodedEvent.BlockNumber = big.NewInt(int64(l.BlockNumber)).String()
-					decodedEvent.TransactionIndex = big.NewInt(int64(l.TxIndex)).String()
-					decodedEvent.LogIndex = big.NewInt(int64(l.Index)).String()
-					events = append(events, decodedEvent)
-				}
-				break
-			}
-		}
-	}
-
-	return events
-}
-
-// decodeEvent decodes an individual event from a log
-func decodeEvent(eventABI abi.Event, l *gethtypes.Log) (Event, error) {
-	var event Event
-
-	// Prepare topics for decoding (excluding the first topic which is the event signature)
-	topics := make([]common.Hash, len(l.Topics)-1)
-	copy(topics, l.Topics[1:])
-
-	// Decode the event
-	values := make(map[string]interface{})
-	err := eventABI.Inputs.UnpackIntoMap(values, l.Data)
-	if err != nil {
-		return event, fmt.Errorf("failed to unpack event data: %w", err)
-	}
-
-	// Handle indexed parameters from topics
-	topicIndex := 0
-	for _, input := range eventABI.Inputs {
-		if input.Indexed && topicIndex < len(topics) {
-			// For indexed parameters, we store the raw topic value
-			// More complex decoding would require type-specific handling
-			values[input.Name] = topics[topicIndex].Hex()
-			topicIndex++
-		}
-	}
-
-	// Convert values to JSON string for storage
-	paramsJSON, err := json.Marshal(values)
-	if err != nil {
-		return event, fmt.Errorf("failed to marshal event parameters: %w", err)
-	}
-
-	event.Parameters = string(paramsJSON)
-	return event, nil
-}
-
-// ConvertLogWithAutoABI converts a geth Log to local Log type with automatic ABI fetching
-func ConvertLogWithAutoABI(l *gethtypes.Log) Log {
-	topics := make([]string, len(l.Topics))
-	for i, t := range l.Topics {
-		topics[i] = t.Hex()
-	}
-
-	// Try to fetch ABI for this contract and decode events
-	var events []Event
-	contractAddr := strings.ToLower(l.Address.Hex())
-
-	// Try to get ABI from Etherscan and decode events
-	if parsedABI, err := utils.GetOrFetchABI(contractAddr); err == nil {
-		// Create ABI map for this single contract
-		contractABIs := map[string]*abi.ABI{
-			contractAddr: parsedABI,
-		}
-		events = ExtractEventsFromLog(l, contractABIs)
-	} else {
-		// If ABI fetch fails, create basic event info from topics
-		if len(l.Topics) > 0 {
-			event := Event{
-				ContractAddress:  l.Address.Hex(),
-				EventName:        "UnknownEvent",
-				Parameters:       fmt.Sprintf("topic0: %s, data: %s", l.Topics[0].Hex(), common.Bytes2Hex(l.Data)),
-				TransactionHash:  l.TxHash.Hex(),
-				BlockHash:        l.BlockHash.Hex(),
-				BlockNumber:      big.NewInt(int64(l.BlockNumber)).String(),
-				TransactionIndex: big.NewInt(int64(l.TxIndex)).String(),
-				LogIndex:         big.NewInt(int64(l.Index)).String(),
-			}
-			events = append(events, event)
-		}
-	}
-
-	return Log{
-		Address:          l.Address.Hex(),
-		Topics:           topics,
-		Data:             common.Bytes2Hex(l.Data),
-		BlockNumber:      big.NewInt(int64(l.BlockNumber)).String(),
-		TransactionHash:  l.TxHash.Hex(),
-		TransactionIndex: int(l.TxIndex),
-		BlockHash:        l.BlockHash.Hex(),
-		LogIndex:         int(l.Index),
-		Removed:          l.Removed,
-	}
-}
-
-// ConvertLog converts a geth Log to local Log type with automatic ABI fetching
+// ConvertLog converts a geth Log to local Log type
 func ConvertLog(l *gethtypes.Log) Log {
-	// Try to get ABI for this contract address and decode events
-	return ConvertLogWithAutoABI(l)
-}
-
-// ConvertLogWithABI converts a geth Log to local Log type with event extraction
-func ConvertLogWithABI(l *gethtypes.Log, contractABIs map[string]*abi.ABI) Log {
 	topics := make([]string, len(l.Topics))
 	for i, t := range l.Topics {
 		topics[i] = t.Hex()
@@ -264,3 +113,5 @@ func ConvertLogWithABI(l *gethtypes.Log, contractABIs map[string]*abi.ABI) Log {
 		Removed:          l.Removed,
 	}
 }
+
+
