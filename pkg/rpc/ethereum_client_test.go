@@ -26,7 +26,7 @@ func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 	defer server.Close()
 
 	// Test HTTP-only functionality using mock server
-	client, err := NewEthereumClient("", server.URL)
+	client, err := NewEthereumClient(server.URL)
 	if err != nil {
 		t.Fatalf("NewEthereumClient failed: %v", err)
 	}
@@ -36,17 +36,13 @@ func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 		t.Error("HTTP client should not be nil")
 	}
 
-	if client.jsonRPCClient != nil {
-		t.Error("JSON-RPC client should be nil when no JSON-RPC address provided")
-	}
-
 	if client.nodeURL != server.URL {
 		t.Errorf("Expected nodeURL %s, got %s", server.URL, client.nodeURL)
 	}
 }
 
 func TestNewEthereumClient_InvalidHTTP(t *testing.T) {
-	_, err := NewEthereumClient("", "invalid-url")
+	_, err := NewEthereumClient("invalid-url")
 	if err == nil {
 		t.Error("Expected error for invalid HTTP URL, got nil")
 	}

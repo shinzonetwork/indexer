@@ -11,32 +11,18 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // EthereumClient wraps both JSON-RPC and fallback HTTP client
 type EthereumClient struct {
-	jsonRPCClient *rpc.Client
-	httpClient    *ethclient.Client
-	nodeURL       string
-	jsonRPCAddr   string
+	httpClient *ethclient.Client
+	nodeURL    string
 }
 
 // NewEthereumClient creates a new JSON-RPC Ethereum client with HTTP fallback
-func NewEthereumClient(jsonRPCAddr, httpNodeURL string) (*EthereumClient, error) {
+func NewEthereumClient(httpNodeURL string) (*EthereumClient, error) {
 	client := &EthereumClient{
-		jsonRPCAddr: jsonRPCAddr,
-		nodeURL:     httpNodeURL,
-	}
-
-	// Try to establish JSON-RPC connection
-	if jsonRPCAddr != "" {
-		rpcClient, err := rpc.Dial(jsonRPCAddr)
-		if err != nil {
-			fmt.Printf("Failed to connect to JSON-RPC, will use HTTP fallback: %v", err)
-		} else {
-			client.jsonRPCClient = rpcClient
-		}
+		nodeURL: httpNodeURL,
 	}
 
 	// Always establish HTTP client as fallback
@@ -46,10 +32,6 @@ func NewEthereumClient(jsonRPCAddr, httpNodeURL string) (*EthereumClient, error)
 			return nil, fmt.Errorf("failed to connect to HTTP client: %w", err)
 		}
 		client.httpClient = httpClient
-	}
-
-	if client.jsonRPCClient == nil && client.httpClient == nil {
-		return nil, fmt.Errorf("no valid connection established")
 	}
 
 	return client, nil
@@ -365,9 +347,6 @@ func getChainId(tx *ethtypes.Transaction) string {
 // Close closes the connections
 func (c *EthereumClient) Close() error {
 	var err error
-	if c.jsonRPCClient != nil {
-		c.jsonRPCClient.Close()
-	}
 	if c.httpClient != nil {
 		c.httpClient.Close()
 	}

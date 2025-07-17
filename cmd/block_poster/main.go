@@ -26,7 +26,7 @@ func main() {
 	logger.Init(cfg.Logger.Development)
 
 	// Connect to Geth RPC node (with JSON-RPC support and HTTP fallback)
-	client, err := rpc.NewEthereumClient("", cfg.Geth.NodeURL) // Empty JSON-RPC addr for now, will use HTTP fallback
+	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL) // Empty JSON-RPC addr for now, will use HTTP fallback
 	if err != nil {
 		logger.Sugar.Fatalf("Failed to connect to Geth node: %v", err)
 	}
