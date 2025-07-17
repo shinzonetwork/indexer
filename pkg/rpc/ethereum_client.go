@@ -11,32 +11,31 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// GRPCEthereumClient wraps both gRPC and fallback HTTP client
-type GRPCEthereumClient struct {
-	grpcConn   *grpc.ClientConn
-	httpClient *ethclient.Client
-	nodeURL    string
-	grpcAddr   string
+// EthereumClient wraps both JSON-RPC and fallback HTTP client
+type EthereumClient struct {
+	jsonRPCClient *rpc.Client
+	httpClient    *ethclient.Client
+	nodeURL       string
+	jsonRPCAddr   string
 }
 
-// NewGRPCEthereumClient creates a new gRPC Ethereum client with HTTP fallback
-func NewGRPCEthereumClient(grpcAddr, httpNodeURL string) (*GRPCEthereumClient, error) {
-	client := &GRPCEthereumClient{
-		grpcAddr: grpcAddr,
-		nodeURL:  httpNodeURL,
+// NewEthereumClient creates a new JSON-RPC Ethereum client with HTTP fallback
+func NewEthereumClient(jsonRPCAddr, httpNodeURL string) (*EthereumClient, error) {
+	client := &EthereumClient{
+		jsonRPCAddr: jsonRPCAddr,
+		nodeURL:     httpNodeURL,
 	}
 
-	// Try to establish gRPC connection
-	if grpcAddr != "" {
-		conn, err := grpc.NewClient(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Try to establish JSON-RPC connection
+	if jsonRPCAddr != "" {
+		rpcClient, err := rpc.Dial(jsonRPCAddr)
 		if err != nil {
-			fmt.Printf("Failed to connect to gRPC, will use HTTP fallback: %v", err)
+			fmt.Printf("Failed to connect to JSON-RPC, will use HTTP fallback: %v", err)
 		} else {
-			client.grpcConn = conn
+			client.jsonRPCClient = rpcClient
 		}
 	}
 
@@ -49,7 +48,7 @@ func NewGRPCEthereumClient(grpcAddr, httpNodeURL string) (*GRPCEthereumClient, e
 		client.httpClient = httpClient
 	}
 
-	if client.grpcConn == nil && client.httpClient == nil {
+	if client.jsonRPCClient == nil && client.httpClient == nil {
 		return nil, fmt.Errorf("no valid connection established")
 	}
 
@@ -57,8 +56,8 @@ func NewGRPCEthereumClient(grpcAddr, httpNodeURL string) (*GRPCEthereumClient, e
 }
 
 // GetLatestBlock fetches the latest block
-func (c *GRPCEthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, error) {
-	// For now, use HTTP client (you can implement gRPC here when you have the proto definitions)
+func (c *EthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, error) {
+	// For now, use HTTP client (you can implement JSON-RPC here when needed)
 	if c.httpClient == nil {
 		return nil, fmt.Errorf("no HTTP client available")
 	}
@@ -68,9 +67,6 @@ func (c *GRPCEthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest header: %w", err)
 	}
-
-	// Use a block that's 2 blocks behind to avoid transaction type issues
-	// targetBlockNum := new(big.Int).Sub(latestHeader.Number, big.NewInt(2))
 
 	var gethBlock *ethtypes.Block
 
@@ -93,7 +89,7 @@ func (c *GRPCEthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, 
 }
 
 // GetBlockByNumber fetches a block by number
-func (c *GRPCEthereumClient) GetBlockByNumber(ctx context.Context, blockNumber *big.Int) (*types.Block, error) {
+func (c *EthereumClient) GetBlockByNumber(ctx context.Context, blockNumber *big.Int) (*types.Block, error) {
 	if c.httpClient == nil {
 		return nil, fmt.Errorf("no HTTP client available")
 	}
@@ -107,7 +103,7 @@ func (c *GRPCEthereumClient) GetBlockByNumber(ctx context.Context, blockNumber *
 }
 
 // GetNetworkID returns the network ID
-func (c *GRPCEthereumClient) GetNetworkID(ctx context.Context) (*big.Int, error) {
+func (c *EthereumClient) GetNetworkID(ctx context.Context) (*big.Int, error) {
 	if c.httpClient == nil {
 		return nil, fmt.Errorf("no HTTP client available")
 	}
@@ -116,7 +112,7 @@ func (c *GRPCEthereumClient) GetNetworkID(ctx context.Context) (*big.Int, error)
 }
 
 // GetTransactionReceipt fetches a transaction receipt by hash
-func (c *GRPCEthereumClient) GetTransactionReceipt(ctx context.Context, txHash string) (*types.TransactionReceipt, error) {
+func (c *EthereumClient) GetTransactionReceipt(ctx context.Context, txHash string) (*types.TransactionReceipt, error) {
 	if c.httpClient == nil {
 		return nil, fmt.Errorf("no HTTP client available")
 	}
@@ -130,7 +126,7 @@ func (c *GRPCEthereumClient) GetTransactionReceipt(ctx context.Context, txHash s
 }
 
 // convertGethReceipt converts go-ethereum receipt to our custom receipt type
-func (c *GRPCEthereumClient) convertGethReceipt(receipt *ethtypes.Receipt) *types.TransactionReceipt {
+func (c *EthereumClient) convertGethReceipt(receipt *ethtypes.Receipt) *types.TransactionReceipt {
 	if receipt == nil {
 		return nil
 	}
@@ -155,7 +151,7 @@ func (c *GRPCEthereumClient) convertGethReceipt(receipt *ethtypes.Receipt) *type
 }
 
 // convertGethLog converts go-ethereum log to our custom log type
-func (c *GRPCEthereumClient) convertGethLog(log *ethtypes.Log) types.Log {
+func (c *EthereumClient) convertGethLog(log *ethtypes.Log) types.Log {
 	// Convert topics
 	topics := make([]string, len(log.Topics))
 	for i, topic := range log.Topics {
@@ -191,7 +187,7 @@ func getReceiptStatus(receipt *ethtypes.Receipt) string {
 }
 
 // convertGethBlock converts go-ethereum Block to our custom Block type
-func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Block {
+func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Block {
 	if gethBlock == nil {
 		return nil
 	}
@@ -244,7 +240,7 @@ func (c *GRPCEthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.
 }
 
 // convertTransaction safely converts a single transaction
-func (c *GRPCEthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (types.Transaction, error) {
+func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (types.Transaction, error) {
 	// Get transaction details with error handling
 	fromAddr := getFromAddress(tx)
 	toAddr := getToAddress(tx)
@@ -367,10 +363,10 @@ func getChainId(tx *ethtypes.Transaction) string {
 }
 
 // Close closes the connections
-func (c *GRPCEthereumClient) Close() error {
+func (c *EthereumClient) Close() error {
 	var err error
-	if c.grpcConn != nil {
-		err = c.grpcConn.Close()
+	if c.jsonRPCClient != nil {
+		c.jsonRPCClient.Close()
 	}
 	if c.httpClient != nil {
 		c.httpClient.Close()

@@ -161,40 +161,6 @@ func TestLogJSONMarshaling(t *testing.T) {
 	}
 }
 
-// func TestEventJSONMarshaling(t *testing.T) {
-// 	event := Event{
-// 		ContractAddress:  "0xcontract",
-// 		EventName:        "Transfer",
-// 		Parameters:       "0xeventdata",
-// 		TransactionHash:  "0xtxhash",
-// 		BlockHash:        "0xblockhash",
-// 		BlockNumber:      "12345",
-// 		TransactionIndex: "0",
-// 		LogIndex:         "0",
-// 	}
-
-// 	// Test marshaling
-// 	data, err := json.Marshal(event)
-// 	if err != nil {
-// 		t.Fatalf("Failed to marshal Event: %v", err)
-// 	}
-
-// 	// Test unmarshaling
-// 	var unmarshaled Event
-// 	err = json.Unmarshal(data, &unmarshaled)
-// 	if err != nil {
-// 		t.Fatalf("Failed to unmarshal Event: %v", err)
-// 	}
-
-// 	// Verify data integrity
-// 	if unmarshaled.EventName != event.EventName {
-// 		t.Errorf("EventName mismatch: got %s, want %s", unmarshaled.EventName, event.EventName)
-// 	}
-// 	if unmarshaled.ContractAddress != event.ContractAddress {
-// 		t.Errorf("ContractAddress mismatch: got %s, want %s", unmarshaled.ContractAddress, event.ContractAddress)
-// 	}
-// }
-
 func TestRequestJSONMarshaling(t *testing.T) {
 	request := Request{
 		Type:  "query",
@@ -302,25 +268,4 @@ func TestUpdateStructsJSONMarshaling(t *testing.T) {
 		t.Errorf("TxId mismatch: got %s, want %s", unmarshaledLog.TxId, updateLog.TxId)
 	}
 
-	// // Test UpdateEventStruct
-	// updateEvent := UpdateEventStruct{
-	// 	LogIndex: "0",
-	// 	TxHash:   "0xtxhash123",
-	// 	LogDocId: "log-doc-id-789",
-	// }
-
-	// data, err = json.Marshal(updateEvent)
-	// if err != nil {
-	// 	t.Fatalf("Failed to marshal UpdateEventStruct: %v", err)
-	// }
-
-	// var unmarshaledEvent UpdateEventStruct
-	// err = json.Unmarshal(data, &unmarshaledEvent)
-	// if err != nil {
-	// 	t.Fatalf("Failed to unmarshal UpdateEventStruct: %v", err)
-	// }
-
-	// if unmarshaledEvent.LogDocId != updateEvent.LogDocId {
-	// 	t.Errorf("LogDocId mismatch: got %s, want %s", unmarshaledEvent.LogDocId, updateEvent.LogDocId)
-	// }
 }

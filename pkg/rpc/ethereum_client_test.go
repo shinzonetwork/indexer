@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-func TestNewGRPCEthereumClient_HTTPOnly(t *testing.T) {
+func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 	// Start a mock Ethereum JSON-RPC server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Mock response for eth_chainId
@@ -26,9 +26,9 @@ func TestNewGRPCEthereumClient_HTTPOnly(t *testing.T) {
 	defer server.Close()
 
 	// Test HTTP-only functionality using mock server
-	client, err := NewGRPCEthereumClient("", server.URL)
+	client, err := NewEthereumClient("", server.URL)
 	if err != nil {
-		t.Fatalf("NewGRPCEthereumClient failed: %v", err)
+		t.Fatalf("NewEthereumClient failed: %v", err)
 	}
 	defer client.Close()
 
@@ -36,8 +36,8 @@ func TestNewGRPCEthereumClient_HTTPOnly(t *testing.T) {
 		t.Error("HTTP client should not be nil")
 	}
 
-	if client.grpcConn != nil {
-		t.Error("gRPC connection should be nil when no gRPC address provided")
+	if client.jsonRPCClient != nil {
+		t.Error("JSON-RPC client should be nil when no JSON-RPC address provided")
 	}
 
 	if client.nodeURL != server.URL {
@@ -45,14 +45,14 @@ func TestNewGRPCEthereumClient_HTTPOnly(t *testing.T) {
 	}
 }
 
-func TestNewGRPCEthereumClient_InvalidHTTP(t *testing.T) {
-	_, err := NewGRPCEthereumClient("", "invalid-url")
+func TestNewEthereumClient_InvalidHTTP(t *testing.T) {
+	_, err := NewEthereumClient("", "invalid-url")
 	if err == nil {
 		t.Error("Expected error for invalid HTTP URL, got nil")
 	}
 }
 
-func TestGRPCEthereumClient_GetNetworkID_MockClient(t *testing.T) {
+func TestEthereumClient_GetNetworkID_MockClient(t *testing.T) {
 	// Create a mock HTTP server for testing
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := `{"jsonrpc":"2.0","id":1,"result":"0x1"}`
@@ -63,7 +63,7 @@ func TestGRPCEthereumClient_GetNetworkID_MockClient(t *testing.T) {
 	defer server.Close()
 
 	// We can't easily mock ethclient.Client, so we'll test the client creation only
-	client := &GRPCEthereumClient{
+	client := &EthereumClient{
 		nodeURL: "https://ethereum-rpc.publicnode.com",
 	}
 
@@ -108,7 +108,7 @@ func TestConvertGethBlock(t *testing.T) {
 
 	gethBlock := ethtypes.NewBlock(header, []*ethtypes.Transaction{tx1}, nil, nil, trie.NewStackTrie(nil))
 
-	client := &GRPCEthereumClient{}
+	client := &EthereumClient{}
 	localBlock := client.convertGethBlock(gethBlock)
 
 	if localBlock == nil {
@@ -151,7 +151,7 @@ func TestConvertTransaction(t *testing.T) {
 	}
 	gethBlock := ethtypes.NewBlock(header, []*ethtypes.Transaction{}, nil, nil, trie.NewStackTrie(nil))
 
-	client := &GRPCEthereumClient{}
+	client := &EthereumClient{}
 	localTx, err := client.convertTransaction(tx, gethBlock, 0)
 
 	if err != nil {
@@ -190,7 +190,7 @@ func TestConvertTransaction_ContractCreation(t *testing.T) {
 	}
 	gethBlock := ethtypes.NewBlock(header, []*ethtypes.Transaction{}, nil, nil, trie.NewStackTrie(nil))
 
-	client := &GRPCEthereumClient{}
+	client := &EthereumClient{}
 	localTx, err := client.convertTransaction(tx, gethBlock, 0)
 
 	if err != nil {
@@ -266,7 +266,7 @@ func TestGetToAddress(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
-	client := &GRPCEthereumClient{}
+	client := &EthereumClient{}
 
 	// Test closing with no connections
 	err := client.Close()
@@ -278,8 +278,8 @@ func TestClose(t *testing.T) {
 	// The current implementation should handle nil connections gracefully
 }
 
-func TestGRPCEthereumClient_NilBlock(t *testing.T) {
-	client := &GRPCEthereumClient{}
+func TestEthereumClient_NilBlock(t *testing.T) {
+	client := &EthereumClient{}
 
 	// Test convertGethBlock with nil block
 	result := client.convertGethBlock(nil)
