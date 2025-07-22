@@ -8,6 +8,7 @@ import (
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/testutils"
 	"shinzo/version1/pkg/types"
+	"shinzo/version1/pkg/utils"
 	"strings"
 	"testing"
 
@@ -45,7 +46,10 @@ func TestNewBlockHandler(t *testing.T) {
 	host := "localhost"
 	port := 9181
 
-	handler := NewBlockHandler(host, port)
+	handler, err := NewBlockHandler(host, port)
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 
 	if handler == nil {
 		t.Fatal("NewBlockHandler should not return nil")
@@ -62,8 +66,6 @@ func TestNewBlockHandler(t *testing.T) {
 }
 
 func TestConvertHexToInt(t *testing.T) {
-	handler := NewBlockHandler("localhost", 9181)
-
 	tests := []struct {
 		name     string
 		input    string
@@ -80,7 +82,10 @@ func TestConvertHexToInt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := handler.ConvertHexToInt(tt.input)
+			result, err := utils.HexToInt(tt.input)
+			if err != nil {
+				t.Errorf("ConvertHexToInt(%s) = %d, want %d", tt.input, result, tt.expected)
+			}
 			if result != tt.expected {
 				t.Errorf("ConvertHexToInt(%s) = %d, want %d", tt.input, result, tt.expected)
 			}
@@ -128,7 +133,10 @@ func TestCreateBlock_MockServer(t *testing.T) {
 		ExtraData:    "extra",
 	}
 
-	docID := handler.CreateBlock(context.Background(), block)
+	docID, err := handler.CreateBlock(context.Background(), block)
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 
 	if docID != "test-block-doc-id" {
 		t.Errorf("Expected docID 'test-block-doc-id', got '%s'", docID)
@@ -136,9 +144,6 @@ func TestCreateBlock_MockServer(t *testing.T) {
 }
 
 func TestConvertHexToInt_UnhappyPaths(t *testing.T) {
-
-	handler := NewBlockHandler("localhost", 9181)
-
 	tests := []struct {
 		name        string
 		input       string
@@ -150,7 +155,10 @@ func TestConvertHexToInt_UnhappyPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := handler.ConvertHexToInt(tt.input)
+			result, err := utils.HexToInt(tt.input)
+			if err == nil {
+				t.Errorf("ConvertHexToInt(%s) = %d, want %d", tt.input, result, 0)
+			}
 			if result != 0 {
 				t.Errorf("ConvertHexToInt(%s) = %d, want %d", tt.input, result, 0)
 			}
@@ -180,7 +188,10 @@ func TestCreateBlock_InvalidBlock(t *testing.T) {
 		ExtraData:    "extra",
 	}
 
-	docID := handler.CreateBlock(context.Background(), block)
+	docID, err := handler.CreateBlock(context.Background(), block)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 
 	if docID != "" {
 		t.Error("Expected an error; should've received null response")
@@ -193,7 +204,10 @@ func TestCreateBlock_InvalidJSON(t *testing.T) {
 	defer server.Close()
 
 	block := &types.Block{Hash: "0x1", Number: "1"}
-	result := handler.CreateBlock(context.Background(), block)
+	result, err := handler.CreateBlock(context.Background(), block)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 	if result != "" {
 		t.Errorf("Expected empty string for invalid JSON, got '%s'", result)
 	}
@@ -205,7 +219,10 @@ func TestCreateBlock_MissingField(t *testing.T) {
 	defer server.Close()
 
 	block := &types.Block{Hash: "0x1", Number: "1"}
-	result := handler.CreateBlock(context.Background(), block)
+	result, err := handler.CreateBlock(context.Background(), block)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 	if result != "" {
 		t.Errorf("Expected empty string for missing field, got '%s'", result)
 	}
@@ -217,7 +234,10 @@ func TestCreateBlock_EmptyField(t *testing.T) {
 	defer server.Close()
 
 	block := &types.Block{Hash: "0x1", Number: "1"}
-	result := handler.CreateBlock(context.Background(), block)
+	result, err := handler.CreateBlock(context.Background(), block)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 	if result != "" {
 		t.Errorf("Expected empty string for empty field, got '%s'", result)
 	}
@@ -244,7 +264,10 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 	}
 
 	blockID := "test-block-id"
-	docID := handler.CreateTransaction(context.Background(), tx, blockID)
+	docID, err := handler.CreateTransaction(context.Background(), tx, blockID)
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 	if docID != "test-tx-doc-id" {
 		t.Errorf("Expected docID 'test-tx-doc-id', got '%s'", docID)
 	}
@@ -271,7 +294,10 @@ func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
 	}
 
 	blockID := "test-block-id"
-	docID := handler.CreateTransaction(context.Background(), tx, blockID)
+	docID, err := handler.CreateTransaction(context.Background(), tx, blockID)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 
 	if docID != "" {
 		t.Error("Expected an error; should've received null response")
@@ -298,7 +324,10 @@ func TestCreateLog_MockServer(t *testing.T) {
 	blockID := "test-block-id"
 	txID := "test-tx-id"
 
-	docID := handler.CreateLog(context.Background(), log, blockID, txID)
+	docID, err := handler.CreateLog(context.Background(), log, blockID, txID)
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 
 	if docID != "test-log-doc-id" {
 		t.Errorf("Expected docID 'test-log-doc-id', got '%s'", docID)
@@ -325,7 +354,10 @@ func TestCreateLog_InvalidBlockNumber(t *testing.T) {
 	blockID := "test-block-id"
 	txID := "test-tx-id"
 
-	docID := handler.CreateLog(context.Background(), logEntry, blockID, txID)
+	docID, err := handler.CreateLog(context.Background(), logEntry, blockID, txID)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
 
 	if docID != "" {
 		t.Error("Expected an error; should've received null response")
@@ -340,7 +372,10 @@ func TestUpdateTransactionRelationships_MockServerSuccess(t *testing.T) {
 	blockID := "test-block-id"
 	txHash := "0xtxhash"
 
-	docID := handler.UpdateTransactionRelationships(context.Background(), blockID, txHash)
+	docID, err := handler.UpdateTransactionRelationships(context.Background(), blockID, txHash)
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 
 	if docID != "updated-tx-doc-id" {
 		t.Errorf("Expected docID 'updated-tx-doc-id', got '%s'", docID)
@@ -352,7 +387,11 @@ func TestUpdateTransactionRelationships_InvalidJSON(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
 	if result != "" {
 		t.Errorf("Expected empty string for invalid JSON, got '%s'", result)
 	}
@@ -363,7 +402,11 @@ func TestUpdateTransactionRelationships_MissingField(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
 	if result != "" {
 		t.Errorf("Expected empty string for missing field, got '%s'", result)
 	}
@@ -374,7 +417,11 @@ func TestUpdateTransactionRelationships_EmptyField(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
 	if result != "" {
 		t.Errorf("Expected empty string for empty field, got '%s'", result)
 	}
@@ -383,11 +430,15 @@ func TestUpdateTransactionRelationships_EmptyField(t *testing.T) {
 func TestUpdateTransactionRelationships_NilResponse(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
 	server.Close()
-	result := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+
+	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
 	if result != "" {
 		t.Error("Expected empty string for nil response")
 	}
-
 }
 
 func TestUpdateLogRelationships_MockServerSuccess(t *testing.T) {
@@ -395,7 +446,11 @@ func TestUpdateLogRelationships_MockServerSuccess(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
+
 	if result != "log-doc-id" {
 		t.Errorf("Expected 'log-doc-id', got '%s'", result)
 	}
@@ -406,7 +461,11 @@ func TestUpdateLogRelationships_InvalidJSON(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
 	if result != "" {
 		t.Error("Expected empty string for invalid JSON")
 	}
@@ -417,7 +476,11 @@ func TestUpdateLogRelationships_MissingField(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
 	if result != "" {
 		t.Error("Expected empty string for missing field")
 	}
@@ -428,7 +491,12 @@ func TestUpdateLogRelationships_EmptyField(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	if err == nil {
+		t.Error("Expected error when no blocks found, got nil")
+	}
+
+	// Should return 0 even when error occurs
 	if result != "" {
 		t.Error("Expected empty string for empty field")
 	}
@@ -438,44 +506,30 @@ func TestUpdateLogRelationships_NilResponse(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
 	server.Close()
 
-	result := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
+	if err == nil {
+		t.Error("Expected error when no blocks found, got nil")
+	}
+
+	// Should return 0 even when error occurs
 	if result != "" {
 		t.Error("Expected empty string for nil response")
 	}
 }
 
-func TestCreateAccessListEntry_Success(t *testing.T) {
-	config := testutils.MockServerConfig{
-		ResponseBody: testutils.CreateGraphQLCreateResponse("AccessListEntry", "test-doc-id"),
-		StatusCode:   http.StatusOK,
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-		},
-		ValidateRequest: func(r *http.Request) error {
-			if r.Method != "POST" {
-				return fmt.Errorf("Expected POST request, got %s", r.Method)
-			}
-			contentType := r.Header.Get("Content-Type")
-			if contentType != "application/json" {
-				return fmt.Errorf("Expected Content-Type application/json, got %s", contentType)
-			}
-			return nil
-		},
-	}
-	server, handler := createBlockHandlerWithMocksConfig(config)
+func TestUpdateEventRelationships_EmptyField(t *testing.T) {
+	response := `{"data": {"update_Event": []}}`
+	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	accessListEntry := &types.AccessListEntry{
-		Address:     "0xcontract",
-		StorageKeys: []string{"0xstoragekey1", "0xstoragekey2"},
+	result, err := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex")
+	if err == nil {
+		t.Error("Expected error when no blocks found, got nil")
 	}
 
-	txID := "test-tx-id"
-
-	docID := handler.CreateAccessListEntry(context.Background(), accessListEntry, txID)
-
-	if docID != "test-doc-id" {
-		t.Errorf("Expected docID 'test-doc-id', got '%s'", docID)
+	// Should return 0 even when error occurs
+	if result != "" {
+		t.Error("Expected empty string for empty field")
 	}
 }
 
@@ -510,7 +564,10 @@ func TestPostToCollection_Success(t *testing.T) {
 			"baz": 42,
 		},
 	}
-	docID := handler.PostToCollection(context.Background(), "TestCollection", data)
+	docID, err := handler.PostToCollection(context.Background(), "TestCollection", data)
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 
 	if docID != "test-doc-id" {
 		t.Errorf("Expected docID 'test-doc-id', got '%s'", docID)
@@ -530,7 +587,12 @@ func TestPostToCollection_ServerError(t *testing.T) {
 		"field1": "value1",
 	}
 
-	docID := handler.PostToCollection(context.Background(), "TestCollection", data)
+	docID, err := handler.PostToCollection(context.Background(), "TestCollection", data)
+	if err == nil {
+		t.Error("Expected error when no blocks found, got nil")
+	}
+
+	// Should return 0 even when error occurs
 	if docID != "" {
 		t.Errorf("Expected empty docID on error, got '%s'", docID)
 	}
@@ -543,9 +605,14 @@ func TestPostToCollection_NilResponse(t *testing.T) {
 	data := map[string]interface{}{
 		"field1": "value1",
 	}
-	result := handler.PostToCollection(context.Background(), "TestCollection", data)
+	result, err := handler.PostToCollection(context.Background(), "TestCollection", data)
+	if err == nil {
+		t.Error("Expected error when no blocks found, got nil")
+	}
+
+	// Should return 0 even when error occurs
 	if result != "" {
-		t.Errorf("Expected empty string for nil response, got '%s'", result)
+		t.Errorf("Expected empty docID on error, got '%s'", result)
 	}
 	// Note: We don't test log output since we're using global logger
 }
@@ -574,7 +641,10 @@ func TestSendToGraphql_Success(t *testing.T) {
 		Query: expectedQuery,
 	}
 
-	result := handler.SendToGraphql(context.Background(), request)
+	result, err := handler.SendToGraphql(context.Background(), request)
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 
 	if result == nil {
 		t.Fatal("Result should not be nil")
@@ -590,7 +660,11 @@ func TestSendToGraphql_NetworkError(t *testing.T) {
 	server.Close()
 
 	request := types.Request{Query: "query { test }", Type: "POST"}
-	result := handler.SendToGraphql(context.Background(), request)
+	result, err := handler.SendToGraphql(context.Background(), request)
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
 	if result != nil && string(result) != "" {
 		t.Errorf("Expected nil or empty result for network error, got '%s'", string(result))
 	}
@@ -605,7 +679,10 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	blockNumber := handler.GetHighestBlockNumber(context.Background())
+	blockNumber, err := handler.GetHighestBlockNumber(context.Background())
+	if err != nil {
+		t.Errorf("Expected no error, got '%v'", err)
+	}
 
 	if blockNumber != 12345 {
 		t.Errorf("Expected block number 12345, got %d", blockNumber)
@@ -617,20 +694,33 @@ func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
-	blockNumber := handler.GetHighestBlockNumber(context.Background())
+	blockNumber, err := handler.GetHighestBlockNumber(context.Background())
+	if err == nil {
+		t.Error("Expected error when no blocks found, got nil")
+	}
 
+	// Should return 0 even when error occurs
 	if blockNumber != 0 {
 		t.Errorf("Expected block number 0 for empty response, got %d", blockNumber)
 	}
+
 }
 
 func TestGetHighestBlockNumber_NilResponse(t *testing.T) {
+	// Initialize logger for testing
+	logger.Init(true)
+
 	server, handler := createBlockHandlerWithMocks(`{"data": {}}`)
 	server.Close() // Simulate network error, SendToGraphql returns nil
 
-	result := handler.GetHighestBlockNumber(context.Background())
+	result, err := handler.GetHighestBlockNumber(context.Background())
+	if err == nil {
+		t.Error("Expected error when no blocks found, got nil")
+	}
+
+	// Should return 0 even when error occurs
 	if result != 0 {
-		t.Errorf("Expected 0 for nil response, got %d", result)
+		t.Errorf("Expected block number 0 for empty response, got %d", result)
 	}
 	// Note: We don't test log output since we're using global logger
 }

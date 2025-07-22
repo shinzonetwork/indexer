@@ -33,7 +33,10 @@ func main() {
 	defer client.Close()
 
 	// Create DefraDB block handler
-	blockHandler := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
+	blockHandler, fatalErr := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
+	if fatalErr != nil {
+		logger.Sugar.Fatalf("Failed to create block handler: ", fatalErr)
+	}
 
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
 
@@ -66,32 +69,52 @@ func main() {
 		block := buildBlock(gethBlock, transactions)
 
 		// Create block in DefraDB
-		blockDocId := blockHandler.CreateBlock(context.Background(), block)
+		blockDocId, fatalErr := blockHandler.CreateBlock(context.Background(), block)
+		if fatalErr != nil {
+			logger.Sugar.Error("Failed to create block in DefraDB: ", fatalErr)
+			time.Sleep(time.Second * 3)
+			continue
+		}
 		logger.Sugar.Info("Created block with DocID: ", blockDocId)
 
 		// Process transactions
 		for _, tx := range transactions {
 			// Create transaction in DefraDB (includes block relationship)
-			txDocId := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
+			txDocId, fatalErr := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
+			if fatalErr != nil {
+				logger.Sugar.Error("Failed to create transaction in DefraDB: ", err)
+				time.Sleep(time.Second * 3)
+				continue
+			}
 			logger.Sugar.Info("Created transaction with DocID: ", txDocId)
 
 			// Fetch transaction receipt to get logs and events
-			receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
-			if err != nil {
-				logger.Sugar.Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
+			receipt, receiptErr := client.GetTransactionReceipt(context.Background(), tx.Hash)
+			if receiptErr != nil {
+				logger.Sugar.Warn("Failed to get transaction receipt for ", tx.Hash, ": ", receiptErr)
 				continue
 			}
 
 			//accessentrylist
 			for _, accessListEntry := range tx.AccessList {
-				ALEDocId := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
+				ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
+				if err != nil {
+					logger.Sugar.Error("Failed to create access list entry in DefraDB: ", err)
+					time.Sleep(time.Second * 3)
+					continue
+				}
 				logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
 			}
 
 			// Process logs from the receipt
 			for _, log := range receipt.Logs {
 				// Create log in DefraDB (includes block and transaction relationships)
-				logDocId := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
+				logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
+				if err != nil {
+					logger.Sugar.Error("Failed to create log in DefraDB: ", err)
+					time.Sleep(time.Second * 3)
+					continue
+				}
 				logger.Sugar.Info("Created log with DocID: ", logDocId)
 			}
 
