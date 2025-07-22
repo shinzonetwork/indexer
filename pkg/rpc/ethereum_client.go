@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"shinzo/version1/pkg/errors"
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/types"
 
@@ -29,7 +30,7 @@ func NewEthereumClient(httpNodeURL string) (*EthereumClient, error) {
 	if httpNodeURL != "" {
 		httpClient, err := ethclient.Dial(httpNodeURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to HTTP client: %w", err)
+			return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", httpNodeURL, err)
 		}
 		client.httpClient = httpClient
 	}

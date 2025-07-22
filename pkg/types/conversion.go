@@ -2,7 +2,6 @@ package types
 
 import (
 	"math/big"
-	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -73,18 +72,18 @@ func ConvertReceipt(receipt *gethtypes.Receipt) *TransactionReceipt {
 		logs[i] = ConvertLog(l)
 	}
 
-	var blockNumber int
+	var blockNumber string
 	if receipt.BlockNumber != nil {
-		blockNumber = int(receipt.BlockNumber.Int64())
+		blockNumber = receipt.BlockNumber.String()
 	} else {
-		blockNumber = 0
+		blockNumber = "0"
 	}
 
 	return &TransactionReceipt{
 		TransactionHash:   receipt.TxHash.Hex(),
 		TransactionIndex:  big.NewInt(int64(receipt.TransactionIndex)).String(),
 		BlockHash:         receipt.BlockHash.Hex(),
-		BlockNumber:       strconv.Itoa(blockNumber),
+		BlockNumber:       blockNumber,
 		From:              "",                            // Not available directly
 		To:                receipt.ContractAddress.Hex(), // contract address
 		CumulativeGasUsed: big.NewInt(int64(receipt.CumulativeGasUsed)).String(),

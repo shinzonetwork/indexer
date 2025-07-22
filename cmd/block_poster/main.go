@@ -6,6 +6,7 @@ import (
 
 	"shinzo/version1/config"
 	"shinzo/version1/pkg/defra"
+	"shinzo/version1/pkg/errors"
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/rpc"
 	"shinzo/version1/pkg/types"
@@ -15,9 +16,11 @@ import (
 
 const (
 	BlocksToIndexAtOnce = 10
+	TotalRetryAttempts  = 3
 )
 
 func main() {
+	retryAttempts := 0
 	// Load config
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
@@ -33,9 +36,11 @@ func main() {
 	defer client.Close()
 
 	// Create DefraDB block handler
-	blockHandler, fatalErr := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
-	if fatalErr != nil {
-		logger.Sugar.Fatalf("Failed to create block handler: ", fatalErr)
+	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
+	if err != nil {
+		// Log with structured context
+		logCtx := errors.LogContext(err)
+		logger.Sugar.With(logCtx).Fatalf("Failed to create block handler: %v", err)
 	}
 
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
@@ -69,29 +74,54 @@ func main() {
 		block := buildBlock(gethBlock, transactions)
 
 		// Create block in DefraDB
-		blockDocId, fatalErr := blockHandler.CreateBlock(context.Background(), block)
-		if fatalErr != nil {
-			logger.Sugar.Error("Failed to create block in DefraDB: ", fatalErr)
-			time.Sleep(time.Second * 3)
-			continue
+		blockDocId, err := blockHandler.CreateBlock(context.Background(), block)
+		if err != nil {
+			logCtx := errors.LogContext(err)
+			logger.Sugar.With(logCtx).Error("Failed to create block in DefraDB")
+
+			// Check if error is retryable
+			if errors.IsRetryable(err) {
+				if retryAttempts <= TotalRetryAttempts {
+					retryDelay := errors.GetRetryDelay(err, retryAttempts)
+					logger.Sugar.Warnf("Retrying block creation after %v", retryDelay)
+					time.Sleep(retryDelay)
+					retryAttempts++
+					continue
+				}
+			}
+
+			// Non-retryable error - skip this block and continue with next
+			if errors.IsDataError(err) {
+				logger.Sugar.Errorf("Skipping block %d due to data error: %v", blockNum, err)
+				continue
+			}
+
+			// Critical error - may need to exit
+			if errors.IsCritical(err) {
+				logger.Sugar.Fatalf("Critical error processing block %d: %v", blockNum, err)
+			}
 		}
 		logger.Sugar.Info("Created block with DocID: ", blockDocId)
 
 		// Process transactions
 		for _, tx := range transactions {
 			// Create transaction in DefraDB (includes block relationship)
-			txDocId, fatalErr := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
-			if fatalErr != nil {
-				logger.Sugar.Error("Failed to create transaction in DefraDB: ", err)
+			txDocId, err := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
+			if err != nil {
+				// Log with structured context
+				logCtx := errors.LogContext(err)
+				logger.Sugar.With(logCtx).Error("Failed to create transaction in DefraDB: ", err)
 				time.Sleep(time.Second * 3)
 				continue
 			}
 			logger.Sugar.Info("Created transaction with DocID: ", txDocId)
 
 			// Fetch transaction receipt to get logs and events
-			receipt, receiptErr := client.GetTransactionReceipt(context.Background(), tx.Hash)
-			if receiptErr != nil {
-				logger.Sugar.Warn("Failed to get transaction receipt for ", tx.Hash, ": ", receiptErr)
+			receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
+			if err != nil {
+				// Log with structured context
+				logCtx := errors.LogContext(err)
+				logger.Sugar.With(logCtx).Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
 				continue
 			}
 
@@ -99,7 +129,9 @@ func main() {
 			for _, accessListEntry := range tx.AccessList {
 				ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
 				if err != nil {
-					logger.Sugar.Error("Failed to create access list entry in DefraDB: ", err)
+					// Log with structured context
+					logCtx := errors.LogContext(err)
+					logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
 					time.Sleep(time.Second * 3)
 					continue
 				}
@@ -111,7 +143,9 @@ func main() {
 				// Create log in DefraDB (includes block and transaction relationships)
 				logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
 				if err != nil {
-					logger.Sugar.Error("Failed to create log in DefraDB: ", err)
+					// Log with structured context
+					logCtx := errors.LogContext(err)
+					logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
 					time.Sleep(time.Second * 3)
 					continue
 				}

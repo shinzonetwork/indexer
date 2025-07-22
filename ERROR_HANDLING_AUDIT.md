@@ -152,7 +152,7 @@ if err != nil {
 // REPLACE WITH:
 client, err := ethclient.Dial(nodeURL)
 if err != nil {
-    return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", err)
+    return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", nodeURL, err)
 }
 
 // For timeout scenarios:
