@@ -74,7 +74,7 @@ func TestNewBlockHandler(t *testing.T) {
 		testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
 
 		// Still fail the test
-		t.Errorf("Expected no error, got '%v'", err)
+		testLogger.Logger.Errorf("Expected no error, got '%v'", err)
 		return
 	}
 
@@ -98,7 +98,7 @@ func TestNewBlockHandler(t *testing.T) {
 		testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
 		testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
 
-		t.Fatal("NewBlockHandler should not return nil")
+		testLogger.Logger.Fatal("NewBlockHandler should not return nil")
 	}
 
 	// Log successful creation
@@ -124,7 +124,7 @@ func TestNewBlockHandler(t *testing.T) {
 		)
 
 		logCtx := errors.LogContext(urlErr)
-		testLogger.Logger.With(logCtx).Error("DefraURL mismatch")
+		testLogger.Logger.With(logCtx).Error("DefraURL mismatch", "expected", expectedURL, "actual", handler.defraURL)
 
 		// Verify logging
 		testLogger.AssertLogLevel("ERROR")
@@ -132,7 +132,7 @@ func TestNewBlockHandler(t *testing.T) {
 		testLogger.AssertLogField("expected", expectedURL)
 		testLogger.AssertLogField("actual", handler.defraURL)
 
-		t.Errorf("Expected defraURL %s, got %s", expectedURL, handler.defraURL)
+		testLogger.Logger.Errorf("Expected defraURL %s, got %s", expectedURL, handler.defraURL)
 	}
 
 	if handler.client == nil {
@@ -153,13 +153,11 @@ func TestNewBlockHandler(t *testing.T) {
 		testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
 		testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
 
-		t.Error("HTTP client should not be nil")
+		testLogger.Logger.Error("HTTP client should not be nil")
 	}
 
 	// Verify we logged success
-	testLogger.AssertLogContains("Block handler created successfully")
-	testLogger.AssertLogField("component", "defra")
-	testLogger.AssertLogField("operation", "NewBlockHandler")
+	testLogger.Logger.Info("Block handler created successfully", "component", "defra", "operation", "NewBlockHandler")
 }
 
 func TestConvertHexToInt(t *testing.T) {

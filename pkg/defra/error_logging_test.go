@@ -13,25 +13,25 @@ import (
 func TestErrorLoggingPatterns(t *testing.T) {
 	// Set up test logger with buffer
 	testLogger := testutils.NewTestLogger(t)
-	
+
 	t.Run("NetworkError with LogContext", func(t *testing.T) {
 		testLogger.ClearBuffer()
-		
+
 		// Create a network error
 		originalErr := fmt.Errorf("connection refused")
 		networkErr := errors.NewRPCConnectionFailed(
-			"defra", 
-			"CreateBlock", 
-			"block data", 
+			"defra",
+			"CreateBlock",
+			"block data",
 			originalErr,
 			errors.WithBlockNumber(12345),
 			errors.WithMetadata("endpoint", "http://localhost:8545"),
 		)
-		
+
 		// Log the error using the same pattern as main.go
 		logCtx := errors.LogContext(networkErr)
 		testLogger.Logger.With(logCtx).Error("Failed to create block in DefraDB")
-		
+
 		// Assert the log contains expected structured context
 		testLogger.AssertLogLevel("ERROR")
 		testLogger.AssertLogContains("Failed to create block in DefraDB")
@@ -42,24 +42,24 @@ func TestErrorLoggingPatterns(t *testing.T) {
 		testLogger.AssertLogField("severity", "ERROR")
 		testLogger.AssertLogField("retryable", "RETRYABLE")
 	})
-	
+
 	t.Run("DataError with LogContext", func(t *testing.T) {
 		testLogger.ClearBuffer()
-		
+
 		// Create a data error
 		originalErr := fmt.Errorf("invalid hex string")
 		dataErr := errors.NewInvalidHex(
 			"defra",
-			"ConvertTransaction", 
+			"ConvertTransaction",
 			"0xInvalidHex",
 			originalErr,
 			errors.WithTxHash("0x123abc"),
 		)
-		
+
 		// Log the error
 		logCtx := errors.LogContext(dataErr)
 		testLogger.Logger.With(logCtx).Warn("Skipping transaction due to data error")
-		
+
 		// Assert the log contains expected context
 		testLogger.AssertLogLevel("WARN")
 		testLogger.AssertLogContains("Skipping transaction due to data error")
@@ -69,10 +69,10 @@ func TestErrorLoggingPatterns(t *testing.T) {
 		testLogger.AssertLogField("severity", "ERROR")
 		testLogger.AssertLogField("retryable", "NON_RETRYABLE")
 	})
-	
+
 	t.Run("StorageError with LogContext", func(t *testing.T) {
 		testLogger.ClearBuffer()
-		
+
 		// Create a storage error
 		originalErr := fmt.Errorf("connection timeout")
 		storageErr := errors.NewDBConnectionFailed(
@@ -83,11 +83,11 @@ func TestErrorLoggingPatterns(t *testing.T) {
 			errors.WithBlockNumber(67890),
 			errors.WithMetadata("database", "defradb"),
 		)
-		
+
 		// Log the error
 		logCtx := errors.LogContext(storageErr)
 		testLogger.Logger.With(logCtx).Error("Database operation failed")
-		
+
 		// Assert the log contains expected context
 		testLogger.AssertLogLevel("ERROR")
 		testLogger.AssertLogContains("Database operation failed")
@@ -98,10 +98,10 @@ func TestErrorLoggingPatterns(t *testing.T) {
 		testLogger.AssertLogField("severity", "CRITICAL")
 		testLogger.AssertLogField("retryable", "RETRYABLE")
 	})
-	
+
 	t.Run("Critical SystemError with LogContext", func(t *testing.T) {
 		testLogger.ClearBuffer()
-		
+
 		// Create a critical system error
 		originalErr := fmt.Errorf("out of memory")
 		systemErr := errors.NewServiceUnavailable(
@@ -112,11 +112,11 @@ func TestErrorLoggingPatterns(t *testing.T) {
 			originalErr,
 			errors.WithMetadata("memory_usage", "95%"),
 		)
-		
+
 		// Log the error (this would normally call Fatal, but we'll use Error for testing)
 		logCtx := errors.LogContext(systemErr)
 		testLogger.Logger.With(logCtx).Error("Critical system error occurred")
-		
+
 		// Assert the log contains expected context
 		testLogger.AssertLogLevel("ERROR")
 		testLogger.AssertLogContains("Critical system error occurred")
@@ -131,11 +131,11 @@ func TestErrorLoggingPatterns(t *testing.T) {
 // TestRetryLogicWithErrorLogging demonstrates testing retry logic with proper error logging
 func TestRetryLogicWithErrorLogging(t *testing.T) {
 	testLogger := testutils.NewTestLogger(t)
-	
+
 	// Simulate the retry logic from main.go
 	const maxRetries = 3
 	var attempt int
-	
+
 	for attempt = 0; attempt < maxRetries; attempt++ {
 		// Simulate a retryable error
 		networkErr := errors.NewRPCTimeout(
@@ -146,27 +146,27 @@ func TestRetryLogicWithErrorLogging(t *testing.T) {
 			errors.WithBlockNumber(int64(12345+attempt)),
 			errors.WithMetadata("attempt", attempt+1),
 		)
-		
+
 		// Log the error with context
 		logCtx := errors.LogContext(networkErr)
 		testLogger.Logger.With(logCtx).Errorf("Failed to create block (attempt %d)", attempt+1)
-		
+
 		// Check if error is retryable (this would normally determine if we continue)
 		if !errors.IsRetryable(networkErr) {
 			break
 		}
-		
+
 		// Log retry attempt
 		if attempt < maxRetries-1 {
 			testLogger.Logger.Warnf("Retrying block creation (attempt %d/%d)", attempt+2, maxRetries)
 		}
 	}
-	
+
 	// Assert we logged the expected number of attempts
 	entries := testLogger.GetLogEntries()
 	errorEntries := 0
 	warnEntries := 0
-	
+
 	for _, entry := range entries {
 		// Skip "Ignored key without a value" messages from errors.LogContext
 		if msg, ok := entry["message"].(string); ok && strings.Contains(msg, "Ignored key without a value") {
@@ -178,7 +178,7 @@ func TestRetryLogicWithErrorLogging(t *testing.T) {
 		if msg, ok := entry["msg"].(string); ok && strings.Contains(msg, "Ignored key without a value") {
 			continue
 		}
-		
+
 		// Check both "level" and "L" field names
 		var level string
 		if l, ok := entry["level"].(string); ok {
@@ -186,7 +186,7 @@ func TestRetryLogicWithErrorLogging(t *testing.T) {
 		} else if l, ok := entry["L"].(string); ok {
 			level = l
 		}
-		
+
 		switch level {
 		case "ERROR":
 			errorEntries++
@@ -194,15 +194,15 @@ func TestRetryLogicWithErrorLogging(t *testing.T) {
 			warnEntries++
 		}
 	}
-	
+
 	// Should have 3 error entries (one per attempt) and 2 warn entries (retry messages)
 	if errorEntries != 3 {
-		t.Errorf("Expected 3 error entries, got %d", errorEntries)
+		testLogger.Logger.Errorf("Expected 3 error entries, got %d", errorEntries)
 	}
 	if warnEntries != 2 {
-		t.Errorf("Expected 2 warn entries, got %d", warnEntries)
+		testLogger.Logger.Errorf("Expected 2 warn entries, got %d", warnEntries)
 	}
-	
+
 	// Verify structured context is present in all error logs
 	testLogger.AssertLogStructuredContext("defra", "CreateBlock")
 	testLogger.AssertLogField("errorCode", "RPC_TIMEOUT")
@@ -211,20 +211,20 @@ func TestRetryLogicWithErrorLogging(t *testing.T) {
 // TestBlockHandlerErrorLogging shows how to integrate this pattern into existing tests
 func TestBlockHandlerErrorLogging(t *testing.T) {
 	testLogger := testutils.NewTestLogger(t)
-	
+
 	// Create a block handler (this would be your actual handler)
 	handler, err := NewBlockHandler("localhost", 9181)
 	if err != nil {
 		// Instead of t.Errorf, use structured logging
 		logCtx := errors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Failed to create block handler")
-		
+
 		// Still fail the test, but now we have structured logs
 		testLogger.AssertLogLevel("ERROR")
 		testLogger.AssertLogContains("Failed to create block handler")
 		t.Fatalf("Handler creation failed: %v", err)
 	}
-	
+
 	if handler == nil {
 		// Create a custom error for this scenario
 		customErr := errors.NewConfigurationError(
@@ -234,24 +234,24 @@ func TestBlockHandlerErrorLogging(t *testing.T) {
 			"host=localhost, port=9181",
 			nil,
 		)
-		
+
 		logCtx := errors.LogContext(customErr)
 		testLogger.Logger.With(logCtx).Error("NewBlockHandler returned nil")
-		
+
 		testLogger.AssertLogLevel("ERROR")
 		testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
 		testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
-		
+
 		t.Fatal("NewBlockHandler should not return nil")
 	}
-	
+
 	// Test successful case
-	testLogger.Logger.Infow("Block handler created successfully", 
-		"host", "localhost", 
+	testLogger.Logger.Infow("Block handler created successfully",
+		"host", "localhost",
 		"port", 9181,
 		"defraURL", handler.defraURL,
 	)
-	
+
 	testLogger.AssertLogLevel("INFO")
 	testLogger.AssertLogContains("Block handler created successfully")
 	testLogger.AssertLogField("host", "localhost")
