@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"shinzo/version1/pkg/errors"
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/types"
 
@@ -29,7 +30,7 @@ func NewEthereumClient(httpNodeURL string) (*EthereumClient, error) {
 	if httpNodeURL != "" {
 		httpClient, err := ethclient.Dial(httpNodeURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to HTTP client: %w", err)
+			return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", httpNodeURL, err)
 		}
 		client.httpClient = httpClient
 	}
@@ -123,7 +124,7 @@ func (c *EthereumClient) convertGethReceipt(receipt *ethtypes.Receipt) *types.Tr
 		TransactionHash:   receipt.TxHash.Hex(),
 		TransactionIndex:  fmt.Sprintf("%d", receipt.TransactionIndex),
 		BlockHash:         receipt.BlockHash.Hex(),
-		BlockNumber:       fmt.Sprintf("%d", receipt.BlockNumber.Uint64()),
+		BlockNumber:       receipt.BlockNumber.String(),
 		CumulativeGasUsed: fmt.Sprintf("%d", receipt.CumulativeGasUsed),
 		GasUsed:           fmt.Sprintf("%d", receipt.GasUsed),
 		ContractAddress:   getContractAddress(receipt),
@@ -261,26 +262,26 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 	}
 
 	localTx := types.Transaction{
-		Hash:                 tx.Hash().Hex(),
-		BlockHash:            gethBlock.Hash().Hex(),
-		BlockNumber:          fmt.Sprintf("%d", gethBlock.NumberU64()),
-		From:                 fromAddr.Hex(),
-		To:                   toAddr,
-		Value:                tx.Value().String(),
-		Gas:                  fmt.Sprintf("%d", tx.Gas()),
-		GasPrice:             gasPrice.String(),
-		MaxFeePerGas:         getMaxFeePerGas(tx),
-		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),
-		Input:                common.Bytes2Hex(tx.Data()),
-		Nonce:                int(tx.Nonce()),
-		TransactionIndex:     index,
-		Type:                 fmt.Sprintf("%d", tx.Type()),
-		ChainId:              getChainId(tx),
-		AccessList:           accessList,
-		V:                    v.String(),
-		R:                    r.String(),
-		S:                    s.String(),
-		Status:               true, // Default to true, will be updated from receipt
+		Hash:                 tx.Hash().Hex(),              // string
+		BlockHash:            gethBlock.Hash().Hex(),       // string
+		BlockNumber:          gethBlock.Number().String(),  // string
+		From:                 fromAddr.Hex(),               // string
+		To:                   toAddr,                       // string
+		Value:                tx.Value().String(),          // string
+		Gas:                  fmt.Sprintf("%d", tx.Gas()),  // string
+		GasPrice:             gasPrice.String(),            // string
+		MaxFeePerGas:         getMaxFeePerGas(tx),          // string
+		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),  // string
+		Input:                common.Bytes2Hex(tx.Data()),  // string
+		Nonce:                int(tx.Nonce()),              // int
+		TransactionIndex:     index,                        // int
+		Type:                 fmt.Sprintf("%d", tx.Type()), // string
+		ChainId:              getChainId(tx),               // string
+		AccessList:           accessList,                   // []accessListEntry
+		V:                    v.String(),                   // string
+		R:                    r.String(),                   // string
+		S:                    s.String(),                   // string
+		Status:               true,                         // Default to true, will be updated from receipt
 	}
 
 	return localTx, nil

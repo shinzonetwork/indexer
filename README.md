@@ -6,17 +6,35 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 - **GoLang**: Indexing engine for storing block data at source
 - **DefraDB**: P2P datastore for blockchain data storage and querying
+- **Ethereum Go Client**: RPC connectivity to Ethereum nodes
+- **Uber Zap**: High-performance structured logging
+- **GraphQL**: Flexible query interface for blockchain data
+
+### Recent Improvements
+
+- **Enhanced Error Handling**: Production-ready error system with categorization, retry logic, and structured context
+- **Logger Stabilization**: Global logger initialization with proper test support and no file dependencies
+- **Schema Updates**: Removed Event entity, added AccessListEntry support for EIP-2930 transactions
+- **Test Suite Fixes**: Resolved all logger-related panics and GraphQL response parsing issues
+- **Smart Retry Logic**: Intelligent retry behavior based on error types and severity
 
 ## Features
 
 - Real-time blockchain data indexing
 - GraphQL API for querying indexed data
-- Support for blocks, transactions, logs, and events
+- Support for blocks, transactions, logs, and access list entries
 - Bi-directional relationships between blockchain entities
 - Deterministic document IDs
 - Graceful shutdown handling
 - Concurrent indexing with duplicate block protection
-- Structured logging with clear error reporting
+- **Comprehensive Error Handling System**:
+  - Categorized error types (Network, Data, Storage, System)
+  - Severity levels (Info, Warning, Error, Critical)
+  - Smart retry logic with exponential backoff
+  - Structured error context and logging
+  - Production-ready monitoring and alerting
+- Global logger integration with Uber Zap
+- Context-aware error reporting with block numbers and transaction hashes
 
 ## Prerequisites
 
@@ -104,10 +122,11 @@ This runs `make bootstrap` under the hood, so you'll want to provide `DEFRA_PATH
 - **Log**
   - Indices: `blockNumber`
   - Belongs to block and transaction
-  - Has many events (`log_events`)
-- **Event**
-  - Indices: `transactionHash`, `blockNumber`
-  - Belongs to log (`log_events`)
+- **AccessListEntry**
+  - Belongs to transaction
+  - Contains address and storage keys
+
+**Note**: The Event entity was removed from the schema in recent updates.
 
 ### Relationship Definitions
 
@@ -123,14 +142,53 @@ type Transaction {
 }
 ```
 
+## Error Handling System
+
+Shinzo implements a comprehensive error handling system designed for production-ready distributed blockchain indexing:
+
+### Error Types
+- **NetworkError**: RPC/HTTP communication issues (often retryable)
+- **DataError**: Parsing/validation failures (usually non-retryable)
+- **StorageError**: Database operation failures (sometimes retryable)
+- **SystemError**: Critical system-level failures (requires attention)
+
+### Severity Levels
+- **Info**: Informational messages
+- **Warning**: Issues that don't stop processing
+- **Error**: Significant issues requiring attention
+- **Critical**: Severe issues that may require immediate action
+
+### Retry Behavior
+- **NonRetryable**: Errors that should not be retried (e.g., data validation)
+- **Retryable**: Simple retry without backoff
+- **RetryableWithBackoff**: Exponential backoff retry for network issues
+
+### Structured Context
+All errors include rich context:
+- Component and operation names
+- Block numbers and transaction hashes when applicable
+- Timestamps and error codes
+- Underlying error chains
+- Metadata for debugging
+
+### Smart Retry Logic
+The system implements intelligent retry logic:
+```go
+if errors.IsRetryable(err) {
+    retryDelay := errors.GetRetryDelay(err, retryAttempts)
+    time.Sleep(retryDelay)
+    // Retry operation
+}
+```
+
 ### Logging Strategy
 
-The indexer implements a structured logging strategy:
-- INFO level: Important state changes and block processing
-- ERROR level: Critical issues requiring attention
-- Block number context in error messages
-- Clear distinction between normal shutdown and errors
-- Success logging for block processing progress
+The indexer uses Uber Zap for structured logging:
+- Global logger initialization via `logger.Init()`
+- Context-aware error logging with `logger.LogError()`
+- Structured fields for monitoring and debugging
+- Different log levels based on error severity
+- No file output during tests (stdout/stderr only)
 
 ### Querying Data
 
@@ -141,15 +199,20 @@ Example query:
 {
   Block(filter: { number: { _eq: 18100003 } }) {
     hash
+    number
     transactions {
       hash
+      value
+      gasPrice
+      accessList {
+        address
+        storageKeys
+      }
       logs {
         logIndex
         data
-        events {
-          eventName
-          parameters
-        }
+        address
+        topics
       }
     }
   }
@@ -162,6 +225,30 @@ Example query:
 - [Source Network Documentation](https://docs.sourcenetwork.io)
 - [Geth Documentation](https://geth.ethereum.org/docs/)
 
+## Development Status
+
+### ✅ Completed (Phase 1)
+- **Error System**: Comprehensive IndexerError system with NetworkError, DataError, StorageError, and SystemError types
+- **Logger Integration**: Global Zap logger with structured logging and test compatibility
+- **Main Application**: Smart retry logic and structured error handling in block_poster
+- **Test Stability**: All test suites pass without logger panics or GraphQL parsing issues
+
+### 🔧 In Progress (Phase 2)
+- **RPC Client**: Enhanced network error handling with timeout and retry logic
+- **Type Conversions**: Improved data parsing error reporting
+
+### 📋 Planned (Phase 3)
+- **Advanced Logging**: Additional helper functions for error analysis
+- **Monitoring Integration**: Metrics and alerting based on error codes
+- **Performance Optimizations**: Error handling performance improvements
+
+### Key Benefits Achieved
+1. **Operational Excellence**: Clear retry guidance for different error types
+2. **Observability**: Structured error logging with context and codes
+3. **Debugging**: Rich context (block numbers, tx hashes, metadata)
+4. **Reliability**: Smart retry logic based on error characteristics
+5. **Maintainability**: Consistent error handling patterns across codebase
+
 ## Contributing
 
 1. Fork the repository
@@ -169,6 +256,13 @@ Example query:
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+### Development Guidelines
+- Use the new error system for all error handling
+- Follow structured logging patterns with context
+- Include retry logic based on error types
+- Write tests that work with the global logger
+- Update ERROR_HANDLING_AUDIT.md for significant changes
 
 ## License
 
