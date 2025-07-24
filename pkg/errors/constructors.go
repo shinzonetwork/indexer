@@ -34,6 +34,13 @@ const (
 
 // NetworkError constructors
 
+func NewHTTPConnectionFailed(component, operation string, input_data string, underlying error, ctx ...ContextOption) IndexerError {
+	return &NetworkError{
+		baseError: newBaseError(CodeHTTPError, "Failed to connect to HTTP endpoint", Error, Retryable,
+			component, operation, input_data, underlying, ctx...),
+	}
+}
+
 // NewRPCTimeout creates an error for RPC timeout scenarios
 func NewRPCTimeout(component, operation string, input_data string, underlying error, ctx ...ContextOption) IndexerError {
 	return &NetworkError{
