@@ -264,7 +264,7 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 	localTx := types.Transaction{
 		Hash:                 tx.Hash().Hex(),              // string
 		BlockHash:            gethBlock.Hash().Hex(),       // string
-		BlockNumber:          gethBlock.Number().String(),  // int
+		BlockNumber:          gethBlock.Number().String(),  // string
 		From:                 fromAddr.Hex(),               // string
 		To:                   toAddr,                       // string
 		Value:                tx.Value().String(),          // string
