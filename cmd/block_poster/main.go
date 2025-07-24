@@ -20,7 +20,6 @@ const (
 )
 
 func main() {
-	retryAttempts := 0
 	// Load config
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
@@ -31,7 +30,8 @@ func main() {
 	// Connect to Geth RPC node (with JSON-RPC support and HTTP fallback)
 	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL) // Empty JSON-RPC addr for now, will use HTTP fallback
 	if err != nil {
-		logger.Sugar.Fatalf("Failed to connect to Geth node: %v", err)
+		logCtx := errors.LogContext(err)
+		logger.Sugar.With(logCtx).Fatalf("Failed to connect to Geth node: ", err)
 	}
 	defer client.Close()
 
@@ -40,7 +40,7 @@ func main() {
 	if err != nil {
 		// Log with structured context
 		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Fatalf("Failed to create block handler: %v", err)
+		logger.Sugar.With(logCtx).Fatalf("Failed to create block handler: ", err)
 	}
 
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
@@ -50,8 +50,8 @@ func main() {
 		// Always get the latest block from Geth as source of truth
 		gethBlock, err := client.GetLatestBlock(context.Background())
 		if err != nil {
-			logger.Sugar.Error("Failed to get latest block from Geth: ", err)
-			time.Sleep(time.Second * 3)
+			logCtx := errors.LogContext(err)
+			logger.Sugar.With(logCtx).Error("Failed to get latest block from Geth: ", err)
 			continue
 		}
 
@@ -61,7 +61,8 @@ func main() {
 		// Get network ID for transaction conversion (skip if it fails)
 		networkID, err := client.GetNetworkID(context.Background())
 		if err != nil {
-			logger.Sugar.Warn("Failed to get Mainnet network ID... defaulting to 1: ", err)
+			logCtx := errors.LogContext(err)
+			logger.Sugar.With(logCtx).Warn("Failed to get Mainnet network ID... defaulting to 1: ", err)
 			networkID = big.NewInt(1) // Default to mainnet
 		}
 		_ = networkID // Use networkID if needed for transaction processing
@@ -73,33 +74,46 @@ func main() {
 		// Build the complete block
 		block := buildBlock(gethBlock, transactions)
 
-		// Create block in DefraDB
-		blockDocId, err := blockHandler.CreateBlock(context.Background(), block)
-		if err != nil {
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create block in DefraDB")
-
-			// Check if error is retryable
-			if errors.IsRetryable(err) {
-				if retryAttempts <= TotalRetryAttempts {
-					retryDelay := errors.GetRetryDelay(err, retryAttempts)
-					logger.Sugar.Warnf("Retrying block creation after %v", retryDelay)
-					time.Sleep(retryDelay)
-					retryAttempts++
-					continue
-				}
+		// Create block in DefraDB with retry logic
+		var blockDocId string
+		blockRetryAttempts := 0
+		for {
+			blockDocId, err = blockHandler.CreateBlock(context.Background(), block)
+			if err == nil {
+				break // Success, exit retry loop
 			}
 
-			// Non-retryable error - skip this block and continue with next
-			if errors.IsDataError(err) {
-				logger.Sugar.Errorf("Skipping block %d due to data error: %v", blockNum, err)
-				continue
+			logCtx := errors.LogContext(err)
+			logger.Sugar.With(logCtx).Errorf("Failed to create block: ", blockNum, " in DefraDB (attempt ", blockRetryAttempts+1)
+
+			// Check if error is retryable
+			if errors.IsRetryable(err) && blockRetryAttempts < TotalRetryAttempts {
+				retryDelay := errors.GetRetryDelay(err, blockRetryAttempts)
+				logger.Sugar.Warnf("Retrying block: ", blockNum, " creation after ", retryDelay)
+				time.Sleep(retryDelay)
+				blockRetryAttempts++
+				continue // Retry the same block
+			}
+
+			// Non-retryable error or max retries exceeded - skip this block
+			if errors.IsDataError(err) || blockRetryAttempts >= TotalRetryAttempts {
+				logger.Sugar.Errorf("Skipping block: ", blockNum, " due to error: ", err)
+				break // Exit retry loop and continue to next block
 			}
 
 			// Critical error - may need to exit
 			if errors.IsCritical(err) {
-				logger.Sugar.Fatalf("Critical error processing block %d: %v", blockNum, err)
+				logger.Sugar.Fatalf("Critical error processing block: ", blockNum, " : ", err)
 			}
+
+			// Unknown error type - skip block
+			logger.Sugar.Errorf("Unknown error processing block: ", blockNum, " : ", err)
+			break
+		}
+
+		// Skip to next block if block creation failed
+		if err != nil {
+			continue
 		}
 		logger.Sugar.Info("Created block with DocID: ", blockDocId)
 
@@ -111,7 +125,6 @@ func main() {
 				// Log with structured context
 				logCtx := errors.LogContext(err)
 				logger.Sugar.With(logCtx).Error("Failed to create transaction in DefraDB: ", err)
-				time.Sleep(time.Second * 3)
 				continue
 			}
 			logger.Sugar.Info("Created transaction with DocID: ", txDocId)
@@ -132,7 +145,6 @@ func main() {
 					// Log with structured context
 					logCtx := errors.LogContext(err)
 					logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
-					time.Sleep(time.Second * 3)
 					continue
 				}
 				logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
@@ -146,7 +158,6 @@ func main() {
 					// Log with structured context
 					logCtx := errors.LogContext(err)
 					logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
-					time.Sleep(time.Second * 3)
 					continue
 				}
 				logger.Sugar.Info("Created log with DocID: ", logDocId)

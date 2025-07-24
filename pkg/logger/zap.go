@@ -79,7 +79,7 @@ func Init(development bool) {
 	Sugar = logger.Sugar()
 }
 
-// ADD: New helper function for error logging
+// New helper function for error logging
 func LogError(err error, message string, fields ...zap.Field) {
 	if indexerErr, ok := err.(errors.IndexerError); ok {
 		ctx := indexerErr.Context()
