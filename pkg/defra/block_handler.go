@@ -36,12 +36,12 @@ func NewBlockHandler(host string, port int) (*BlockHandler, error) {
 }
 
 func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (string, error) {
-	// Input validation - use DataError
+	// Input validation
 	if block == nil {
 		return "", errors.NewInvalidBlockFormat("defra", "CreateBlock", fmt.Sprintf("%v", block), nil)
 	}
 
-	// Data conversion - use DataError
+	// Data conversion
 	blockInt, err := utils.HexToInt(block.Number)
 	if err != nil {
 		return "", err // Already properly wrapped
@@ -72,7 +72,7 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (str
 	}
 	// Post block data to collection endpoint
 	logger.Sugar.Debug("Posting blockdata to collection endpoint: ", blockData)
-	// Database operation - use StorageError
+	// Database operation
 	docID, err := h.PostToCollection(ctx, "Block", blockData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateBlock", fmt.Sprintf("%v", blockData), err)
@@ -119,7 +119,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 
 	}
 	logger.Sugar.Debug("Creating transaction: ", txData)
-	// Database operation - use StorageError
+	// Database operation
 	docID, err := h.PostToCollection(ctx, "Transaction", txData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateTransaction", fmt.Sprintf("%v", txData), err)
@@ -143,7 +143,7 @@ func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntr
 		"transaction_id": tx_Id,
 	}
 	logger.Sugar.Debug("Creating access list entry: ", ALEData)
-	// Database operation - use StorageError
+	// Database operation
 	docID, err := h.PostToCollection(ctx, "AccessListEntry", ALEData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateAccessListEntry", fmt.Sprintf("%v", ALEData), err)
@@ -156,6 +156,15 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 	blockInt, err := utils.HexToInt(log.BlockNumber)
 	if err != nil {
 		return "", errors.NewParsingFailed("defra", "CreateLog", fmt.Sprintf("block number: %s", log.BlockNumber), err)
+	}
+	if log == nil {
+		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "log", nil)
+	}
+	if block_id == "" {
+		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "block_id", nil)
+	}
+	if tx_Id == "" {
+		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "tx_Id", nil)
 	}
 
 	logData := map[string]interface{}{
@@ -172,7 +181,7 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 		"block_id":         block_id,
 	}
 	logger.Sugar.Debug("Creating log: ", logData)
-	// Database operation - use StorageError
+	// Database operation
 	docID, err := h.PostToCollection(ctx, "Log", logData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateLog", fmt.Sprintf("%v", logData), err)
