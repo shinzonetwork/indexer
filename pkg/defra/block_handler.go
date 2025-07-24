@@ -20,21 +20,6 @@ type BlockHandler struct {
 	client   *http.Client
 }
 
-type FatalError interface {
-	Error() (string, string)
-}
-
-// FatalErrorImpl implements the FatalError interface
-type FatalErrorImpl struct {
-	message string // Error message: system generated or user logged
-	log     string // Error log: where the error occurred and what caused it
-}
-
-// Error implements the FatalError interface
-func (f *FatalErrorImpl) Error() (string, string) {
-	return f.message, f.log
-}
-
 func NewBlockHandler(host string, port int) (*BlockHandler, error) {
 	if host == "" {
 		return nil, errors.NewConfigurationError("defra", "NewBlockHandler",
