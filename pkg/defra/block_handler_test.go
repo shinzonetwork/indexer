@@ -2,9 +2,10 @@ package defra
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
-	"shinzo/version1/pkg/errors"
+	shinzoerrors "shinzo/version1/pkg/errors"
 	"shinzo/version1/pkg/logger"
 	"shinzo/version1/pkg/testutils"
 	"shinzo/version1/pkg/types"
@@ -41,123 +42,107 @@ func createBlockHandlerWithMocks(response string) (*httptest.Server, *BlockHandl
 	return createBlockHandlerWithMocksConfig(testutils.DefaultMockServerConfig(response))
 }
 
-func TestNewBlockHandler(t *testing.T) {
-	// Set up test logger
-	testLogger := testutils.NewTestLogger(t)
-	// Test NewBlockHandler
+func TestNewBlockHandler_Success(t *testing.T) {
+	// Test successful creation of BlockHandler
 	host := "localhost"
 	port := 9181
 
 	handler, err := NewBlockHandler(host, port)
 	if err != nil {
-		// Instead of just t.Errorf, create a structured error and log it
-		handlerErr := errors.NewConfigurationError(
-			"defra",
-			"NewBlockHandler",
-			"failed to create handler",
-			"host=localhost, port=9181",
-			err,
-			errors.WithMetadata("host", host),
-			errors.WithMetadata("port", port),
-		)
-
-		// Log with structured context
-		logCtx := errors.LogContext(handlerErr)
-		testLogger.Logger.With(logCtx).Error("Handler creation failed")
-
-		// Verify the structured logging worked
-		testLogger.AssertLogLevel("ERROR")
-		testLogger.AssertLogContains("Handler creation failed")
-		testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
-		testLogger.AssertLogField("host", "localhost")
-		testLogger.AssertLogField("port", "9181")
-		testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
-
-		// Still fail the test
-		testLogger.Logger.Errorf("Expected no error, got '%v'", err)
+		t.Errorf("Expected no error, got '%v'", err)
 		return
 	}
 
 	if handler == nil {
-		// Create a structured error for nil handler
-		nilErr := errors.NewConfigurationError(
-			"defra",
-			"NewBlockHandler",
-			"handler is nil after successful creation",
-			"host=localhost, port=9181",
-			nil,
-			errors.WithMetadata("host", host),
-			errors.WithMetadata("port", port),
-		)
-
-		logCtx := errors.LogContext(nilErr)
-		testLogger.Logger.With(logCtx).Error("NewBlockHandler returned nil")
-
-		// Verify logging
-		testLogger.AssertLogLevel("ERROR")
-		testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
-		testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
-
-		testLogger.Logger.Fatal("NewBlockHandler should not return nil")
+		t.Error("Expected handler to be non-nil")
+		return
 	}
 
-	// Log successful creation
-	testLogger.Logger.With(
-		"component", "defra",
-		"operation", "NewBlockHandler",
-		"host", host,
-		"port", port,
-		"defraURL", handler.defraURL,
-	).Info("Block handler created successfully")
-
+	// Verify handler properties
 	expectedURL := "http://localhost:9181/api/v0/graphql"
 	if handler.defraURL != expectedURL {
-		// Create structured error for URL mismatch
-		urlErr := errors.NewConfigurationError(
-			"defra",
-			"NewBlockHandler",
-			"incorrect defraURL configured",
-			"expected="+expectedURL+", actual="+handler.defraURL,
-			nil,
-			errors.WithMetadata("expected", expectedURL),
-			errors.WithMetadata("actual", handler.defraURL),
-		)
-
-		logCtx := errors.LogContext(urlErr)
-		testLogger.Logger.With(logCtx).Error("DefraURL mismatch", "expected", expectedURL, "actual", handler.defraURL)
-
-		// Verify logging
-		testLogger.AssertLogLevel("ERROR")
-		testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
-		testLogger.AssertLogField("expected", expectedURL)
-		testLogger.AssertLogField("actual", handler.defraURL)
-
-		testLogger.Logger.Errorf("Expected defraURL %s, got %s", expectedURL, handler.defraURL)
+		t.Errorf("Expected defraURL '%s', got '%s'", expectedURL, handler.defraURL)
 	}
-
 	if handler.client == nil {
-		// Create structured error for nil client
-		clientErr := errors.NewConfigurationError(
-			"defra",
-			"NewBlockHandler",
-			"HTTP client is nil",
-			"handler created but client not initialized",
-			nil,
-		)
-
-		logCtx := errors.LogContext(clientErr)
-		testLogger.Logger.With(logCtx).Error("HTTP client is nil")
-
-		// Verify logging
-		testLogger.AssertLogLevel("ERROR")
-		testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
-		testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
-
-		testLogger.Logger.Error("HTTP client should not be nil")
+		t.Error("Expected client to be non-nil")
 	}
+}
 
-	// Verify we logged success
-	testLogger.Logger.Info("Block handler created successfully", "component", "defra", "operation", "NewBlockHandler")
+func TestNewBlockHandler_InvalidPort(t *testing.T) {
+	// Test creation with invalid port (zero - the actual validation)
+	host := "localhost"
+	port := 0
+
+	handler, err := NewBlockHandler(host, port)
+	if err == nil {
+		t.Error("Expected error for zero port, got nil")
+		return
+	}
+	if handler != nil {
+		t.Error("Expected handler to be nil when creation fails")
+	}
+}
+
+func TestStructuredLogging_ConfigurationError(t *testing.T) {
+	// Test structured logging with configuration errors
+	testLogger := testutils.NewTestLogger(t)
+
+	// Create a configuration error
+	host := "localhost"
+	port := 9181
+	originalErr := errors.New("connection refused")
+
+	handlerErr := shinzoerrors.NewConfigurationError(
+		"defra",
+		"NewBlockHandler",
+		"failed to create handler",
+		"host=localhost, port=9181",
+		originalErr,
+		shinzoerrors.WithMetadata("host", host),
+		shinzoerrors.WithMetadata("port", port),
+	)
+
+	// Log with structured context
+	logCtx := shinzoerrors.LogContext(handlerErr)
+	testLogger.Logger.With(logCtx).Error("Handler creation failed")
+
+	// Verify the structured logging worked
+	testLogger.AssertLogLevel("ERROR")
+	testLogger.AssertLogContains("Handler creation failed")
+	testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
+	testLogger.AssertLogField("host", "localhost")
+	testLogger.AssertLogField("port", "9181")
+	testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
+}
+
+func TestStructuredLogging_NilHandlerError(t *testing.T) {
+	// Test structured logging for nil handler scenario
+	testLogger := testutils.NewTestLogger(t)
+
+	host := "localhost"
+	port := 9181
+
+	nilErr := shinzoerrors.NewConfigurationError(
+		"defra",
+		"NewBlockHandler",
+		"handler is nil after successful creation",
+		"host=localhost, port=9181",
+		nil,
+		shinzoerrors.WithMetadata("host", host),
+		shinzoerrors.WithMetadata("port", port),
+	)
+
+	// Log with structured context
+	logCtx := shinzoerrors.LogContext(nilErr)
+	testLogger.Logger.With(logCtx).Error("Nil handler after creation")
+
+	// Verify the structured logging worked
+	testLogger.AssertLogLevel("ERROR")
+	testLogger.AssertLogContains("Nil handler after creation")
+	testLogger.AssertLogStructuredContext("defra", "NewBlockHandler")
+	testLogger.AssertLogField("host", "localhost")
+	testLogger.AssertLogField("port", "9181")
+	testLogger.AssertLogField("errorCode", "CONFIGURATION_ERROR")
 }
 
 func TestConvertHexToInt(t *testing.T) {
@@ -182,11 +167,11 @@ func TestConvertHexToInt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := utils.HexToInt(tt.input)
 			if err != nil {
-				logCtx := errors.LogContext(err)
+				logCtx := shinzoerrors.LogContext(err)
 				testLogger.Logger.With(logCtx).Error("ConvertHexToInt failed")
 			}
 			if result != tt.expected {
-				logCtx := errors.LogContext(err)
+				logCtx := shinzoerrors.LogContext(err)
 				testLogger.Logger.With(logCtx).Error("ConvertHexToInt failed")
 			}
 		})
@@ -237,12 +222,12 @@ func TestCreateBlock_MockServer(t *testing.T) {
 
 	docID, err := handler.CreateBlock(context.Background(), block)
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if docID != "test-block-doc-id" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -263,11 +248,11 @@ func TestConvertHexToInt_UnhappyPaths(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := utils.HexToInt(tt.input)
 			if err == nil {
-				logCtx := errors.LogContext(err)
+				logCtx := shinzoerrors.LogContext(err)
 				testLogger.Logger.With(logCtx).Error("ConvertHexToInt failed")
 			}
 			if result != 0 {
-				logCtx := errors.LogContext(err)
+				logCtx := shinzoerrors.LogContext(err)
 				testLogger.Logger.With(logCtx).Error("ConvertHexToInt failed")
 			}
 		})
@@ -300,12 +285,12 @@ func TestCreateBlock_InvalidBlock(t *testing.T) {
 
 	docID, err := handler.CreateBlock(context.Background(), block)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if docID != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -320,11 +305,11 @@ func TestCreateBlock_InvalidJSON(t *testing.T) {
 	block := &types.Block{Hash: "0x1", Number: "1"}
 	result, err := handler.CreateBlock(context.Background(), block)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -339,11 +324,11 @@ func TestCreateBlock_MissingField(t *testing.T) {
 	block := &types.Block{Hash: "0x1", Number: "1"}
 	result, err := handler.CreateBlock(context.Background(), block)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -358,11 +343,11 @@ func TestCreateBlock_EmptyField(t *testing.T) {
 	block := &types.Block{Hash: "0x1", Number: "1"}
 	result, err := handler.CreateBlock(context.Background(), block)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -392,11 +377,11 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 	blockID := "test-block-id"
 	docID, err := handler.CreateTransaction(context.Background(), tx, blockID)
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 	if docID != "test-tx-doc-id" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -426,12 +411,12 @@ func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
 	blockID := "test-block-id"
 	docID, err := handler.CreateTransaction(context.Background(), tx, blockID)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if docID != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -460,12 +445,12 @@ func TestCreateLog_MockServer(t *testing.T) {
 
 	docID, err := handler.CreateLog(context.Background(), log, blockID, txID)
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if docID != "test-log-doc-id" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -494,12 +479,12 @@ func TestCreateLog_InvalidBlockNumber(t *testing.T) {
 
 	docID, err := handler.CreateLog(context.Background(), logEntry, blockID, txID)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if docID != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -516,12 +501,12 @@ func TestUpdateTransactionRelationships_MockServerSuccess(t *testing.T) {
 
 	docID, err := handler.UpdateTransactionRelationships(context.Background(), blockID, txHash)
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if docID != "updated-tx-doc-id" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -535,12 +520,12 @@ func TestUpdateTransactionRelationships_InvalidJSON(t *testing.T) {
 
 	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -554,12 +539,12 @@ func TestUpdateTransactionRelationships_MissingField(t *testing.T) {
 
 	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -573,12 +558,12 @@ func TestUpdateTransactionRelationships_EmptyField(t *testing.T) {
 
 	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -591,12 +576,12 @@ func TestUpdateTransactionRelationships_NilResponse(t *testing.T) {
 
 	result, err := handler.UpdateTransactionRelationships(context.Background(), "blockId", "txHash")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -610,12 +595,12 @@ func TestUpdateLogRelationships_MockServerSuccess(t *testing.T) {
 
 	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != "log-doc-id" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -629,12 +614,12 @@ func TestUpdateLogRelationships_InvalidJSON(t *testing.T) {
 
 	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -648,12 +633,12 @@ func TestUpdateLogRelationships_MissingField(t *testing.T) {
 
 	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -667,13 +652,13 @@ func TestUpdateLogRelationships_EmptyField(t *testing.T) {
 
 	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	// Should return 0 even when error occurs
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -686,13 +671,13 @@ func TestUpdateLogRelationships_NilResponse(t *testing.T) {
 
 	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	// Should return 0 even when error occurs
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -706,13 +691,13 @@ func TestUpdateEventRelationships_EmptyField(t *testing.T) {
 
 	result, err := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex")
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	// Should return 0 even when error occurs
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -728,22 +713,22 @@ func TestPostToCollection_Success(t *testing.T) {
 		},
 		ValidateRequest: func(r *http.Request) error {
 			if r.Method != "POST" {
-				return errors.NewHTTPConnectionFailed(
+				return shinzoerrors.NewHTTPConnectionFailed(
 					"defra",
 					"PostToCollection",
 					"POST request expected",
 					nil,
-					errors.WithMetadata("method", r.Method),
+					shinzoerrors.WithMetadata("method", r.Method),
 				)
 			}
 			contentType := r.Header.Get("Content-Type")
 			if contentType != "application/json" {
-				return errors.NewHTTPConnectionFailed(
+				return shinzoerrors.NewHTTPConnectionFailed(
 					"defra",
 					"PostToCollection",
 					"POST request expected",
 					nil,
-					errors.WithMetadata("contentType", contentType),
+					shinzoerrors.WithMetadata("contentType", contentType),
 				)
 			}
 			return nil
@@ -764,12 +749,12 @@ func TestPostToCollection_Success(t *testing.T) {
 	}
 	docID, err := handler.PostToCollection(context.Background(), "TestCollection", data)
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if docID != "test-doc-id" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -791,13 +776,13 @@ func TestPostToCollection_ServerError(t *testing.T) {
 
 	docID, err := handler.PostToCollection(context.Background(), "TestCollection", data)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	// Should return 0 even when error occurs
 	if docID != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -813,13 +798,13 @@ func TestPostToCollection_NilResponse(t *testing.T) {
 	}
 	result, err := handler.PostToCollection(context.Background(), "TestCollection", data)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	// Should return 0 even when error occurs
 	if result != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 	// Note: We don't test log output since we're using global logger
@@ -851,12 +836,12 @@ func TestSendToGraphql_Success(t *testing.T) {
 
 	result, err := handler.SendToGraphql(context.Background(), request)
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -871,12 +856,12 @@ func TestSendToGraphql_NetworkError(t *testing.T) {
 	request := types.Request{Query: "query { test }", Type: "POST"}
 	result, err := handler.SendToGraphql(context.Background(), request)
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if result != nil && string(result) != "" {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -894,12 +879,12 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 
 	blockNumber, err := handler.GetHighestBlockNumber(context.Background())
 	if err != nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	if blockNumber != 12345 {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
@@ -913,13 +898,13 @@ func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
 
 	blockNumber, err := handler.GetHighestBlockNumber(context.Background())
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	// Should return 0 even when error occurs
 	if blockNumber != 0 {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
@@ -933,13 +918,13 @@ func TestGetHighestBlockNumber_NilResponse(t *testing.T) {
 
 	result, err := handler.GetHighestBlockNumber(context.Background())
 	if err == nil {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 
 	// Should return 0 even when error occurs
 	if result != 0 {
-		logCtx := errors.LogContext(err)
+		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")
 	}
 }
