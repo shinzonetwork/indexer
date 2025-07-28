@@ -62,7 +62,7 @@ func main() {
 		networkID, err := client.GetNetworkID(context.Background())
 		if err != nil {
 			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Warn("Failed to get Mainnet network ID... defaulting to 1: ", err)
+			logger.Sugar.With(logCtx).Warn("Failed to get network ID... defaulting to 1: ", err)
 			networkID = big.NewInt(1) // Default to mainnet
 		}
 		_ = networkID // Use networkID if needed for transaction processing
