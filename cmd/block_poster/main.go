@@ -75,95 +75,14 @@ func main() {
 		block := buildBlock(gethBlock, transactions)
 
 		// Create block in DefraDB with retry logic
-		var blockDocId string
-		blockRetryAttempts := 0
-		for {
-			blockDocId, err = blockHandler.CreateBlock(context.Background(), block)
-			if err == nil {
-				break // Success, exit retry loop
-			}
-
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Errorf("Failed to create block: ", blockNum, " in DefraDB (attempt ", blockRetryAttempts+1)
-
-			// Check if error is retryable
-			if errors.IsRetryable(err) && blockRetryAttempts < TotalRetryAttempts {
-				retryDelay := errors.GetRetryDelay(err, blockRetryAttempts)
-				logger.Sugar.Warnf("Retrying block: ", blockNum, " creation after ", retryDelay)
-				time.Sleep(retryDelay)
-				blockRetryAttempts++
-				continue // Retry the same block
-			}
-
-			// Non-retryable error or max retries exceeded - skip this block
-			if errors.IsDataError(err) || blockRetryAttempts >= TotalRetryAttempts {
-				logger.Sugar.Errorf("Skipping block: ", blockNum, " due to error: ", err)
-				break // Exit retry loop and continue to next block
-			}
-
-			// Critical error - may need to exit
-			if errors.IsCritical(err) {
-				logger.Sugar.Fatalf("Critical error processing block: ", blockNum, " : ", err)
-			}
-
-			// Unknown error type - skip block
-			logger.Sugar.Errorf("Unknown error processing block: ", blockNum, " : ", err)
-			break
-		}
-
-		// Skip to next block if block creation failed
+		blockDocId, err := createBlockWithRetry(blockHandler, block, blockNum)
 		if err != nil {
-			continue
+			continue // Skip to next block if creation failed
 		}
 		logger.Sugar.Info("Created block with DocID: ", blockDocId)
 
-		// Process transactions
-		for _, tx := range transactions {
-			// Create transaction in DefraDB (includes block relationship)
-			txDocId, err := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
-			if err != nil {
-				// Log with structured context
-				logCtx := errors.LogContext(err)
-				logger.Sugar.With(logCtx).Error("Failed to create transaction in DefraDB: ", err)
-				continue
-			}
-			logger.Sugar.Info("Created transaction with DocID: ", txDocId)
-
-			// Fetch transaction receipt to get logs and events
-			receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
-			if err != nil {
-				// Log with structured context
-				logCtx := errors.LogContext(err)
-				logger.Sugar.With(logCtx).Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
-				continue
-			}
-
-			//accessentrylist
-			for _, accessListEntry := range tx.AccessList {
-				ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
-				if err != nil {
-					// Log with structured context
-					logCtx := errors.LogContext(err)
-					logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
-					continue
-				}
-				logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
-			}
-
-			// Process logs from the receipt
-			for _, log := range receipt.Logs {
-				// Create log in DefraDB (includes block and transaction relationships)
-				logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
-				if err != nil {
-					// Log with structured context
-					logCtx := errors.LogContext(err)
-					logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
-					continue
-				}
-				logger.Sugar.Info("Created log with DocID: ", logDocId)
-			}
-
-		}
+		// Process all transactions for this block
+		processTransactions(blockHandler, client, transactions, blockDocId)
 
 		logger.Sugar.Info("Successfully processed block: ", blockNum)
 
@@ -172,23 +91,131 @@ func main() {
 	}
 }
 
-func buildBlock(block *types.Block, transactions []types.Transaction) *types.Block {
+// createBlockWithRetry attempts to create a block in DefraDB with retry logic
+func createBlockWithRetry(blockHandler *defra.BlockHandler, block *types.Block, blockNum string) (string, error) {
+	var blockDocId string
+	blockRetryAttempts := 0
+
+	for {
+		var err error
+		blockDocId, err = blockHandler.CreateBlock(context.Background(), block)
+		if err == nil {
+			return blockDocId, nil // Success
+		}
+
+		logCtx := errors.LogContext(err)
+		logger.Sugar.With(logCtx).Errorf("Failed to create block: ", blockNum, " in DefraDB (attempt ", blockRetryAttempts+1)
+
+		// Check if error is retryable
+		if errors.IsRetryable(err) && blockRetryAttempts < TotalRetryAttempts {
+			retryDelay := errors.GetRetryDelay(err, blockRetryAttempts)
+			logger.Sugar.Warnf("Retrying block: ", blockNum, " creation after ", retryDelay)
+			time.Sleep(retryDelay)
+			blockRetryAttempts++
+			continue // Retry the same block
+		}
+
+		// Non-retryable error or max retries exceeded - skip this block
+		if errors.IsDataError(err) || blockRetryAttempts >= TotalRetryAttempts {
+			logger.Sugar.Errorf("Skipping block: ", blockNum, " due to error: ", err)
+			return "", err // Return error to skip block
+		}
+
+		// Critical error - may need to exit
+		if errors.IsCritical(err) {
+			logger.Sugar.Fatalf("Critical error processing block: ", blockNum, " : ", err)
+		}
+
+		// Unknown error type - skip block
+		logger.Sugar.Errorf("Unknown error processing block: ", blockNum, " : ", err)
+		return "", err
+	}
+}
+
+// processTransactions handles the processing of all transactions for a block
+func processTransactions(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, transactions []types.Transaction, blockDocId string) {
+	for _, tx := range transactions {
+		processSingleTransaction(blockHandler, client, tx, blockDocId)
+	}
+}
+
+// processSingleTransaction handles the processing of a single transaction and its related data
+func processSingleTransaction(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, tx types.Transaction, blockDocId string) {
+	// Create transaction in DefraDB (includes block relationship)
+	txDocId, err := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
+	if err != nil {
+		// Log with structured context
+		logCtx := errors.LogContext(err)
+		logger.Sugar.With(logCtx).Error("Failed to create transaction in DefraDB: ", err)
+		return
+	}
+	logger.Sugar.Info("Created transaction with DocID: ", txDocId)
+
+	// Fetch transaction receipt to get logs and events
+	receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
+	if err != nil {
+		// Log with structured context
+		logCtx := errors.LogContext(err)
+		logger.Sugar.With(logCtx).Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
+		return
+	}
+
+	// Process access list entries
+	processAccessListEntries(blockHandler, tx.AccessList, txDocId)
+
+	// Process logs from the receipt
+	processTransactionLogs(blockHandler, receipt.Logs, blockDocId, txDocId)
+}
+
+// processAccessListEntries handles the processing of access list entries for a transaction
+func processAccessListEntries(blockHandler *defra.BlockHandler, accessList []types.AccessListEntry, txDocId string) {
+	for _, accessListEntry := range accessList {
+		ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
+		if err != nil {
+			// Log with structured context
+			logCtx := errors.LogContext(err)
+			logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
+			continue
+		}
+		logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
+	}
+}
+
+// processTransactionLogs handles the processing of logs for a transaction
+func processTransactionLogs(blockHandler *defra.BlockHandler, logs []types.Log, blockDocId, txDocId string) {
+	for _, log := range logs {
+		// Create log in DefraDB (includes block and transaction relationships)
+		logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
+		if err != nil {
+			// Log with structured context
+			logCtx := errors.LogContext(err)
+			logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
+			continue
+		}
+		logger.Sugar.Info("Created log with DocID: ", logDocId)
+	}
+}
+
+// buildBlock creates a new block with the same data from gethBlock
+func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types.Block {
 	return &types.Block{
-		Hash:             block.Hash,
-		Number:           block.Number,
-		Timestamp:        block.Timestamp,
-		ParentHash:       block.ParentHash,
-		Difficulty:       block.Difficulty,
-		GasUsed:          block.GasUsed,
-		GasLimit:         block.GasLimit,
-		Nonce:            block.Nonce,
-		Miner:            block.Miner,
-		Size:             block.Size,
-		StateRoot:        block.StateRoot,
-		Sha3Uncles:       block.Sha3Uncles,
-		TransactionsRoot: block.TransactionsRoot,
-		ReceiptsRoot:     block.ReceiptsRoot,
-		ExtraData:        block.ExtraData,
+		Number:           gethBlock.Number,
+		Hash:             gethBlock.Hash,
+		ParentHash:       gethBlock.ParentHash,
+		Nonce:            gethBlock.Nonce,
+		Sha3Uncles:       gethBlock.Sha3Uncles,
+		LogsBloom:        gethBlock.LogsBloom,
+		TransactionsRoot: gethBlock.TransactionsRoot,
+		StateRoot:        gethBlock.StateRoot,
+		ReceiptsRoot:     gethBlock.ReceiptsRoot,
+		Miner:            gethBlock.Miner,
+		Difficulty:       gethBlock.Difficulty,
+		TotalDifficulty:  gethBlock.TotalDifficulty,
+		ExtraData:        gethBlock.ExtraData,
+		Size:             gethBlock.Size,
+		GasLimit:         gethBlock.GasLimit,
+		GasUsed:          gethBlock.GasUsed,
+		Timestamp:        gethBlock.Timestamp,
 		Transactions:     transactions,
 	}
 }
