@@ -3,6 +3,7 @@ package testutils
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -76,51 +77,74 @@ func (tls *TestLoggerSetup) AssertLogLevel(level string) {
 }
 
 // AssertLogField checks if a log entry contains a specific field with value
-// This handles both direct fields and nested fields from errors.LogContext
+// This parses the JSON log entries and checks for the field in any format
 func (tls *TestLoggerSetup) AssertLogField(fieldName, expectedValue string) {
 	tls.t.Helper()
-	output := tls.GetLogOutput()
-
-	// Check for direct field
-	directField := `"` + fieldName + `":"` + expectedValue + `"`
-	if strings.Contains(output, directField) {
-		return
+	
+	// Parse all log entries as JSON
+	entries := tls.GetLogEntries()
+	
+	// Check each log entry for the field
+	for _, entry := range entries {
+		if tls.hasFieldWithValue(entry, fieldName, expectedValue) {
+			return // Found it!
+		}
 	}
+	
+	tls.t.Errorf("Expected log to contain field '%s' with value '%s', but got:\n%s", 
+		fieldName, expectedValue, tls.GetLogOutput())
+}
 
-	// Check for field in nested ignored object (from errors.LogContext)
-	nestedField := `"` + fieldName + `":"` + expectedValue + `"`
-	if strings.Contains(output, nestedField) {
-		return
+// hasFieldWithValue checks if a JSON object contains the field with expected value
+// It checks both camelCase and snake_case variants, and also nested objects
+func (tls *TestLoggerSetup) hasFieldWithValue(entry map[string]interface{}, fieldName, expectedValue string) bool {
+	// Check top-level fields first
+	if tls.checkFieldInObject(entry, fieldName, expectedValue) {
+		return true
 	}
-
-	// Check for snake_case version (errors.LogContext uses snake_case)
-	snakeFieldName := strings.ReplaceAll(fieldName, "_", "_")
-	if fieldName == "errorCode" {
-		snakeFieldName = "error_code"
-	} else if fieldName == "blockNumber" {
-		snakeFieldName = "block_number"
-	} else if fieldName == "txHash" {
-		snakeFieldName = "tx_hash"
+	
+	// Check nested objects (like "ignored" from zap structured logging)
+	for _, value := range entry {
+		if nestedObj, ok := value.(map[string]interface{}); ok {
+			if tls.checkFieldInObject(nestedObj, fieldName, expectedValue) {
+				return true
+			}
+		}
 	}
+	
+	return false
+}
 
-	snakeField := `"` + snakeFieldName + `":"` + expectedValue + `"`
-	if strings.Contains(output, snakeField) {
-		return
+// checkFieldInObject checks a single object for the field with both naming conventions
+func (tls *TestLoggerSetup) checkFieldInObject(obj map[string]interface{}, fieldName, expectedValue string) bool {
+	// Try the field name as-is
+	if value, exists := obj[fieldName]; exists {
+		if fmt.Sprintf("%v", value) == expectedValue {
+			return true
+		}
 	}
-
-	// Check for numeric values without quotes
-	numericField := `"` + snakeFieldName + `":` + expectedValue
-	if strings.Contains(output, numericField) {
-		return
+	
+	// Try snake_case version
+	snakeCase := tls.camelToSnake(fieldName)
+	if value, exists := obj[snakeCase]; exists {
+		if fmt.Sprintf("%v", value) == expectedValue {
+			return true
+		}
 	}
+	
+	return false
+}
 
-	// Check for direct field name with numeric value
-	directNumericField := `"` + fieldName + `":` + expectedValue
-	if strings.Contains(output, directNumericField) {
-		return
+// camelToSnake converts camelCase to snake_case
+func (tls *TestLoggerSetup) camelToSnake(s string) string {
+	var result strings.Builder
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result.WriteRune('_')
+		}
+		result.WriteRune(r | 32) // Convert to lowercase
 	}
-
-	tls.t.Errorf("Expected log to contain field '%s' with value '%s', but got:\n%s", fieldName, expectedValue, output)
+	return result.String()
 }
 
 // AssertLogStructuredContext checks if the log contains structured context from errors.LogContext
