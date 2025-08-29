@@ -5,18 +5,15 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"shinzo/version1/config"
+	"shinzo/version1/pkg/defra"
+	"shinzo/version1/pkg/errors"
+	"shinzo/version1/pkg/logger"
+	"shinzo/version1/pkg/rpc"
+	"shinzo/version1/pkg/types"
 	"strings"
 	"time"
 
-	"github.com/shinzonetwork/indexer/config"
-	"github.com/shinzonetwork/indexer/pkg/defra"
-	"github.com/shinzonetwork/indexer/pkg/errors"
-	"github.com/shinzonetwork/indexer/pkg/logger"
-	"github.com/shinzonetwork/indexer/pkg/rpc"
-	"github.com/shinzonetwork/indexer/pkg/types"
-
-	"github.com/sourcenetwork/defradb/http"
-	netConfig "github.com/sourcenetwork/defradb/net/config"
 	"github.com/sourcenetwork/defradb/node"
 )
 
@@ -288,24 +285,11 @@ func processSingleTransaction(blockHandler *defra.BlockHandler, client *rpc.Ethe
 func applySchema(ctx context.Context, defraNode *node.Node) error {
 	fmt.Println("Applying schema...")
 
-	// Try different possible paths for the schema file
-	possiblePaths := []string{
-		"schema/schema.graphql",       // From project root
-		"../schema/schema.graphql",    // From bin/ directory
-		"../../schema/schema.graphql", // From pkg/host/ directory - test context
-	}
-
-	var schemaPath string
-	var err error
-	for _, path := range possiblePaths {
-		if _, err = os.Stat(path); err == nil {
-			schemaPath = path
-			break
-		}
-	}
-
-	if schemaPath == "" {
-		return fmt.Errorf("Failed to find schema file in any of the expected locations: %v", possiblePaths)
+	// If we're in the bin directory, go up one level to find schema
+	schemaPath := "schema/schema.graphql"
+	if _, err := os.Stat(schemaPath); os.IsNotExist(err) {
+		// Try going up one directory (from bin/ to project root)
+		schemaPath = "../schema/schema.graphql"
 	}
 
 	schema, err := os.ReadFile(schemaPath)
