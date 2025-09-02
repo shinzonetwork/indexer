@@ -299,9 +299,9 @@ func getFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 
 	// Try different signers to handle various transaction types
 	signers := []ethtypes.Signer{
-		ethtypes.LatestSignerForChainID(tx.ChainId()),
-		ethtypes.NewEIP155Signer(tx.ChainId()),
-		ethtypes.NewLondonSigner(tx.ChainId()),
+		ethtypes.LatestSignerForChainID(chainId),
+		ethtypes.NewEIP155Signer(chainId),
+		ethtypes.NewLondonSigner(chainId),
 	}
 
 	for _, signer := range signers {
@@ -310,8 +310,7 @@ func getFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 		}
 	}
 
-	// If all signers fail, return zero address
-	return &common.Address{}, nil
+	return nil, fmt.Errorf("No sender (from) address found")
 }
 
 func getToAddress(tx *ethtypes.Transaction) string {
