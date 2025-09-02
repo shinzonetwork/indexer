@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"shinzo/indexer/pkg/logger"
+	"github.com/shinzonetwork/indexer/pkg/logger"
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"

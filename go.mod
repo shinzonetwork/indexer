@@ -1,4 +1,4 @@
-module shinzo/indexer
+module github.com/shinzonetwork/indexer
 
 go 1.23.8
 
