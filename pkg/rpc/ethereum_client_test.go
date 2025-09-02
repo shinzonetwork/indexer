@@ -219,10 +219,10 @@ func TestGetFromAddress(t *testing.T) {
 
 	// This will likely fail because the transaction isn't properly signed
 	// but it shouldn't panic
-	address := getFromAddress(tx)
+	address, _ := getFromAddress(tx)
 
 	// The address might be the zero address due to invalid signature
-	if address == (common.Address{}) {
+	if *address == (common.Address{}) {
 		t.Log("Got zero address, which is expected for unsigned transaction")
 	}
 }

@@ -187,7 +187,7 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 			continue
 		}
 
-		transactions = append(transactions, localTx)
+		transactions = append(transactions, *localTx)
 	}
 
 	// Convert uncles
@@ -223,9 +223,12 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 }
 
 // convertTransaction safely converts a single transaction
-func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (types.Transaction, error) {
+func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (*types.Transaction, error) {
 	// Get transaction details with error handling
-	fromAddr := getFromAddress(tx)
+	fromAddr, err := getFromAddress(tx)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get from address from transaction: %v", err)
+	}
 	toAddr := getToAddress(tx)
 
 	// Handle different transaction types
@@ -284,11 +287,16 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 		Status:               true,                         // Default to true, will be updated from receipt
 	}
 
-	return localTx, nil
+	return &localTx, nil
 }
 
 // Helper functions for transaction conversion
-func getFromAddress(tx *ethtypes.Transaction) common.Address {
+func getFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
+	chainId := tx.ChainId()
+	if chainId == nil && chainId.Sign() <= 0 {
+		return nil, fmt.Errorf("Received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
+	}
+
 	// Try different signers to handle various transaction types
 	signers := []ethtypes.Signer{
 		ethtypes.LatestSignerForChainID(tx.ChainId()),
@@ -298,12 +306,12 @@ func getFromAddress(tx *ethtypes.Transaction) common.Address {
 
 	for _, signer := range signers {
 		if from, err := ethtypes.Sender(signer, tx); err == nil {
-			return from
+			return &from, nil
 		}
 	}
 
 	// If all signers fail, return zero address
-	return common.Address{}
+	return &common.Address{}, nil
 }
 
 func getToAddress(tx *ethtypes.Transaction) string {
