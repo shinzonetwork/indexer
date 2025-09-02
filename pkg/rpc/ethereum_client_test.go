@@ -102,7 +102,7 @@ func TestConvertGethBlock(t *testing.T) {
 		[]byte("data"),
 	)
 
-	gethBlock := ethtypes.NewBlock(header, []*ethtypes.Transaction{tx1}, nil, nil, trie.NewStackTrie(nil))
+	gethBlock := ethtypes.NewBlock(header, &ethtypes.Body{Transactions: []*ethtypes.Transaction{tx1}}, nil, trie.NewStackTrie(nil))
 
 	client := &EthereumClient{}
 	localBlock := client.convertGethBlock(gethBlock)
@@ -145,7 +145,7 @@ func TestConvertTransaction(t *testing.T) {
 	header := &ethtypes.Header{
 		Number: big.NewInt(1234567),
 	}
-	gethBlock := ethtypes.NewBlock(header, []*ethtypes.Transaction{}, nil, nil, trie.NewStackTrie(nil))
+	gethBlock := ethtypes.NewBlock(header, &ethtypes.Body{Transactions: []*ethtypes.Transaction{}}, nil, trie.NewStackTrie(nil))
 
 	client := &EthereumClient{}
 	localTx, err := client.convertTransaction(tx, gethBlock, 0)
@@ -184,7 +184,7 @@ func TestConvertTransaction_ContractCreation(t *testing.T) {
 	header := &ethtypes.Header{
 		Number: big.NewInt(1234567),
 	}
-	gethBlock := ethtypes.NewBlock(header, []*ethtypes.Transaction{}, nil, nil, trie.NewStackTrie(nil))
+	gethBlock := ethtypes.NewBlock(header, &ethtypes.Body{Transactions: []*ethtypes.Transaction{}}, nil, trie.NewStackTrie(nil))
 
 	client := &EthereumClient{}
 	localTx, err := client.convertTransaction(tx, gethBlock, 0)
