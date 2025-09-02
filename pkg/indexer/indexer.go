@@ -7,14 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
+
 	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/defra"
 	"github.com/shinzonetwork/indexer/pkg/errors"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/rpc"
 	"github.com/shinzonetwork/indexer/pkg/types"
-	"strings"
-	"time"
 
 	"github.com/sourcenetwork/defradb/node"
 )
@@ -77,6 +78,7 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 		logger.Sugar.With(logCtx).Fatalf("Failed to connect to Geth node: ", err)
 	}
 	defer client.Close()
+	time.Sleep(3 * time.Second) // Allow a second for the ethereum client to boot up and avoid race condition
 
 	// Create DefraDB block handler
 	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
