@@ -78,7 +78,7 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 		logger.Sugar.With(logCtx).Fatalf("Failed to connect to Geth node: ", err)
 	}
 	defer client.Close()
-	time.Sleep(3 * time.Second) // Allow a second for the ethereum client to boot up and avoid race condition
+	time.Sleep(15 * time.Second) // Allow some time for the ethereum client to boot up and avoid race condition
 
 	// Create DefraDB block handler
 	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
