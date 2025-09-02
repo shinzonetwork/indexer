@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shinzonetwork/indexer/pkg/errors"
-	"github.com/shinzonetwork/indexer/pkg/logger"
-	"github.com/shinzonetwork/indexer/pkg/types"
+	"shinzo/indexer/pkg/errors"
+	"shinzo/indexer/pkg/logger"
+	"shinzo/indexer/pkg/types"
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -119,16 +119,16 @@ func (t *apiKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	logger.Sugar.Debugf("HTTP Request: %s %s", req.Method, req.URL.String())
 	logger.Sugar.Debugf("Setting X-goog-api-key header: %s", t.apiKey[:10]+"...")
 	req.Header.Set("X-goog-api-key", t.apiKey)
-	
+
 	// Log request headers (excluding sensitive data)
-	logger.Sugar.Debugf("Request headers: Content-Type=%s, User-Agent=%s", 
+	logger.Sugar.Debugf("Request headers: Content-Type=%s, User-Agent=%s",
 		req.Header.Get("Content-Type"), req.Header.Get("User-Agent"))
-	
+
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		logger.Sugar.Debugf("HTTP request failed: %v", err)
 	} else {
-		logger.Sugar.Debugf("HTTP response: %s (Content-Length: %s)", 
+		logger.Sugar.Debugf("HTTP response: %s (Content-Length: %s)",
 			resp.Status, resp.Header.Get("Content-Length"))
 		logger.Sugar.Debugf("HTTP request successful, status: %s", resp.Status)
 	}
@@ -152,7 +152,7 @@ func (c *EthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, erro
 	// to avoid transaction type compatibility issues
 	const initialBlocksBack = 100
 	targetBlockNumber := big.NewInt(1).Sub(latestHeader.Number, big.NewInt(initialBlocksBack))
-	logger.Sugar.Infof("Latest block: %s, targeting block: %s (%d blocks behind for Erigon compatibility)", 
+	logger.Sugar.Infof("Latest block: %s, targeting block: %s (%d blocks behind for Erigon compatibility)",
 		latestHeader.Number.String(), targetBlockNumber.String(), initialBlocksBack)
 
 	var gethBlock *ethtypes.Block
@@ -163,14 +163,14 @@ func (c *EthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, erro
 		if err != nil {
 			if strings.Contains(err.Error(), "transaction type not supported") ||
 				strings.Contains(err.Error(), "invalid transaction type") {
-				
+
 				if retries < 7 {
 					// Go back exponentially further: 100, 200, 400, 800, 1600, 3200, 6400 blocks
 					blocksBack := initialBlocksBack * (1 << uint(retries+1))
 					targetBlockNumber = big.NewInt(1).Sub(latestHeader.Number, big.NewInt(int64(blocksBack)))
-					logger.Sugar.Warnf("Retry %d: Transaction type error with Erigon, going back %d blocks total...", 
+					logger.Sugar.Warnf("Retry %d: Transaction type error with Erigon, going back %d blocks total...",
 						retries+1, blocksBack)
-					
+
 					// Add progressive delay to prevent API rate limiting
 					time.Sleep(time.Duration(retries+1) * time.Second)
 					continue
@@ -182,10 +182,10 @@ func (c *EthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, erro
 			// For non-transaction-type errors, fail immediately
 			return nil, fmt.Errorf("failed to get block: %w", err)
 		}
-		
+
 		// Success - log which block we're actually processing
 		if retries > 0 {
-			logger.Sugar.Infof("Successfully retrieved block %s after %d retries (Erigon compatibility)", 
+			logger.Sugar.Infof("Successfully retrieved block %s after %d retries (Erigon compatibility)",
 				targetBlockNumber.String(), retries)
 		}
 		break
@@ -500,7 +500,7 @@ func (c *EthereumClient) getPreferredClient() *ethclient.Client {
 		logger.Sugar.Debug("Using HTTP client with API key authentication (WebSocket unavailable)")
 		return c.httpClient
 	}
-	
+
 	logger.Sugar.Error("No client available - both WebSocket and HTTP connections failed")
 	return nil
 }

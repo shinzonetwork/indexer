@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"github.com/shinzonetwork/indexer/pkg/testutils"
+	"shinzo/indexer/pkg/testutils"
 	"strings"
 	"testing"
 	"time"
@@ -88,13 +88,13 @@ func TestAlchemyClient_GetBlock_ServerError(t *testing.T) {
 
 func TestAlchemyClient_GetTransactionReceipt_Success(t *testing.T) {
 	receiptData := map[string]interface{}{
-		"transactionHash": "0xabcdef1234567890",
-		"blockHash":       "0x1234567890abcdef",
-		"blockNumber":     "0x1",
+		"transactionHash":  "0xabcdef1234567890",
+		"blockHash":        "0x1234567890abcdef",
+		"blockNumber":      "0x1",
 		"transactionIndex": "0x0",
-		"status":          "0x1",
-		"gasUsed":         "0x5208",
-		"logs":            []interface{}{},
+		"status":           "0x1",
+		"gasUsed":          "0x5208",
+		"logs":             []interface{}{},
 	}
 	response := testutils.CreateRPCNodeResponse(receiptData)
 	s, c := createAlchemyClientWithMocks(response)
