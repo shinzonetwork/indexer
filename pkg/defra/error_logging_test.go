@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"shinzo/version1/pkg/errors"
-	"shinzo/version1/pkg/testutils"
+	"shinzo/indexer/pkg/errors"
+	"shinzo/indexer/pkg/testutils"
 )
 
 // TestErrorLoggingPatterns demonstrates how to use structured error logging in tests

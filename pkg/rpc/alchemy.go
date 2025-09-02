@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"shinzo/version1/pkg/types"
+	"shinzo/indexer/pkg/types"
 )
 
 type AlchemyClient struct {

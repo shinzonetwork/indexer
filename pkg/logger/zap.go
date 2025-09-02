@@ -3,7 +3,7 @@ package logger
 import (
 	"os"
 	"path/filepath"
-	"shinzo/version1/pkg/errors"
+	"shinzo/indexer/pkg/errors"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

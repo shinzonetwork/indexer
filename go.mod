@@ -1,4 +1,4 @@
-module shinzo/version1
+module shinzo/indexer
 
 go 1.23.8
 

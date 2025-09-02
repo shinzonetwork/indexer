@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"shinzo/version1/pkg/indexer"
+	"shinzo/indexer/pkg/indexer"
 )
 
 func main() {

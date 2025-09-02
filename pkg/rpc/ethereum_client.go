@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math/big"
 
-	"shinzo/version1/pkg/errors"
-	"shinzo/version1/pkg/logger"
-	"shinzo/version1/pkg/types"
+	"shinzo/indexer/pkg/errors"
+	"shinzo/indexer/pkg/logger"
+	"shinzo/indexer/pkg/types"
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
