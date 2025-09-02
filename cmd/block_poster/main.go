@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"shinzo/version1/config"
@@ -21,14 +22,14 @@ const (
 
 func main() {
 	// Load config
-	cfg, err := config.LoadConfig("config.yaml")
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		logger.Sugar.Fatalf("Failed to load config: ", err)
 	}
 	logger.Init(cfg.Logger.Development)
 
-	// Connect to Geth RPC node (with JSON-RPC support and HTTP fallback)
-	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL) // Empty JSON-RPC addr for now, will use HTTP fallback
+	// Connect to Geth RPC node (with WebSocket and HTTP support)
+	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL, cfg.Geth.WsURL, cfg.Geth.APIKey)
 	if err != nil {
 		logCtx := errors.LogContext(err)
 		logger.Sugar.With(logCtx).Fatalf("Failed to connect to Geth node: ", err)
@@ -52,6 +53,20 @@ func main() {
 		if err != nil {
 			logCtx := errors.LogContext(err)
 			logger.Sugar.With(logCtx).Error("Failed to get latest block from Geth: ", err)
+			
+			// Check if this is an API key authentication error
+			if strings.Contains(err.Error(), "403 Forbidden") || 
+			   strings.Contains(err.Error(), "PERMISSION_DENIED") ||
+			   strings.Contains(err.Error(), "unregistered callers") {
+				logger.Sugar.Warn("API key authentication failed, sleeping for 5 seconds before retry...")
+				time.Sleep(5 * time.Second)
+			} else if strings.Contains(err.Error(), "transaction type not supported") {
+				logger.Sugar.Warn("Transaction type not supported, sleeping for 2 seconds before retry...")
+				time.Sleep(2 * time.Second)
+			} else {
+				// For other errors, add a small delay to prevent rapid retries
+				time.Sleep(1 * time.Second)
+			}
 			continue
 		}
 
