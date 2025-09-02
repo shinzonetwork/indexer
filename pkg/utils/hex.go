@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"shinzo/indexer/pkg/errors"
+	"github.com/shinzonetwork/indexer/pkg/errors"
 	"strconv"
 )
 
