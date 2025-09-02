@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -179,20 +180,80 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// Override with environment variables
-	if keyringSecret := os.Getenv("DEFRA_KEYRING_SECRET"); keyringSecret != "" {
-		cfg.DefraDB.KeyringSecret = keyringSecret
+	
+	// Logger configuration
+	if loggerDebug := os.Getenv("LOGGER_DEBUG"); loggerDebug != "" {
+		if debug, err := strconv.ParseBool(loggerDebug); err == nil {
+			cfg.Logger.Development = debug
+		}
 	}
 
+	// DefraDB Host configuration
+	if defraHost := os.Getenv("DEFRADB_HOST"); defraHost != "" {
+		cfg.DefraDB.Host = defraHost
+	}
+	// Legacy support for DEFRA_HOST
+	if host := os.Getenv("DEFRA_HOST"); host != "" {
+		cfg.DefraDB.Host = host
+	}
+
+	// DefraDB Port configuration
+	if defraPort := os.Getenv("DEFRADB_PORT"); defraPort != "" {
+		if p, err := strconv.Atoi(defraPort); err == nil {
+			cfg.DefraDB.Port = p
+		}
+	}
+	// Legacy support for DEFRA_PORT
 	if port := os.Getenv("DEFRA_PORT"); port != "" {
 		if p, err := strconv.Atoi(port); err == nil {
 			cfg.DefraDB.Port = p
 		}
 	}
 
-	if host := os.Getenv("DEFRA_HOST"); host != "" {
-		cfg.DefraDB.Host = host
+	// DefraDB Keyring Secret configuration
+	if defraKeyring := os.Getenv("DEFRADB_KEYRING_SECRET"); defraKeyring != "" {
+		cfg.DefraDB.KeyringSecret = defraKeyring
+	}
+	// Legacy support for DEFRA_KEYRING_SECRET
+	if keyringSecret := os.Getenv("DEFRA_KEYRING_SECRET"); keyringSecret != "" {
+		cfg.DefraDB.KeyringSecret = keyringSecret
 	}
 
+	// DefraDB P2P Enabled configuration
+	if defraP2PEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); defraP2PEnabled != "" {
+		if enabled, err := strconv.ParseBool(defraP2PEnabled); err == nil {
+			cfg.DefraDB.P2P.Enabled = enabled
+		}
+	}
+
+	// DefraDB P2P Bootstrap Peers configuration
+	if defraBootstrapPeers := os.Getenv("DEFRADB_P2P_BOOTSTRAP_PEERS"); defraBootstrapPeers != "" {
+		// Parse comma-separated list or JSON array format
+		if defraBootstrapPeers != "[]" && defraBootstrapPeers != "" {
+			// Simple comma-separated parsing
+			peers := strings.Split(strings.Trim(defraBootstrapPeers, "[]\""), ",")
+			var cleanPeers []string
+			for _, peer := range peers {
+				peer = strings.TrimSpace(strings.Trim(peer, "\""))
+				if peer != "" {
+					cleanPeers = append(cleanPeers, peer)
+				}
+			}
+			cfg.DefraDB.P2P.BootstrapPeers = cleanPeers
+		}
+	}
+
+	// DefraDB P2P Listen Address configuration
+	if defraListenAddr := os.Getenv("DEFRADB_P2P_LISTEN_ADDR"); defraListenAddr != "" {
+		cfg.DefraDB.P2P.ListenAddr = defraListenAddr
+	}
+
+	// DefraDB Store Path configuration
+	if defraStorePath := os.Getenv("DEFRADB_STORE_PATH"); defraStorePath != "" {
+		cfg.DefraDB.Store.Path = defraStorePath
+	}
+
+	// Indexer Start Height configuration
 	if startHeight := os.Getenv("INDEXER_START_HEIGHT"); startHeight != "" {
 		if h, err := strconv.Atoi(startHeight); err == nil {
 			cfg.Indexer.StartHeight = h

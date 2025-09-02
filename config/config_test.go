@@ -70,9 +70,14 @@ func TestLoadConfig_EnvironmentOverrides(t *testing.T) {
 	os.Setenv("GCP_RPC_URL", "https://test-rpc.example.com")
 	os.Setenv("GCP_WS_URL", "wss://test-ws.example.com")
 	os.Setenv("GCP_API_KEY", "test_api_key_123")
-	os.Setenv("DEFRA_KEYRING_SECRET", "env_secret")
-	os.Setenv("DEFRA_PORT", "9999")
-	os.Setenv("DEFRA_HOST", "env_host")
+	os.Setenv("LOGGER_DEBUG", "true")
+	os.Setenv("DEFRADB_HOST", "test-defra-host")
+	os.Setenv("DEFRADB_PORT", "8888")
+	os.Setenv("DEFRADB_KEYRING_SECRET", "test_keyring_secret")
+	os.Setenv("DEFRADB_P2P_ENABLED", "true")
+	os.Setenv("DEFRADB_P2P_BOOTSTRAP_PEERS", "peer1,peer2,peer3")
+	os.Setenv("DEFRADB_P2P_LISTEN_ADDR", "/ip4/0.0.0.0/tcp/9171")
+	os.Setenv("DEFRADB_STORE_PATH", "/custom/data/path")
 	os.Setenv("INDEXER_START_HEIGHT", "2000")
 	
 	// Clean up environment variables after test
@@ -80,9 +85,14 @@ func TestLoadConfig_EnvironmentOverrides(t *testing.T) {
 		os.Unsetenv("GCP_RPC_URL")
 		os.Unsetenv("GCP_WS_URL")
 		os.Unsetenv("GCP_API_KEY")
-		os.Unsetenv("DEFRA_KEYRING_SECRET")
-		os.Unsetenv("DEFRA_PORT")
-		os.Unsetenv("DEFRA_HOST")
+		os.Unsetenv("LOGGER_DEBUG")
+		os.Unsetenv("DEFRADB_HOST")
+		os.Unsetenv("DEFRADB_PORT")
+		os.Unsetenv("DEFRADB_KEYRING_SECRET")
+		os.Unsetenv("DEFRADB_P2P_ENABLED")
+		os.Unsetenv("DEFRADB_P2P_BOOTSTRAP_PEERS")
+		os.Unsetenv("DEFRADB_P2P_LISTEN_ADDR")
+		os.Unsetenv("DEFRADB_STORE_PATH")
 		os.Unsetenv("INDEXER_START_HEIGHT")
 	}()
 
@@ -102,16 +112,38 @@ func TestLoadConfig_EnvironmentOverrides(t *testing.T) {
 		t.Errorf("Expected api_key 'test_api_key_123', got '%s'", cfg.Geth.APIKey)
 	}
 
-	// Verify other environment overrides work
-	if cfg.DefraDB.KeyringSecret != "env_secret" {
-		t.Errorf("Expected keyring_secret 'env_secret', got '%s'", cfg.DefraDB.KeyringSecret)
+	// Verify Logger environment overrides work
+	if !cfg.Logger.Development {
+		t.Error("Expected logger development to be true")
 	}
-	if cfg.DefraDB.Port != 9999 {
-		t.Errorf("Expected port 9999, got %d", cfg.DefraDB.Port)
+
+	// Verify DefraDB environment overrides work
+	if cfg.DefraDB.Host != "test-defra-host" {
+		t.Errorf("Expected host 'test-defra-host', got '%s'", cfg.DefraDB.Host)
 	}
-	if cfg.DefraDB.Host != "env_host" {
-		t.Errorf("Expected host 'env_host', got '%s'", cfg.DefraDB.Host)
+	if cfg.DefraDB.Port != 8888 {
+		t.Errorf("Expected port 8888, got %d", cfg.DefraDB.Port)
 	}
+	if cfg.DefraDB.KeyringSecret != "test_keyring_secret" {
+		t.Errorf("Expected keyring_secret 'test_keyring_secret', got '%s'", cfg.DefraDB.KeyringSecret)
+	}
+	if !cfg.DefraDB.P2P.Enabled {
+		t.Error("Expected P2P enabled to be true")
+	}
+	if len(cfg.DefraDB.P2P.BootstrapPeers) != 3 {
+		t.Errorf("Expected 3 bootstrap peers, got %d", len(cfg.DefraDB.P2P.BootstrapPeers))
+	}
+	if cfg.DefraDB.P2P.BootstrapPeers[0] != "peer1" {
+		t.Errorf("Expected first peer 'peer1', got '%s'", cfg.DefraDB.P2P.BootstrapPeers[0])
+	}
+	if cfg.DefraDB.P2P.ListenAddr != "/ip4/0.0.0.0/tcp/9171" {
+		t.Errorf("Expected listen_addr '/ip4/0.0.0.0/tcp/9171', got '%s'", cfg.DefraDB.P2P.ListenAddr)
+	}
+	if cfg.DefraDB.Store.Path != "/custom/data/path" {
+		t.Errorf("Expected store path '/custom/data/path', got '%s'", cfg.DefraDB.Store.Path)
+	}
+
+	// Verify Indexer environment overrides work
 	if cfg.Indexer.StartHeight != 2000 {
 		t.Errorf("Expected start_height 2000, got %d", cfg.Indexer.StartHeight)
 	}

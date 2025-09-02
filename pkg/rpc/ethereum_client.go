@@ -150,7 +150,7 @@ func (c *EthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, erro
 
 	// For GCP Erigon nodes, start with blocks that are significantly behind
 	// to avoid transaction type compatibility issues
-	const initialBlocksBack = 50
+	const initialBlocksBack = 100
 	targetBlockNumber := big.NewInt(1).Sub(latestHeader.Number, big.NewInt(initialBlocksBack))
 	logger.Sugar.Infof("Latest block: %s, targeting block: %s (%d blocks behind for Erigon compatibility)", 
 		latestHeader.Number.String(), targetBlockNumber.String(), initialBlocksBack)
@@ -158,14 +158,14 @@ func (c *EthereumClient) GetLatestBlock(ctx context.Context) (*types.Block, erro
 	var gethBlock *ethtypes.Block
 
 	// Try progressively older blocks if transaction type errors occur
-	for retries := 0; retries < 5; retries++ {
+	for retries := 0; retries < 8; retries++ {
 		gethBlock, err = client.BlockByNumber(ctx, targetBlockNumber)
 		if err != nil {
 			if strings.Contains(err.Error(), "transaction type not supported") ||
 				strings.Contains(err.Error(), "invalid transaction type") {
 				
-				if retries < 4 {
-					// Go back exponentially further: 50, 100, 200, 400, 800 blocks
+				if retries < 7 {
+					// Go back exponentially further: 100, 200, 400, 800, 1600, 3200, 6400 blocks
 					blocksBack := initialBlocksBack * (1 << uint(retries+1))
 					targetBlockNumber = big.NewInt(1).Sub(latestHeader.Number, big.NewInt(int64(blocksBack)))
 					logger.Sugar.Warnf("Retry %d: Transaction type error with Erigon, going back %d blocks total...", 
@@ -483,15 +483,17 @@ func (c *EthereumClient) Close() error {
 }
 
 // getPreferredClient returns WebSocket client if available, otherwise HTTP client
+// Prioritizes WebSocket for real-time blockchain data streaming
 func (c *EthereumClient) getPreferredClient() *ethclient.Client {
 	if c.wsClient != nil {
-		logger.Sugar.Debug("Using WebSocket client")
+		logger.Sugar.Debug("Using WebSocket client for real-time blockchain streaming")
 		return c.wsClient
 	}
 	if c.httpClient != nil {
-		logger.Sugar.Debug("Using HTTP client with API key authentication")
-	} else {
-		logger.Sugar.Error("No client available")
+		logger.Sugar.Debug("Using HTTP client with API key authentication (WebSocket unavailable)")
+		return c.httpClient
 	}
-	return c.httpClient
+	
+	logger.Sugar.Error("No client available - both WebSocket and HTTP connections failed")
+	return nil
 }
