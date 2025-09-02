@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/shinzonetwork/indexer/pkg/logger"
@@ -14,6 +15,17 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/trie"
 )
+
+func TestMain(m *testing.M) {
+	// Initialize logger for tests
+	logger.Init(true)
+
+	// Run tests
+	code := m.Run()
+
+	// Exit with the test result code
+	os.Exit(code)
+}
 
 func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 	// Start a mock Ethereum JSON-RPC server
@@ -27,7 +39,7 @@ func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 	defer server.Close()
 
 	// Test HTTP-only functionality using mock server
-	client, err := NewEthereumClient(server.URL)
+	client, err := NewEthereumClient(server.URL, "", "")
 	if err != nil {
 		t.Fatalf("NewEthereumClient failed: %v", err)
 	}
@@ -43,7 +55,7 @@ func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 }
 
 func TestNewEthereumClient_InvalidHTTP(t *testing.T) {
-	_, err := NewEthereumClient("invalid-url")
+	_, err := NewEthereumClient("invalid-url", "", "")
 	if err == nil {
 		t.Error("Expected error for invalid HTTP URL, got nil")
 	}
@@ -61,7 +73,7 @@ func TestEthereumClient_GetNetworkID_MockClient(t *testing.T) {
 
 	// We can't easily mock ethclient.Client, so we'll test the client creation only
 	client := &EthereumClient{
-		nodeURL: "https://ethereum-rpc.publicnode.com",
+		nodeURL: server.URL,
 	}
 
 	// This would typically require a real Ethereum node or complex mocking

@@ -1,12 +1,10 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/joho/godotenv"
-	"gopkg.in/yaml.v3"
 )
 
 const CollectionName = "shinzo"
@@ -69,20 +67,117 @@ type Config struct {
 	Logger  LoggerConfig  `yaml:"logger"`
 }
 
-// LoadConfig loads configuration from a YAML file and environment variables
-func LoadConfig(path string) (*Config, error) {
+// LoadConfig loads configuration with sensible defaults and environment variable overrides
+func LoadConfig() (*Config, error) {
 	// Load .env file if it exists
 	_ = godotenv.Load()
 
-	// Load YAML config
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	// Initialize config with sensible defaults
+	cfg := Config{
+		DefraDB: struct {
+			Host          string `yaml:"host"`
+			Port          int    `yaml:"port"`
+			KeyringSecret string `yaml:"keyring_secret"`
+			P2P           struct {
+				Enabled        bool     `yaml:"enabled"`
+				BootstrapPeers []string `yaml:"bootstrap_peers"`
+				ListenAddr     string   `yaml:"listen_addr"`
+			} `yaml:"p2p"`
+			Store struct {
+				Path string `yaml:"path"`
+			} `yaml:"store"`
+		}{
+			Host:          "localhost",
+			Port:          9181,
+			KeyringSecret: "",
+			P2P: struct {
+				Enabled        bool     `yaml:"enabled"`
+				BootstrapPeers []string `yaml:"bootstrap_peers"`
+				ListenAddr     string   `yaml:"listen_addr"`
+			}{
+				Enabled:        false,
+				BootstrapPeers: []string{},
+				ListenAddr:     "",
+			},
+			Store: struct {
+				Path string `yaml:"path"`
+			}{
+				Path: "./data",
+			},
+		},
+		Geth: struct {
+			NodeURL string `yaml:"node_url"`
+			WsURL   string `yaml:"ws_url"`
+			APIKey  string `yaml:"api_key"`
+		}{
+			NodeURL: "", // Will be set from environment variables
+			WsURL:   "", // Will be set from environment variables
+			APIKey:  "", // Will be set from environment variables
+		},
+		Indexer: struct {
+			BlockPollingInterval float64 `yaml:"block_polling_interval"`
+			BatchSize            int     `yaml:"batch_size"`
+			StartHeight          int     `yaml:"start_height"`
+			Pipeline             struct {
+				FetchBlocks struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				} `yaml:"fetch_blocks"`
+				ProcessTransactions struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				} `yaml:"process_transactions"`
+				StoreData struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				} `yaml:"store_data"`
+			} `yaml:"pipeline"`
+		}{
+			BlockPollingInterval: 12.0,
+			BatchSize:            100,
+			StartHeight:          1800000,
+			Pipeline: struct {
+				FetchBlocks struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				} `yaml:"fetch_blocks"`
+				ProcessTransactions struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				} `yaml:"process_transactions"`
+				StoreData struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				} `yaml:"store_data"`
+			}{
+				FetchBlocks: struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				}{
+					Workers:    4,
+					BufferSize: 100,
+				},
+				ProcessTransactions: struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				}{
+					Workers:    4,
+					BufferSize: 100,
+				},
+				StoreData: struct {
+					Workers    int `yaml:"workers"`
+					BufferSize int `yaml:"buffer_size"`
+				}{
+					Workers:    4,
+					BufferSize: 100,
+				},
+			},
+		},
+		Logger: struct {
+			Development bool `yaml:"development"`
+		}{
+			Development: false,
+		},
 	}
 
 	// Override with environment variables
@@ -94,6 +189,19 @@ func LoadConfig(path string) (*Config, error) {
 		if h, err := strconv.Atoi(startHeight); err == nil {
 			cfg.Indexer.StartHeight = h
 		}
+	}
+
+	// Override GCP configuration with environment variables
+	if gcpRpcUrl := os.Getenv("GCP_RPC_URL"); gcpRpcUrl != "" {
+		cfg.Geth.NodeURL = gcpRpcUrl
+	}
+
+	if gcpWsUrl := os.Getenv("GCP_WS_URL"); gcpWsUrl != "" {
+		cfg.Geth.WsURL = gcpWsUrl
+	}
+
+	if gcpApiKey := os.Getenv("GCP_API_KEY"); gcpApiKey != "" {
+		cfg.Geth.APIKey = gcpApiKey
 	}
 
 	return &cfg, nil
