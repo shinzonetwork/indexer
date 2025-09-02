@@ -45,7 +45,7 @@ query GetBlockWithTransactions($blockNumber: Int!) {
       to
       value
       gasPrice
-      inputData
+      input
       nonce
       transactionIndex
       logs {

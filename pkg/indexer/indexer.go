@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
+	"runtime"
 	"shinzo/version1/config"
 	"shinzo/version1/pkg/defra"
 	"shinzo/version1/pkg/errors"
@@ -22,8 +24,12 @@ const (
 	TotalRetryAttempts  = 3
 )
 
+var shouldIndex = false
+var IsStarted = false
+
 func StartIndexing(defraStorePath string, defraUrl string) error {
 	ctx := context.Background()
+	shouldIndex = true
 
 	if defraStorePath != "" {
 		options := []node.Option{
@@ -54,7 +60,10 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 	}
 
 	// Load config
-	cfg, err := config.LoadConfig("config.yaml")
+	_, caller, _, _ := runtime.Caller(0)
+	basepath := filepath.Dir(caller)
+	filePath := basepath + "/../../" + "config.yaml"
+	cfg, err := config.LoadConfig(filePath)
 	if err != nil {
 		logger.Sugar.Fatalf("Failed to load config: ", err)
 	}
@@ -79,7 +88,9 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
 
 	// Main indexing loop - always get latest block from Geth
-	for {
+	for shouldIndex {
+		IsStarted = true
+
 		// Always get the latest block from Geth as source of truth
 		gethBlock, err := client.GetLatestBlock(context.Background())
 		if err != nil {
@@ -122,6 +133,8 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 		// Sleep for 12 seconds before checking for next latest block [block time is 13 seconds on avg]
 		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
 	}
+
+	return nil
 }
 
 // createBlockWithRetry attempts to create a block in DefraDB with retry logic
@@ -270,4 +283,9 @@ func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types
 		Timestamp:        gethBlock.Timestamp,
 		Transactions:     transactions,
 	}
+}
+
+func StopIndexing() {
+	shouldIndex = false
+	IsStarted = false
 }
