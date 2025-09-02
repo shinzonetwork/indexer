@@ -151,13 +151,33 @@ indexer:
 		t.Errorf("Expected api_key 'test_api_key_123', got '%s'", cfg.Geth.APIKey)
 	}
 
-	// Verify other environment overrides work
-	if cfg.DefraDB.KeyringSecret != "env_secret" {
-		t.Errorf("Expected keyring_secret 'env_secret', got '%s'", cfg.DefraDB.KeyringSecret)
+	// Verify Logger environment overrides work
+	if !cfg.Logger.Development {
+		t.Error("Expected logger development to be true")
 	}
 	if cfg.DefraDB.Url != "http://localhost:9181" {
 		t.Errorf("Expected url 'http://localhost:9181', got '%s'", cfg.DefraDB.Url)
 	}
+	if cfg.DefraDB.KeyringSecret != "test_keyring_secret" {
+		t.Errorf("Expected keyring_secret 'test_keyring_secret', got '%s'", cfg.DefraDB.KeyringSecret)
+	}
+	if !cfg.DefraDB.P2P.Enabled {
+		t.Error("Expected P2P enabled to be true")
+	}
+	if len(cfg.DefraDB.P2P.BootstrapPeers) != 3 {
+		t.Errorf("Expected 3 bootstrap peers, got %d", len(cfg.DefraDB.P2P.BootstrapPeers))
+	}
+	if cfg.DefraDB.P2P.BootstrapPeers[0] != "peer1" {
+		t.Errorf("Expected first peer 'peer1', got '%s'", cfg.DefraDB.P2P.BootstrapPeers[0])
+	}
+	if cfg.DefraDB.P2P.ListenAddr != "/ip4/0.0.0.0/tcp/9171" {
+		t.Errorf("Expected listen_addr '/ip4/0.0.0.0/tcp/9171', got '%s'", cfg.DefraDB.P2P.ListenAddr)
+	}
+	if cfg.DefraDB.Store.Path != "/custom/data/path" {
+		t.Errorf("Expected store path '/custom/data/path', got '%s'", cfg.DefraDB.Store.Path)
+	}
+
+	// Verify Indexer environment overrides work
 	if cfg.Indexer.StartHeight != 2000 {
 		t.Errorf("Expected start_height 2000, got %d", cfg.Indexer.StartHeight)
 	}
@@ -225,8 +245,8 @@ indexer:
 	}
 
 	// Should keep original values when env vars are invalid
-	if cfg.DefraDB.Port != 9181 {
-		t.Errorf("Expected port 9181 (original), got %d", cfg.DefraDB.Port)
+	if cfg.DefraDB.Url != "http://localhost:9181" {
+		t.Errorf("Expected port 9181 (original), got %d", cfg.DefraDB.Url)
 	}
 	if cfg.Indexer.StartHeight != 1000 {
 		t.Errorf("Expected start_height 1000 (original), got %d", cfg.Indexer.StartHeight)
