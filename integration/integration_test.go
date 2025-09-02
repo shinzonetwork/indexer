@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"shinzo/version1/pkg/indexer"
 	"strings"
 	"testing"
 	"time"
