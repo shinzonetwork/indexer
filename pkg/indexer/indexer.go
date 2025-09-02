@@ -26,6 +26,7 @@ const (
 
 var shouldIndex = false
 var IsStarted = false
+var HasIndexedAtLeastOneBlock = false
 
 func StartIndexing(defraStorePath string, defraUrl string) error {
 	ctx := context.Background()
@@ -129,6 +130,8 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 		processTransactions(blockHandler, client, transactions, blockDocId)
 
 		logger.Sugar.Info("Successfully processed block: ", blockNum)
+
+		HasIndexedAtLeastOneBlock = true
 
 		// Sleep for 12 seconds before checking for next latest block [block time is 13 seconds on avg]
 		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)

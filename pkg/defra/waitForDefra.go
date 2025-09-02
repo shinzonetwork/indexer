@@ -51,7 +51,7 @@ func WaitForDefraDB(url string) error {
 			fmt.Println("Defra is responsive!")
 			return nil
 		}
-		fmt.Printf("Attempt %d failed... Trying again\n")
+		fmt.Printf("Attempt %d failed... Trying again\n", attempt)
 
 		resp.Body.Close()
 		time.Sleep(1 * time.Second)

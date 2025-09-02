@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 
 	// Wait for indexer to be ready
 	fmt.Println("Waiting for indexer to start...")
-	for !indexer.IsStarted {
+	for !indexer.IsStarted || !indexer.HasIndexedAtLeastOneBlock {
 		time.Sleep(100 * time.Millisecond)
 	}
 	fmt.Println("Indexer is ready!")
