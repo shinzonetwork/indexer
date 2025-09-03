@@ -187,7 +187,7 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 			continue
 		}
 
-		transactions = append(transactions, *localTx)
+		transactions = append(transactions, localTx)
 	}
 
 	// Convert uncles
@@ -223,12 +223,9 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 }
 
 // convertTransaction safely converts a single transaction
-func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (*types.Transaction, error) {
+func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (types.Transaction, error) {
 	// Get transaction details with error handling
-	fromAddr, err := getFromAddress(tx)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get from address from transaction: %v", err)
-	}
+	fromAddr := getFromAddress(tx)
 	toAddr := getToAddress(tx)
 
 	// Handle different transaction types
@@ -287,30 +284,26 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 		Status:               true,                         // Default to true, will be updated from receipt
 	}
 
-	return &localTx, nil
+	return localTx, nil
 }
 
 // Helper functions for transaction conversion
-func getFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
-	chainId := tx.ChainId()
-	if chainId == nil && chainId.Sign() <= 0 {
-		return nil, fmt.Errorf("Received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
-	}
-
+func getFromAddress(tx *ethtypes.Transaction) common.Address {
 	// Try different signers to handle various transaction types
 	signers := []ethtypes.Signer{
-		ethtypes.LatestSignerForChainID(chainId),
-		ethtypes.NewEIP155Signer(chainId),
-		ethtypes.NewLondonSigner(chainId),
+		ethtypes.LatestSignerForChainID(tx.ChainId()),
+		ethtypes.NewEIP155Signer(tx.ChainId()),
+		ethtypes.NewLondonSigner(tx.ChainId()),
 	}
 
 	for _, signer := range signers {
 		if from, err := ethtypes.Sender(signer, tx); err == nil {
-			return &from, nil
+			return from
 		}
 	}
 
-	return nil, fmt.Errorf("No sender (from) address found")
+	// If all signers fail, return zero address
+	return common.Address{}
 }
 
 func getToAddress(tx *ethtypes.Transaction) string {
