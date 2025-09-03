@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"shinzo/version1/pkg/testutils"
+	"github.com/shinzonetwork/indexer/pkg/testutils"
 	"strings"
 	"testing"
 	"time"

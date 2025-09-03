@@ -97,4 +97,4 @@ func TestGetEventsByEventName(t *testing.T) {
 	if !found {
 		t.Errorf("No event matched the eventName %v", eventName)
 	}
-} 
+}

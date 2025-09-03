@@ -1,236 +1,30 @@
 package main
 
 import (
-	"context"
-	"strings"
-	"time"
+	"flag"
+	"fmt"
 
-	"shinzo/version1/config"
-	"shinzo/version1/pkg/defra"
-	"shinzo/version1/pkg/errors"
-	"shinzo/version1/pkg/logger"
-	"shinzo/version1/pkg/rpc"
-	"shinzo/version1/pkg/types"
-
-	"math/big"
-)
-
-const (
-	BlocksToIndexAtOnce = 10
-	TotalRetryAttempts  = 3
+	"github.com/shinzonetwork/indexer/pkg/indexer"
 )
 
 func main() {
-	// Load config
-	cfg, err := config.LoadConfig()
+	defraStorePath := flag.String("defra-store-path", "", "Path to Defra store directory. If empty, assumes Defra is already running. Example: -defra-store-path=./.defra")
+	defraUrl := flag.String("defra-url", "http://localhost:9181", "The URL your defra instance is running on. If you are not currently running a defra instance, please omit this flag.")
+	mode := flag.String("mode", "realtime", "Indexing mode: 'realtime' for real-time indexing, 'catchup' for catch-up indexing")
+	flag.Parse()
+
+	var indexingMode indexer.IndexingMode
+	switch *mode {
+	case "catchup":
+		indexingMode = indexer.ModeCatchUp
+	case "realtime":
+		indexingMode = indexer.ModeRealTime
+	default:
+		panic(fmt.Errorf("Invalid mode: %s. Use 'realtime' or 'catchup'", *mode))
+	}
+
+	err := indexer.StartIndexingWithMode(*defraStorePath, *defraUrl, indexingMode)
 	if err != nil {
-		logger.Sugar.Fatalf("Failed to load config: ", err)
-	}
-	logger.Init(cfg.Logger.Development)
-
-	// Connect to Geth RPC node (with WebSocket and HTTP support)
-	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL, cfg.Geth.WsURL, cfg.Geth.APIKey)
-	if err != nil {
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Fatalf("Failed to connect to Geth node: ", err)
-	}
-	defer client.Close()
-
-	// Create DefraDB block handler
-	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Fatalf("Failed to create block handler: ", err)
-	}
-
-	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
-
-	// Main indexing loop - always get latest block from Geth
-	for {
-		// Always get the latest block from Geth as source of truth
-		gethBlock, err := client.GetLatestBlock(context.Background())
-		if err != nil {
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to get latest block from Geth: ", err)
-			
-			// Check if this is an API key authentication error
-			if strings.Contains(err.Error(), "403 Forbidden") || 
-			   strings.Contains(err.Error(), "PERMISSION_DENIED") ||
-			   strings.Contains(err.Error(), "unregistered callers") {
-				logger.Sugar.Warn("API key authentication failed, sleeping for 5 seconds before retry...")
-				time.Sleep(5 * time.Second)
-			} else if strings.Contains(err.Error(), "transaction type not supported") {
-				logger.Sugar.Warn("Transaction type not supported, sleeping for 2 seconds before retry...")
-				time.Sleep(2 * time.Second)
-			} else {
-				// For other errors, add a small delay to prevent rapid retries
-				time.Sleep(1 * time.Second)
-			}
-			continue
-		}
-
-		blockNum := gethBlock.Number
-		logger.Sugar.Info("Processing latest block from Geth: ", blockNum)
-
-		// Get network ID for transaction conversion (skip if it fails)
-		networkID, err := client.GetNetworkID(context.Background())
-		if err != nil {
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Warn("Failed to get network ID... defaulting to 1: ", err)
-			networkID = big.NewInt(1) // Default to mainnet
-		}
-		_ = networkID // Use networkID if needed for transaction processing
-		logger.Sugar.Debug("Network ID: ", networkID)
-
-		// get transactions from Geth variable
-		transactions := gethBlock.Transactions
-
-		// Build the complete block
-		block := buildBlock(gethBlock, transactions)
-
-		// Create block in DefraDB with retry logic
-		blockDocId, err := createBlockWithRetry(blockHandler, block, blockNum)
-		if err != nil {
-			continue // Skip to next block if creation failed
-		}
-		logger.Sugar.Info("Created block with DocID: ", blockDocId)
-
-		// Process all transactions for this block
-		processTransactions(blockHandler, client, transactions, blockDocId)
-
-		logger.Sugar.Info("Successfully processed block: ", blockNum)
-
-		// Sleep for 12 seconds before checking for next latest block [block time is 13 seconds on avg]
-		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
-	}
-}
-
-// createBlockWithRetry attempts to create a block in DefraDB with retry logic
-func createBlockWithRetry(blockHandler *defra.BlockHandler, block *types.Block, blockNum string) (string, error) {
-	var blockDocId string
-	blockRetryAttempts := 0
-
-	for {
-		var err error
-		blockDocId, err = blockHandler.CreateBlock(context.Background(), block)
-		if err == nil {
-			return blockDocId, nil // Success
-		}
-
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Errorf("Failed to create block: ", blockNum, " in DefraDB (attempt ", blockRetryAttempts+1)
-
-		// Check if error is retryable
-		if errors.IsRetryable(err) && blockRetryAttempts < TotalRetryAttempts {
-			retryDelay := errors.GetRetryDelay(err, blockRetryAttempts)
-			logger.Sugar.Warnf("Retrying block: ", blockNum, " creation after ", retryDelay)
-			time.Sleep(retryDelay)
-			blockRetryAttempts++
-			continue // Retry the same block
-		}
-
-		// Non-retryable error or max retries exceeded - skip this block
-		if errors.IsDataError(err) || blockRetryAttempts >= TotalRetryAttempts {
-			logger.Sugar.Errorf("Skipping block: ", blockNum, " due to error: ", err)
-			return "", err // Return error to skip block
-		}
-
-		// Critical error - may need to exit
-		if errors.IsCritical(err) {
-			logger.Sugar.Fatalf("Critical error processing block: ", blockNum, " : ", err)
-		}
-
-		// Unknown error type - skip block
-		logger.Sugar.Errorf("Unknown error processing block: ", blockNum, " : ", err)
-		return "", err
-	}
-}
-
-// processTransactions handles the processing of all transactions for a block
-func processTransactions(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, transactions []types.Transaction, blockDocId string) {
-	for _, tx := range transactions {
-		processSingleTransaction(blockHandler, client, tx, blockDocId)
-	}
-}
-
-// processSingleTransaction handles the processing of a single transaction and its related data
-func processSingleTransaction(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, tx types.Transaction, blockDocId string) {
-	// Create transaction in DefraDB (includes block relationship)
-	txDocId, err := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Error("Failed to create transaction in DefraDB: ", err)
-		return
-	}
-	logger.Sugar.Info("Created transaction with DocID: ", txDocId)
-
-	// Fetch transaction receipt to get logs and events
-	receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
-		return
-	}
-
-	// Process access list entries
-	processAccessListEntries(blockHandler, tx.AccessList, txDocId)
-
-	// Process logs from the receipt
-	processTransactionLogs(blockHandler, receipt.Logs, blockDocId, txDocId)
-}
-
-// processAccessListEntries handles the processing of access list entries for a transaction
-func processAccessListEntries(blockHandler *defra.BlockHandler, accessList []types.AccessListEntry, txDocId string) {
-	for _, accessListEntry := range accessList {
-		ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
-	}
-}
-
-// processTransactionLogs handles the processing of logs for a transaction
-func processTransactionLogs(blockHandler *defra.BlockHandler, logs []types.Log, blockDocId, txDocId string) {
-	for _, log := range logs {
-		// Create log in DefraDB (includes block and transaction relationships)
-		logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created log with DocID: ", logDocId)
-	}
-}
-
-// buildBlock creates a new block with the same data from gethBlock
-func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types.Block {
-	return &types.Block{
-		Number:           gethBlock.Number,
-		Hash:             gethBlock.Hash,
-		ParentHash:       gethBlock.ParentHash,
-		Nonce:            gethBlock.Nonce,
-		Sha3Uncles:       gethBlock.Sha3Uncles,
-		LogsBloom:        gethBlock.LogsBloom,
-		TransactionsRoot: gethBlock.TransactionsRoot,
-		StateRoot:        gethBlock.StateRoot,
-		ReceiptsRoot:     gethBlock.ReceiptsRoot,
-		Miner:            gethBlock.Miner,
-		Difficulty:       gethBlock.Difficulty,
-		TotalDifficulty:  gethBlock.TotalDifficulty,
-		ExtraData:        gethBlock.ExtraData,
-		Size:             gethBlock.Size,
-		GasLimit:         gethBlock.GasLimit,
-		GasUsed:          gethBlock.GasUsed,
-		Timestamp:        gethBlock.Timestamp,
-		Transactions:     transactions,
+		panic(fmt.Errorf("Failed to start indexing: %v", err))
 	}
 }

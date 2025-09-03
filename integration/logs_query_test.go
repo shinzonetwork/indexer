@@ -23,7 +23,7 @@ func assertLogHasTopics(t *testing.T, logMap map[string]interface{}) {
 
 func TestGetAllTransactionLogs(t *testing.T) {
 	txHash := getArbitraryTransactionHash(t)
-	result := MakeQuery(t, logsQueryPath, "GetAllTransactionLogs", map[string]interface{}{ "txHash": txHash })
+	result := MakeQuery(t, logsQueryPath, "GetAllTransactionLogs", map[string]interface{}{"txHash": txHash})
 	logList, ok := result["data"].(map[string]interface{})["Log"].([]interface{})
 	if !ok {
 		t.Errorf("No logs returned for txHash %v: %v", txHash, result)
@@ -48,7 +48,7 @@ func TestGetAllBlockLogs(t *testing.T) {
 	if !ok || len(blockHash) == 0 {
 		t.Fatalf("Block hash missing or empty in block: %v", block)
 	}
-	result := MakeQuery(t, logsQueryPath, "GetAllBlockLogs", map[string]interface{}{ "blockHash": blockHash })
+	result := MakeQuery(t, logsQueryPath, "GetAllBlockLogs", map[string]interface{}{"blockHash": blockHash})
 	logList, ok := result["data"].(map[string]interface{})["Log"].([]interface{})
 	if !ok {
 		t.Errorf("No logs returned for blockHash %v: %v", blockHash, result)
@@ -69,7 +69,7 @@ func TestGetAllBlockLogs(t *testing.T) {
 
 func TestGetAllLogsByTopic(t *testing.T) {
 	topic := getArbitraryTopic(t)
-	result := MakeQuery(t, logsQueryPath, "GetAllLogsByTopic", map[string]interface{}{ "topic": topic })
+	result := MakeQuery(t, logsQueryPath, "GetAllLogsByTopic", map[string]interface{}{"topic": topic})
 	logList, ok := result["data"].(map[string]interface{})["Log"].([]interface{})
 	if !ok {
 		t.Errorf("No logs returned for topic %v: %v", topic, result)
@@ -101,4 +101,4 @@ func TestGetAllLogsByTopic(t *testing.T) {
 	if !found {
 		t.Errorf("No log contained the topic %v", topic)
 	}
-} 
+}
