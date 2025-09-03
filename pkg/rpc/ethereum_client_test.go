@@ -111,13 +111,6 @@ func TestConvertGethBlock(t *testing.T) {
 	signedTx, _ := ethtypes.SignTx(tx1, signer, privateKey)
 	tx1 = signedTx
 
-	// Sign the transaction to get a valid from address
-	chainID := big.NewInt(1) // Mainnet chain ID
-	signer := ethtypes.NewEIP155Signer(chainID)
-	privateKey, _ := crypto.GenerateKey()
-	signedTx, _ := ethtypes.SignTx(tx1, signer, privateKey)
-	tx1 = signedTx
-
 	gethBlock := ethtypes.NewBlock(header, &ethtypes.Body{Transactions: []*ethtypes.Transaction{tx1}}, nil, trie.NewStackTrie(nil))
 
 	client := &EthereumClient{}
