@@ -293,7 +293,7 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 // Helper functions for transaction conversion
 func getFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 	chainId := tx.ChainId()
-	if chainId == nil && chainId.Sign() <= 0 {
+	if chainId == nil || chainId.Sign() <= 0 {
 		return nil, fmt.Errorf("Received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
 	}
 
