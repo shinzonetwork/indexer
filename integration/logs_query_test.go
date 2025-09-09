@@ -42,6 +42,34 @@ func TestGetAllTransactionLogs(t *testing.T) {
 	}
 }
 
+// Helper to get any block from the database
+func getArbitraryBlock(t *testing.T) map[string]interface{} {
+	result := MakeQuery(t, blockQueryPath, "GetLatestBlocks", map[string]interface{}{
+		"limit": 1,
+	})
+	
+	if result == nil {
+		t.Fatalf("No blocks returned from DefraDB - database may be empty")
+	}
+	
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Invalid data format in GraphQL response: %v", result)
+	}
+	
+	blocks, ok := data["Block"].([]interface{})
+	if !ok || len(blocks) == 0 {
+		t.Fatalf("No blocks returned")
+	}
+	
+	block, ok := blocks[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Invalid block format: %v", blocks[0])
+	}
+	
+	return block
+}
+
 func TestGetAllBlockLogs(t *testing.T) {
 	block := getArbitraryBlock(t)
 	blockHash, ok := block["hash"].(string)

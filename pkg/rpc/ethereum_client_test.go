@@ -235,7 +235,7 @@ func TestGetFromAddress(t *testing.T) {
 
 	// The address might be the zero address due to invalid signature
 	if address == (common.Address{}) {
-		t.Log("Got zero address, which is expected for unsigned transaction")
+		logger.Test("Got zero address, which is expected for unsigned transaction")
 	}
 }
 

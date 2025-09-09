@@ -3,28 +3,40 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/shinzonetwork/indexer/pkg/indexer"
 )
 
 func main() {
-	defraStorePath := flag.String("defra-store-path", "", "Path to Defra store directory. If empty, assumes Defra is already running. Example: -defra-store-path=./.defra")
-	defraUrl := flag.String("defra-url", "http://localhost:9181", "The URL your defra instance is running on. If you are not currently running a defra instance, please omit this flag.")
+	defraStorePath := flag.String("defra-store-path", "", "Path to DefraDB store directory. If empty, assumes DefraDB is already running.")
+	defraUrl := flag.String("defra-url", "http://localhost:9181", "URL of the DefraDB instance.")
 	mode := flag.String("mode", "realtime", "Indexing mode: 'realtime' for real-time indexing, 'catchup' for catch-up indexing")
 	flag.Parse()
 
-	var indexingMode indexer.IndexingMode
-	switch *mode {
-	case "catchup":
-		indexingMode = indexer.ModeCatchUp
-	case "realtime":
-		indexingMode = indexer.ModeRealTime
-	default:
-		panic(fmt.Errorf("Invalid mode: %s. Use 'realtime' or 'catchup'", *mode))
+	// Validate and parse indexing mode
+	indexingMode, err := parseIndexingMode(*mode)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Usage: %s -mode=[realtime|catchup]\n", os.Args[0])
+		os.Exit(1)
 	}
 
-	err := indexer.StartIndexingWithMode(*defraStorePath, *defraUrl, indexingMode)
-	if err != nil {
-		panic(fmt.Errorf("Failed to start indexing: %v", err))
+	// Start indexing with proper error handling
+	if err := indexer.StartIndexingWithMode(*defraStorePath, *defraUrl, indexingMode); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start indexing: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// parseIndexingMode validates and converts mode string to IndexingMode
+func parseIndexingMode(mode string) (indexer.IndexingMode, error) {
+	switch mode {
+	case "catchup":
+		return indexer.ModeCatchUp, nil
+	case "realtime", "":
+		return indexer.ModeRealTime, nil
+	default:
+		return "", fmt.Errorf("invalid mode: %s. Use 'realtime' or 'catchup'", mode)
 	}
 }

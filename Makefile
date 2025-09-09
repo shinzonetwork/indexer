@@ -1,4 +1,4 @@
-.PHONY: deps env build start clean defradb gitpush test testrpc coverage bootstrap playground stop integration-test
+.PHONY: deps env build start clean defradb gitpush test testrpc coverage bootstrap playground stop integration-test docker-build docker-up docker-down deploy
 
 DEFRA_PATH ?=
 
@@ -11,8 +11,14 @@ env:
 build:
 	go build -o bin/block_poster cmd/block_poster/main.go
 
+build-catch-up:
+	go build -o bin/catch_up cmd/catch_up/main.go
+
 start:
-	./bin/block_poster > logs/log.txt 1>&2   
+	./bin/block_poster > logs/log.txt 1>&2
+
+start-catch-up:
+	./bin/catch_up > logs/catch_up.txt 1>&2   
 
 defradb:
 	sh scripts/apply_schema.sh
@@ -34,7 +40,31 @@ prysm-start:
   --suggested-fee-recipient=0x8E4902d854e6A7eaF44A98D6f1E600413C99Ce07
 
 test:
-	go test ./... -v
+	@echo "🧪 Running all tests with summary output..."
+	@go test ./... -v -count=1 | tee /tmp/test_output.log; \
+	exit_code=$$?; \
+	echo ""; \
+	echo "📊 TEST SUMMARY:"; \
+	echo "================"; \
+	if [ $$exit_code -eq 0 ]; then \
+		echo "✅ ALL TESTS PASSED"; \
+		echo "📈 Passed packages:"; \
+		grep "^ok" /tmp/test_output.log | sed 's/^/  ✓ /'; \
+	else \
+		echo "❌ SOME TESTS FAILED (Exit Code: $$exit_code)"; \
+		echo ""; \
+		echo "📈 Passed packages:"; \
+		grep "^ok" /tmp/test_output.log | sed 's/^/  ✓ /' || echo "  (none)"; \
+		echo ""; \
+		echo "❌ Failed packages:"; \
+		grep "^FAIL" /tmp/test_output.log | sed 's/^/  ✗ /' || echo "  (check output above for details)"; \
+		echo ""; \
+		echo "🔍 Failed test details:"; \
+		grep -A 5 -B 1 "FAIL:" /tmp/test_output.log | sed 's/^/  /' || echo "  (check full output above)"; \
+	fi; \
+	echo ""; \
+	rm -f /tmp/test_output.log; \
+	exit $$exit_code
 
 integration-test:
 	@if [ -z "$(DEFRA_PATH)" ]; then \
@@ -48,10 +78,32 @@ testrpc:
 	go test ./pkg/rpc -v
 
 coverage:
-	go test -coverprofile=coverage.out ./... || true
+	go test ./... -coverprofile=coverage.out
 	go tool cover -html=coverage.out -o coverage.html
-	open coverage.html
-	rm coverage.out
+
+docker-build:
+	docker build -t shinzo-indexer:latest .
+
+docker-up-catch-up:
+	docker-compose --profile catch-up up -d
+
+docker-up-indexer:
+	docker-compose --profile indexer up -d
+
+docker-down:
+	docker-compose down -v
+
+docker-logs:
+	docker-compose logs -f
+
+deploy:
+	./deploy/deploy.sh
+
+clean-deploy:
+	sudo systemctl stop shinzo-indexer shinzo-defradb || true
+	sudo systemctl disable shinzo-indexer shinzo-defradb || true
+	sudo rm -f /etc/systemd/system/shinzo-*.service
+	sudo systemctl daemon-reload
 
 bootstrap:
 	@if [ -z "$(DEFRA_PATH)" ]; then \

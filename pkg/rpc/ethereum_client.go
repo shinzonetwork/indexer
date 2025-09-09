@@ -333,7 +333,7 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 		GasUsed:          fmt.Sprintf("%d", gethBlock.GasUsed()),
 		GasLimit:         fmt.Sprintf("%d", gethBlock.GasLimit()),
 		BaseFeePerGas:    getBaseFeePerGas(gethBlock),
-		Nonce:            int(gethBlock.Nonce()),
+		Nonce:            fmt.Sprintf("%d", gethBlock.Nonce()),
 		Miner:            gethBlock.Coinbase().Hex(),
 		Size:             fmt.Sprintf("%d", gethBlock.Size()),
 		StateRoot:        gethBlock.Root().Hex(),
@@ -399,7 +399,7 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 		MaxFeePerGas:         getMaxFeePerGas(tx),          // string
 		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),  // string
 		Input:                common.Bytes2Hex(tx.Data()),  // string
-		Nonce:                int(tx.Nonce()),              // int
+		Nonce:                fmt.Sprintf("%d", tx.Nonce()), // string
 		TransactionIndex:     index,                        // int
 		Type:                 fmt.Sprintf("%d", tx.Type()), // string
 		ChainId:              getChainId(tx),               // string
