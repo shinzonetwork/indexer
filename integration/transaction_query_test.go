@@ -14,13 +14,10 @@ func init() {
 	transactionQueryPath = filepath.Join(getProjectRoot(nil), "queries/transaction.graphql")
 }
 
-// Helper to get an arbitrary transaction from a recent block with transactions
+// Helper to get an arbitrary transaction from a mock block with transactions
 func getArbitraryTransaction(t *testing.T) map[string]interface{} {
 	blockQueryPath := filepath.Join(getProjectRoot(nil), "queries/blocks.graphql")
-	blockNumber := getLatestBlockNumber(t) - 25 // Alchemy doesn't always return transactions in the latest blocks
-	if blockNumber < 0 {
-		t.Fatalf("Block number underflow: %d", blockNumber)
-	}
+	blockNumber := 1000001 // Use our predictable mock block with transactions
 	variables := map[string]interface{}{"blockNumber": blockNumber}
 	result := MakeQuery(t, blockQueryPath, "GetBlockWithTransactions", variables)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
@@ -57,13 +54,10 @@ func getArbitraryAddress(t *testing.T) string {
 	return address
 }
 
-// Helper to get an arbitrary transaction with logs from a recent block
+// Helper to get an arbitrary transaction with logs from a mock block
 func getArbitraryTransactionWithLogs(t *testing.T) map[string]interface{} {
 	blockQueryPath := filepath.Join(getProjectRoot(nil), "queries/blocks.graphql")
-	blockNumber := getLatestBlockNumber(t) - 25 // Alchemy doesn't always return transactions in the latest blocks
-	if blockNumber < 0 {
-		t.Fatalf("Block number underflow: %d", blockNumber)
-	}
+	blockNumber := 1000002 // Use our second mock block with transactions
 	variables := map[string]interface{}{"blockNumber": blockNumber}
 	result := MakeQuery(t, blockQueryPath, "GetBlockWithTransactions", variables)
 	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})

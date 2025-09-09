@@ -155,7 +155,7 @@ func TestInit_LogFileCreation(t *testing.T) {
 	logFile := filepath.Join(logsDir, "logfile")
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
 		// This test might fail in some environments, so we'll make it a warning
-		t.Logf("Warning: Log file was not created at %s", logFile)
+		Test("Warning: Log file was not created at " + logFile)
 	}
 }
 

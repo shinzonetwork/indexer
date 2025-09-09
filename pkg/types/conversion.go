@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -20,7 +21,7 @@ func ConvertBlock(block *gethtypes.Block, txs []Transaction) *Block {
 		Difficulty:       block.Difficulty().String(),
 		GasUsed:          big.NewInt(int64(block.GasUsed())).String(),
 		GasLimit:         big.NewInt(int64(block.GasLimit())).String(),
-		Nonce:            int(block.Nonce()),
+		Nonce:            fmt.Sprintf("%d", block.Nonce()),
 		Miner:            block.Coinbase().Hex(),
 		Size:             "", // Not available directly
 		StateRoot:        block.Root().Hex(),
@@ -54,7 +55,7 @@ func ConvertTransaction(tx *gethtypes.Transaction, msgSender common.Address, blo
 		Gas:              big.NewInt(int64(tx.Gas())).String(),
 		GasPrice:         tx.GasPrice().String(),
 		Input:            string(common.Bytes2Hex(tx.Data())), // common.Bytes2Hex(tx.Data()) || "0x0",
-		Nonce:            int(tx.Nonce()),
+		Nonce:            fmt.Sprintf("%d", tx.Nonce()),
 		TransactionIndex: int(tx.Nonce()), // Not available directly
 		Status:           status,
 		Logs:             logs,

@@ -7,10 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"github.com/shinzonetwork/indexer/pkg/errors"
-	"github.com/shinzonetwork/indexer/pkg/logger"
-	"github.com/shinzonetwork/indexer/pkg/types"
-	"github.com/shinzonetwork/indexer/pkg/utils"
 	"strconv"
 	"strings"
 
@@ -252,39 +248,6 @@ func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId strin
 	docId, err := h.parseGraphQLResponse(resp, "update_Log")
 	if docId == "" {
 		return "", errors.NewQueryFailed("defra", "UpdateLogRelationships", fmt.Sprintf("%v", mutation), nil)
-	}
-	return docId, nil
-}
-
-func (h *BlockHandler) UpdateEventRelationships(ctx context.Context, logDocId string, txHash string, logIndex string) (string, error) {
-
-	if logDocId == "" {
-		return "", errors.NewInvalidInputFormat("defra", "UpdateEventRelationships", "logDocId", nil)
-	}
-	if txHash == "" {
-		return "", errors.NewInvalidInputFormat("defra", "UpdateEventRelationships", "txHash", nil)
-	}
-	if logIndex == "" {
-		return "", errors.NewInvalidInputFormat("defra", "UpdateEventRelationships", "logIndex", nil)
-	}
-
-	// Update event with log relationship
-	mutation := types.Request{Query: fmt.Sprintf(`mutation {
-		update_Event(filter: {logIndex: {_eq: %q}, transactionHash:{_eq:%q}}, input: {
-		log: %q
-		}) {
-			_docID
-		}
-	}`, logIndex, txHash, logDocId)}
-
-	resp, err := h.SendToGraphql(ctx, mutation)
-	if err != nil {
-		logger.Sugar.Errorf("event relationship update failure: ", mutation)
-		return "", errors.NewQueryFailed("defra", "UpdateEventRelationships", fmt.Sprintf("%v", mutation), err)
-	}
-	docId, err := h.parseGraphQLResponse(resp, "update_Event")
-	if docId == "" {
-		return "", errors.NewQueryFailed("defra", "UpdateEventRelationships", fmt.Sprintf("%v", mutation), nil)
 	}
 	return docId, nil
 }
