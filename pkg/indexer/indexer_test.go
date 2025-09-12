@@ -35,7 +35,7 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 	_, err := queryBlockNumber(ctx, port)
 	require.Error(t, err)
 
-	testConfig := defaultConfig
+	testConfig := DefaultConfig
 	testConfig.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
 
 	go func() {
@@ -133,7 +133,7 @@ func TestIndexing(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	blockNumber, err := queryBlockNumber(context.Background(), defra.GetPortFromUrl(defaultConfig.DefraDB.Url))
+	blockNumber, err := queryBlockNumber(context.Background(), defra.GetPortFromUrl(DefaultConfig.DefraDB.Url))
 	require.NoError(t, err)
 	require.Greater(t, blockNumber, 100)
 }

@@ -33,7 +33,7 @@ var requiredPeers []string = []string{} // Here, we can consider adding any "big
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
 
-var defaultConfig *config.Config = &config.Config{
+var DefaultConfig *config.Config = &config.Config{
 	DefraDB: config.DefraDBConfig{
 		Url:           "http://localhost:9181",
 		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
@@ -76,7 +76,7 @@ func StartIndexing(defraStarted bool, cfg *config.Config) error {
 	ctx := context.Background()
 
 	if cfg == nil {
-		cfg = defaultConfig
+		cfg = DefaultConfig
 	}
 	cfg.DefraDB.P2P.BootstrapPeers = append(cfg.DefraDB.P2P.BootstrapPeers, requiredPeers...)
 	logger.Init(cfg.Logger.Development)
