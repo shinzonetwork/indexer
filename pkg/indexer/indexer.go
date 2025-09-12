@@ -17,6 +17,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/rpc"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
+	"github.com/sourcenetwork/defradb/http"
 	"github.com/sourcenetwork/defradb/node"
 )
 
@@ -38,6 +39,7 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 			node.WithDisableAPI(false),
 			node.WithDisableP2P(false),
 			node.WithStorePath(defraStorePath),
+			http.WithAddress(strings.Replace(defraUrl, "http://localhost", "127.0.0.1", 1)),
 		}
 		defraNode, err := node.New(ctx, options...)
 		if err != nil {
@@ -80,7 +82,7 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 	defer client.Close()
 
 	// Create DefraDB block handler
-	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Host, cfg.DefraDB.Port)
+	blockHandler, err := defra.NewBlockHandler(defraUrl)
 	if err != nil {
 		// Log with structured context
 		logCtx := errors.LogContext(err)

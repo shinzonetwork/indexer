@@ -13,8 +13,7 @@ const CollectionName = "shinzo"
 
 type Config struct {
 	DefraDB struct {
-		Host          string `yaml:"host"`
-		Port          int    `yaml:"port"`
+		Url           string `yaml:"url"`
 		KeyringSecret string `yaml:"keyring_secret"`
 		P2P           struct {
 			Enabled        bool     `yaml:"enabled"`
@@ -84,16 +83,6 @@ func LoadConfig(path string) (*Config, error) {
 	// Override with environment variables
 	if keyringSecret := os.Getenv("DEFRA_KEYRING_SECRET"); keyringSecret != "" {
 		cfg.DefraDB.KeyringSecret = keyringSecret
-	}
-
-	if port := os.Getenv("DEFRA_PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			cfg.DefraDB.Port = p
-		}
-	}
-
-	if host := os.Getenv("DEFRA_HOST"); host != "" {
-		cfg.DefraDB.Host = host
 	}
 
 	if startHeight := os.Getenv("INDEXER_START_HEIGHT"); startHeight != "" {

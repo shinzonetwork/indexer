@@ -18,7 +18,7 @@ import (
 func TestIndexing(t *testing.T) {
 	logger.Init(true)
 
-	defraUrl := "127.0.0.1:9181"
+	defraUrl := "127.0.0.1:0"
 	options := []node.Option{
 		node.WithDisableAPI(false),
 		node.WithDisableP2P(true),
@@ -36,7 +36,7 @@ func TestIndexing(t *testing.T) {
 	require.Error(t, err)
 
 	go func() {
-		err := StartIndexing("", defraUrl)
+		err := StartIndexing("", indexerDefra.APIURL)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
@@ -70,7 +70,7 @@ func startDefraInstance(t *testing.T, ctx context.Context, options []node.Option
 }
 
 func queryBlockNumber(ctx context.Context, port int) (int, error) {
-	handler, err := defra.NewBlockHandler("localhost", port)
+	handler, err := defra.NewBlockHandler(fmt.Sprintf("http://localhost:%d", port))
 	if err != nil {
 		return 0, fmt.Errorf("Error building block handler: %v", err)
 	}

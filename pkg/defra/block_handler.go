@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
+
 	"github.com/shinzonetwork/indexer/pkg/errors"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/types"
 	"github.com/shinzonetwork/indexer/pkg/utils"
-	"strconv"
-	"strings"
 )
 
 type BlockHandler struct {
@@ -20,17 +21,13 @@ type BlockHandler struct {
 	client   *http.Client
 }
 
-func NewBlockHandler(host string, port int) (*BlockHandler, error) {
-	if host == "" {
+func NewBlockHandler(url string) (*BlockHandler, error) {
+	if url == "" {
 		return nil, errors.NewConfigurationError("defra", "NewBlockHandler",
-			"host parameter is empty", host, nil)
-	}
-	if port == 0 {
-		return nil, errors.NewConfigurationError("defra", "NewBlockHandler",
-			"port parameter is zero", fmt.Sprintf("%d", port), nil)
+			"url parameter is empty", url, nil)
 	}
 	return &BlockHandler{
-		defraURL: fmt.Sprintf("http://%s:%d/api/v0/graphql", host, port),
+		defraURL: strings.Replace(fmt.Sprintf("%s/api/v0/graphql", url), "127.0.0.1", "localhost", 1),
 		client:   &http.Client{},
 	}, nil
 }
