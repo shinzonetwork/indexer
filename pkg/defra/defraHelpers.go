@@ -9,7 +9,10 @@ import (
 
 func GetPort(targetNode *node.Node) int {
 	url := targetNode.APIURL
+	return GetPortFromUrl(url)
+}
 
+func GetPortFromUrl(url string) int {
 	// Check if it's localhost format (http://127.0.0.1:port or http://localhost:port)
 	if !strings.Contains(url, "127.0.0.1:") && !strings.Contains(url, "localhost:") {
 		return -1

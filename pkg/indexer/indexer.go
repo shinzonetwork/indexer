@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/types"
 
 	"github.com/sourcenetwork/defradb/http"
+	netConfig "github.com/sourcenetwork/defradb/net/config"
 	"github.com/sourcenetwork/defradb/node"
 )
 
@@ -30,17 +29,71 @@ var shouldIndex = false
 var IsStarted = false
 var HasIndexedAtLeastOneBlock = false
 
-func StartIndexing(defraStorePath string, defraUrl string) error {
-	ctx := context.Background()
-	shouldIndex = true
+var requiredPeers []string = []string{} // Here, we can consider adding any "big peers" we need - these requiredPeers can be used as a quick start point to speed up the peer discovery process
 
-	if defraStorePath != "" {
+const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
+
+var defaultConfig *config.Config = &config.Config{
+	DefraDB: config.DefraDBConfig{
+		Url:           "http://localhost:9181",
+		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
+		P2P: config.DefraDBP2PConfig{
+			BootstrapPeers: requiredPeers,
+			ListenAddr:     defaultListenAddress,
+		},
+		Store: config.DefraDBStoreConfig{
+			Path: "./.defra",
+		},
+	},
+	Geth: config.GethConfig{
+		NodeURL: "https://ethereum-rpc.publicnode.com",
+	},
+	Indexer: config.IndexerConfig{
+		BlockPollingInterval: 12.0,
+		BatchSize:            100,
+		StartHeight:          1800000,
+		Pipeline: config.IndexerPipelineConfig{
+			FetchBlocks: config.PipelineStageConfig{
+				Workers:    4,
+				BufferSize: 100,
+			},
+			ProcessTransactions: config.PipelineStageConfig{
+				Workers:    4,
+				BufferSize: 100,
+			},
+			StoreData: config.PipelineStageConfig{
+				Workers:    4,
+				BufferSize: 100,
+			},
+		},
+	},
+	Logger: config.LoggerConfig{
+		Development: false,
+	},
+}
+
+func StartIndexing(defraStarted bool, cfg *config.Config) error {
+	ctx := context.Background()
+
+	if cfg == nil {
+		cfg = defaultConfig
+	}
+	cfg.DefraDB.P2P.BootstrapPeers = append(cfg.DefraDB.P2P.BootstrapPeers, requiredPeers...)
+	logger.Init(cfg.Logger.Development)
+
+	if !defraStarted {
 		options := []node.Option{
 			node.WithDisableAPI(false),
 			node.WithDisableP2P(false),
-			node.WithStorePath(defraStorePath),
-			http.WithAddress(strings.Replace(defraUrl, "http://localhost", "127.0.0.1", 1)),
+			node.WithStorePath(cfg.DefraDB.Store.Path),
+			http.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
+			netConfig.WithBootstrapPeers(cfg.DefraDB.P2P.BootstrapPeers...),
 		}
+		listenAddress := cfg.DefraDB.P2P.ListenAddr
+		if len(listenAddress) > 0 {
+			options = append(options, netConfig.WithListenAddresses(listenAddress))
+		}
+
 		defraNode, err := node.New(ctx, options...)
 		if err != nil {
 			return fmt.Errorf("Failed to create defra node %v: ", err)
@@ -57,21 +110,13 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
 		}
 
-		err = defra.WaitForDefraDB(defraUrl)
+		err = defra.WaitForDefraDB(cfg.DefraDB.Url)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Load config
-	_, caller, _, _ := runtime.Caller(0)
-	basepath := filepath.Dir(caller)
-	filePath := basepath + "/../../" + "config.yaml"
-	cfg, err := config.LoadConfig(filePath)
-	if err != nil {
-		logger.Sugar.Fatalf("Failed to load config: ", err)
-	}
-	logger.Init(cfg.Logger.Development)
+	shouldIndex = true
 
 	// Connect to Geth RPC node (with JSON-RPC support and HTTP fallback)
 	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL) // Empty JSON-RPC addr for now, will use HTTP fallback
@@ -82,7 +127,7 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 	defer client.Close()
 
 	// Create DefraDB block handler
-	blockHandler, err := defra.NewBlockHandler(defraUrl)
+	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Url)
 	if err != nil {
 		// Log with structured context
 		logCtx := errors.LogContext(err)

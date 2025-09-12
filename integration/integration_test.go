@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 
 	// Start indexer in a goroutine
 	go func() {
-		err := indexer.StartIndexing("./.defra", "http://localhost:9181")
+		err := indexer.StartIndexing(false, nil)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}

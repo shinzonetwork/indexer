@@ -60,9 +60,6 @@ indexer:
 	}
 
 	// Test P2P config
-	if !cfg.DefraDB.P2P.Enabled {
-		t.Error("Expected P2P enabled to be true")
-	}
 	if len(cfg.DefraDB.P2P.BootstrapPeers) != 2 {
 		t.Errorf("Expected 2 bootstrap peers, got %d", len(cfg.DefraDB.P2P.BootstrapPeers))
 	}

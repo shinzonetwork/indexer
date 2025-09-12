@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIndexing(t *testing.T) {
+func TestIndexing_StartDefraFirst(t *testing.T) {
 	logger.Init(true)
 
 	defraUrl := "127.0.0.1:0"
@@ -35,8 +35,11 @@ func TestIndexing(t *testing.T) {
 	_, err := queryBlockNumber(ctx, port)
 	require.Error(t, err)
 
+	testConfig := defaultConfig
+	testConfig.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
+
 	go func() {
-		err := StartIndexing("", indexerDefra.APIURL)
+		err := StartIndexing(true, testConfig)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
@@ -113,4 +116,24 @@ func queryBlockNumber(ctx context.Context, port int) (int, error) {
 		return 0, fmt.Errorf("Block number field not a number in response: %s", string(result))
 	}
 	return int(blockNumber), nil
+}
+
+func TestIndexing(t *testing.T) {
+	logger.Init(true)
+
+	go func() {
+		err := StartIndexing(false, nil)
+		if err != nil {
+			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
+		}
+	}()
+	defer StopIndexing()
+
+	for !IsStarted || !HasIndexedAtLeastOneBlock {
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	blockNumber, err := queryBlockNumber(context.Background(), defra.GetPortFromUrl(defaultConfig.DefraDB.Url))
+	require.NoError(t, err)
+	require.Greater(t, blockNumber, 100)
 }

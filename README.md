@@ -95,10 +95,10 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 `go build -o bin/indexer cmd/block_poster/main.go`
 then
-`./bin/indexer -defra-store-path=./.defra` // can optionally replace the path to defra with any path you like that points to your defra config and desired storage location
+`./bin/indexer` // can optionally pass in `-defra-started=true` flag if you've already started a defra instance elsewhere
 
 or
-`go run cmd/block_poster/main.go -defra-store-path=./.defra` // again, optionally replacing the path
+`go run cmd/block_poster/main.go` // again, can optionally pass in `-defra-started=true` flag if you've already started a defra instance elsewhere
 
 or, to open the playground as well, use
 `make playground DEFRA_PATH=/path/to/defradb` // this defra path should be the path to the defra repo cloned on your machine
