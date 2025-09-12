@@ -8,10 +8,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"github.com/shinzonetwork/indexer/pkg/indexer"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shinzonetwork/indexer/pkg/indexer"
 )
 
 const graphqlURL = "http://localhost:9181/api/v0/graphql"

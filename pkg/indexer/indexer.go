@@ -220,11 +220,24 @@ func processSingleTransaction(blockHandler *defra.BlockHandler, client *rpc.Ethe
 func applySchema(ctx context.Context, defraNode *node.Node) error {
 	fmt.Println("Applying schema...")
 
-	// If we're in the bin directory, go up one level to find schema
-	schemaPath := "schema/schema.graphql"
-	if _, err := os.Stat(schemaPath); os.IsNotExist(err) {
-		// Try going up one directory (from bin/ to project root)
-		schemaPath = "../schema/schema.graphql"
+	// Try different possible paths for the schema file
+	possiblePaths := []string{
+		"schema/schema.graphql",       // From project root
+		"../schema/schema.graphql",    // From bin/ directory
+		"../../schema/schema.graphql", // From pkg/host/ directory - test context
+	}
+
+	var schemaPath string
+	var err error
+	for _, path := range possiblePaths {
+		if _, err = os.Stat(path); err == nil {
+			schemaPath = path
+			break
+		}
+	}
+
+	if schemaPath == "" {
+		return fmt.Errorf("Failed to find schema file in any of the expected locations: %v", possiblePaths)
 	}
 
 	schema, err := os.ReadFile(schemaPath)
