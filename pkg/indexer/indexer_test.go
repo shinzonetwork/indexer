@@ -38,15 +38,16 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 	testConfig := DefaultConfig
 	testConfig.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
 
+	i := CreateIndexer(testConfig)
 	go func() {
-		err := StartIndexing(true, testConfig)
+		err := i.StartIndexing(true)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
 	}()
-	defer StopIndexing()
+	defer i.StopIndexing()
 
-	for !IsStarted || !HasIndexedAtLeastOneBlock {
+	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -121,15 +122,16 @@ func queryBlockNumber(ctx context.Context, port int) (int, error) {
 func TestIndexing(t *testing.T) {
 	logger.Init(true)
 
+	i := CreateIndexer(nil)
 	go func() {
-		err := StartIndexing(false, nil)
+		err := i.StartIndexing(false)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
 	}()
-	defer StopIndexing()
+	defer i.StopIndexing()
 
-	for !IsStarted || !HasIndexedAtLeastOneBlock {
+	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
 

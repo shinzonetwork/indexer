@@ -19,7 +19,8 @@ func main() {
 		panic(fmt.Errorf("Unable to load config: %v", err))
 	}
 
-	err = indexer.StartIndexing(*defraStarted, cfg)
+	myIndexer := indexer.CreateIndexer(cfg)
+	err = myIndexer.StartIndexing(*defraStarted)
 	if err != nil {
 		panic(fmt.Errorf("Failed to start indexing: %v", err))
 	}

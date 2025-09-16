@@ -20,9 +20,10 @@ const graphqlURL = "http://localhost:9181/api/v0/graphql"
 func TestMain(m *testing.M) {
 	fmt.Println("TestMain - Starting indexer in background")
 
+	i := indexer.CreateIndexer(nil)
 	// Start indexer in a goroutine
 	go func() {
-		err := indexer.StartIndexing(false, nil)
+		err := i.StartIndexing(false)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
@@ -30,7 +31,7 @@ func TestMain(m *testing.M) {
 
 	// Wait for indexer to be ready
 	fmt.Println("Waiting for indexer to start...")
-	for !indexer.IsStarted || !indexer.HasIndexedAtLeastOneBlock {
+	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
 	fmt.Println("Indexer is ready!")
@@ -40,7 +41,7 @@ func TestMain(m *testing.M) {
 
 	// Teardown
 	fmt.Println("TestMain - Teardown")
-	indexer.StopIndexing()
+	i.StopIndexing()
 
 	os.Exit(exitCode)
 }

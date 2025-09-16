@@ -25,10 +25,6 @@ const (
 	TotalRetryAttempts  = 3
 )
 
-var shouldIndex = false
-var IsStarted = false
-var HasIndexedAtLeastOneBlock = false
-
 var requiredPeers []string = []string{} // Here, we can consider adding any "big peers" we need - these requiredPeers can be used as a quick start point to speed up the peer discovery process
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
@@ -72,8 +68,33 @@ var DefaultConfig *config.Config = &config.Config{
 	},
 }
 
-func StartIndexing(defraStarted bool, cfg *config.Config) error {
+type ChainIndexer struct {
+	cfg                       *config.Config
+	shouldIndex               bool
+	isStarted                 bool
+	hasIndexedAtLeastOneBlock bool
+}
+
+func (i *ChainIndexer) IsStarted() bool {
+	return i.isStarted
+}
+
+func (i *ChainIndexer) HasIndexedAtLeastOneBlock() bool {
+	return i.hasIndexedAtLeastOneBlock
+}
+
+func CreateIndexer(cfg *config.Config) *ChainIndexer {
+	return &ChainIndexer{
+		cfg:                       cfg,
+		shouldIndex:               false,
+		isStarted:                 false,
+		hasIndexedAtLeastOneBlock: false,
+	}
+}
+
+func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	ctx := context.Background()
+	cfg := i.cfg
 
 	if cfg == nil {
 		cfg = DefaultConfig
@@ -116,7 +137,7 @@ func StartIndexing(defraStarted bool, cfg *config.Config) error {
 		}
 	}
 
-	shouldIndex = true
+	i.shouldIndex = true
 
 	// Connect to Geth RPC node (with JSON-RPC support and HTTP fallback)
 	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL) // Empty JSON-RPC addr for now, will use HTTP fallback
@@ -137,8 +158,8 @@ func StartIndexing(defraStarted bool, cfg *config.Config) error {
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
 
 	// Main indexing loop - always get latest block from Geth
-	for shouldIndex {
-		IsStarted = true
+	for i.shouldIndex {
+		i.isStarted = true
 
 		// Always get the latest block from Geth as source of truth
 		gethBlock, err := client.GetLatestBlock(context.Background())
@@ -179,7 +200,7 @@ func StartIndexing(defraStarted bool, cfg *config.Config) error {
 
 		logger.Sugar.Info("Successfully processed block: ", blockNum)
 
-		HasIndexedAtLeastOneBlock = true
+		i.hasIndexedAtLeastOneBlock = true
 
 		// Sleep for 12 seconds before checking for next latest block [block time is 13 seconds on avg]
 		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
@@ -349,7 +370,7 @@ func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types
 	}
 }
 
-func StopIndexing() {
-	shouldIndex = false
-	IsStarted = false
+func (i *ChainIndexer) StopIndexing() {
+	i.shouldIndex = false
+	i.isStarted = false
 }
