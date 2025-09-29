@@ -108,7 +108,6 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		"v":                    tx.V,
 		"r":                    tx.R,
 		"s":                    tx.S,
-		"gasUsed":              tx.GasUsed,
 		"cumulativeGasUsed":    tx.CumulativeGasUsed,
 		"effectiveGasPrice":    tx.EffectiveGasPrice,
 		"status":               tx.Status,
