@@ -1,3 +1,6 @@
+//go:build live
+// +build live
+
 package live
 
 import (
@@ -33,9 +36,8 @@ func TestMain(m *testing.M) {
 
 	// Check required environment variables
 	if !checkRequiredEnvVars() {
-		logger.Sugar.Error("Required environment variables not set. Please check integration/test_config_template.env")
-		logger.Sugar.Error("Set GCP_RPC_URL, GCP_WS_URL, and GCP_API_KEY environment variables")
-		os.Exit(1)
+		logger.Sugar.Error("Required environment variables not set. Set GCP_RPC_URL, GCP_WS_URL, and GCP_API_KEY")
+		os.Exit(0) // treat as skipped instead of failed
 	}
 
 	// Clean up any existing live integration DefraDB data
