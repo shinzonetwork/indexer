@@ -1,6 +1,5 @@
 defradb:
-  host: "localhost"
-  port: 9181
+  url: "http://localhost:9181"
   keyring_secret: ""
   p2p:
     enabled: false

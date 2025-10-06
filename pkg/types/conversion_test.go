@@ -19,7 +19,7 @@ func makeGethBlockAndTx() (*gethtypes.Block, *gethtypes.Transaction, common.Addr
 		Time:       1600000000,
 		Extra:      []byte("extra"),
 	}
-	block := gethtypes.NewBlock(head, []*gethtypes.Transaction{tx}, nil, nil, trie.NewStackTrie(nil))
+	block := gethtypes.NewBlock(head, &gethtypes.Body{Transactions: []*gethtypes.Transaction{tx}}, nil, trie.NewStackTrie(nil))
 	return block, tx, from
 }
 

@@ -41,7 +41,7 @@ echo "===> Applying schema"
 echo "===> Building block_poster"
 go build -o bin/block_poster cmd/block_poster/main.go
 echo "===> Running block_poster"
-./bin/block_poster > "$BLOCK_POSTER_LOG_PATH" 2>&1 &
+./bin/block_poster -defra-store-path="$ROOTDIR/.defra" > "$BLOCK_POSTER_LOG_PATH" 2>&1 &
 POSTER_PID=$!
 echo "$POSTER_PID" > "$ROOTDIR/block_poster.pid"
 echo "Started block_poster (PID $POSTER_PID). Logs at $BLOCK_POSTER_LOG_PATH"

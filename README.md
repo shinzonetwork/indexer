@@ -93,9 +93,15 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 ## How to Run
 
-`make bootstrap DEFRA_PATH=/path/to/defradb`
+`go build -o bin/indexer cmd/block_poster/main.go`
+then
+`./bin/indexer` // can optionally pass in `-defra-started=true` flag if you've already started a defra instance elsewhere
+
+or
+`go run cmd/block_poster/main.go` // again, can optionally pass in `-defra-started=true` flag if you've already started a defra instance elsewhere
+
 or, to open the playground as well, use
-`make playground DEFRA_PATH=/path/to/defradb`
+`make playground DEFRA_PATH=/path/to/defradb` // this defra path should be the path to the defra repo cloned on your machine
 
 To avoid passing the `DEFRA_PATH=/path/to/defradb` portion of the command, set `DEFRA_PATH` as an environment variable.
 

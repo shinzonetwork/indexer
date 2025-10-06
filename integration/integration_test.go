@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package integration
 
 import (
@@ -13,11 +10,44 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/shinzonetwork/indexer/pkg/indexer"
 )
 
 const graphqlURL = "http://localhost:9181/api/v0/graphql"
 
+func TestMain(m *testing.M) {
+	fmt.Println("TestMain - Starting indexer in background")
+
+	i := indexer.CreateIndexer(nil)
+	// Start indexer in a goroutine
+	go func() {
+		err := i.StartIndexing(false)
+		if err != nil {
+			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
+		}
+	}()
+
+	// Wait for indexer to be ready
+	fmt.Println("Waiting for indexer to start...")
+	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
+		time.Sleep(100 * time.Millisecond)
+	}
+	fmt.Println("Indexer is ready!")
+
+	// Run tests
+	exitCode := m.Run()
+
+	// Teardown
+	fmt.Println("TestMain - Teardown")
+	i.StopIndexing()
+
+	os.Exit(exitCode)
+}
+
 func TestGraphQLConnection(t *testing.T) {
+	t.Log("Testing graphql connection\n")
 	resp, err := http.Post(graphqlURL, "application/json", bytes.NewBuffer([]byte(`{"query":"query { __typename }"}`)))
 	if err != nil {
 		t.Fatalf("Failed to connect to GraphQL endpoint: %v", err)

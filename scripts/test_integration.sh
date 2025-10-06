@@ -1,60 +1,30 @@
 #!/bin/bash
 set -e
 
-# Usage: ./scripts/test_integration.sh /path/to/defradb [PLAYGROUND]
-# Or:   DEFRA_PATH=/path/to/defradb ./scripts/test_integration.sh [PLAYGROUND]
+# Set up environment variables (same as bootstrap.sh)
+ROOTDIR="$(pwd)"
+BLOCK_POSTER_LOG_PATH="logs/blockposter_logs.txt"
 
-if [[ -z "$DEFRA_PATH" && -z "$1" ]]; then
-  echo "ERROR: You must provide DEFRA_PATH as an env variable or first argument."
-  echo "Usage: ./scripts/test_integration.sh /path/to/defradb [PLAYGROUND]"
-  exit 1
-fi
+# Ensure logs directory exists
+mkdir -p logs
 
-DEFRA_PATH_ARG="$DEFRA_PATH"
-if [[ -z "$DEFRA_PATH_ARG" ]]; then
-  DEFRA_PATH_ARG="$1"
-  shift
-fi
-
-# Remove .defra/ready if it exists
-READY_FILE=".defra/ready"
-if [ -f "$READY_FILE" ]; then
-  rm -f "$READY_FILE"
-fi
-
-# Start services in the background
-./scripts/bootstrap.sh "$DEFRA_PATH_ARG" "$@" &
-BOOTSTRAP_PID=$!
+# Build and run block_poster
+echo "===> Building block_poster"
+go build -o bin/block_poster cmd/block_poster/main.go
+echo "===> Running block_poster"
+./bin/block_poster -defra-store-path="$ROOTDIR/.defra" > "$BLOCK_POSTER_LOG_PATH" 2>&1 &
+POSTER_PID=$!
+echo "$POSTER_PID" > "$ROOTDIR/block_poster.pid"
+echo "Started block_poster (PID $POSTER_PID). Logs at $BLOCK_POSTER_LOG_PATH"
 
 # Ensure cleanup on exit or interruption
 cleanup() {
-  echo "===> Cleaning up bootstrap.sh (PID $BOOTSTRAP_PID) and child services..."
-  kill $BOOTSTRAP_PID 2>/dev/null || true
-  wait $BOOTSTRAP_PID 2>/dev/null || true
+  echo "===> Cleaning up block_poster (PID $POSTER_PID)..."
+  kill $POSTER_PID 2>/dev/null || true
+  wait $POSTER_PID 2>/dev/null || true
+  rm -f "$ROOTDIR/block_poster.pid"
 }
 trap cleanup EXIT INT TERM
-
-# Wait for ready file from bootstrap.sh
-echo "===> Waiting for $READY_FILE to be created by bootstrap.sh..."
-for i in {1..30}; do
-  if [ -f "$READY_FILE" ]; then
-    echo "===> $READY_FILE found."
-    break
-  fi
-  sleep 1
-done
-
-# Wait for GraphQL endpoint to be ready
-GRAPHQL_URL="http://localhost:9181/api/v0/graphql"
-echo "===> Waiting for GraphQL endpoint at $GRAPHQL_URL to be ready (schema applied)..."
-for i in {1..30}; do
-  RESPONSE=$(curl -s -X POST -H "Content-Type: application/json" --data '{"query":"{ Block { __typename } }"}' "$GRAPHQL_URL")
-  if echo "$RESPONSE" | grep -q '"Block"'; then
-    echo "===> GraphQL endpoint is up and schema is applied."
-    break
-  fi
-  sleep 1
-done
 
 # Run integration tests
 GO111MODULE=on go test -v -tags=integration ./integration/... > integration_test_output.txt 2>&1 || true
