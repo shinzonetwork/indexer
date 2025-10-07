@@ -391,26 +391,26 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 	}
 
 	localTx := types.Transaction{
-		Hash:                 tx.Hash().Hex(),              // string
-		BlockHash:            gethBlock.Hash().Hex(),       // string
-		BlockNumber:          gethBlock.Number().String(),  // string
-		From:                 fromAddr.Hex(),               // string
-		To:                   toAddr,                       // string
-		Value:                tx.Value().String(),          // string
-		Gas:                  fmt.Sprintf("%d", tx.Gas()),  // string
-		GasPrice:             gasPrice.String(),            // string
-		MaxFeePerGas:         getMaxFeePerGas(tx),          // string
-		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),  // string
-		Input:                common.Bytes2Hex(tx.Data()),  // string
+		Hash:                 tx.Hash().Hex(),               // string
+		BlockHash:            gethBlock.Hash().Hex(),        // string
+		BlockNumber:          gethBlock.Number().String(),   // string
+		From:                 fromAddrStr,                   // string
+		To:                   toAddr,                        // string
+		Value:                tx.Value().String(),           // string
+		Gas:                  fmt.Sprintf("%d", tx.Gas()),   // string
+		GasPrice:             gasPrice.String(),             // string
+		MaxFeePerGas:         getMaxFeePerGas(tx),           // string
+		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),   // string
+		Input:                common.Bytes2Hex(tx.Data()),   // string
 		Nonce:                fmt.Sprintf("%d", tx.Nonce()), // string
-		TransactionIndex:     index,                        // int
-		Type:                 fmt.Sprintf("%d", tx.Type()), // string
-		ChainId:              getChainId(tx),               // string
-		AccessList:           accessList,                   // []accessListEntry
-		V:                    v.String(),                   // string
-		R:                    r.String(),                   // string
-		S:                    s.String(),                   // string
-		Status:               true,                         // Default to true, will be updated from receipt
+		TransactionIndex:     index,                         // int
+		Type:                 fmt.Sprintf("%d", tx.Type()),  // string
+		ChainId:              getChainId(tx),                // string
+		AccessList:           accessList,                    // []accessListEntry
+		V:                    v.String(),                    // string
+		R:                    r.String(),                    // string
+		S:                    s.String(),                    // string
+		Status:               true,                          // Default to true, will be updated from receipt
 	}
 
 	return &localTx, nil

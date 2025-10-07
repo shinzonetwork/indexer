@@ -355,19 +355,17 @@ func createBlockWithRetry(blockHandler *defra.BlockHandler, block *types.Block, 
 		if err == nil {
 			return blockDocId, nil // Success
 		}
-
 		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Errorf("Failed to create block: ", blockNum, " in DefraDB (attempt ", blockRetryAttempts+1)
+		logger.Sugar.With(logCtx).Errorf("Failed to create block: %d in DefraDB (attempt %d/%d)", blockNum, blockRetryAttempts+1, DefaultRetryAttempts)
 
 		// Check if error is retryable
 		if errors.IsRetryable(err) && blockRetryAttempts < DefaultRetryAttempts {
 			retryDelay := errors.GetRetryDelay(err, blockRetryAttempts)
-			logger.Sugar.Warnf("Retrying block: ", blockNum, " creation after ", retryDelay)
+			logger.Sugar.Warnf("Retrying block: %d creation after %v", blockNum, retryDelay)
 			time.Sleep(retryDelay)
 			blockRetryAttempts++
 			continue // Retry the same block
 		}
-
 		// Non-retryable error or max retries exceeded - skip this block
 		if errors.IsDataError(err) || blockRetryAttempts >= DefaultRetryAttempts {
 			logger.Sugar.Errorf("Skipping block: ", blockNum, " due to error: ", err)
@@ -418,6 +416,38 @@ func processSingleTransaction(blockHandler *defra.BlockHandler, client *rpc.Ethe
 
 	// Process logs from the receipt
 	processTransactionLogs(blockHandler, receipt.Logs, blockDocId, txDocId)
+}
+
+func applySchema(ctx context.Context, defraNode *node.Node) error {
+	fmt.Println("Applying schema...")
+
+	// Try different possible paths for the schema file
+	possiblePaths := []string{
+		"schema/schema.graphql",       // From project root
+		"../schema/schema.graphql",    // From bin/ directory
+		"../../schema/schema.graphql", // From pkg/host/ directory - test context
+	}
+
+	var schemaPath string
+	var err error
+	for _, path := range possiblePaths {
+		if _, err = os.Stat(path); err == nil {
+			schemaPath = path
+			break
+		}
+	}
+
+	if schemaPath == "" {
+		return fmt.Errorf("Failed to find schema file in any of the expected locations: %v", possiblePaths)
+	}
+
+	schema, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("Failed to read schema file: %v", err)
+	}
+
+	_, err = defraNode.DB.AddSchema(ctx, string(schema))
+	return err
 }
 
 // processAccessListEntries handles the processing of access list entries for a transaction
@@ -494,23 +524,6 @@ func findSchemaFile() (string, error) {
 	}
 
 	return "", fmt.Errorf("Failed to find schema file. Tried paths: %v", schemaPaths)
-}
-
-func applySchema(ctx context.Context, defraNode *node.Node) error {
-	fmt.Println("Applying schema...")
-
-	schemaPath, err := findSchemaFile()
-	if err != nil {
-		return err
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("Failed to read schema file: %v", err)
-	}
-
-	_, err = defraNode.DB.AddSchema(ctx, string(schema))
-	return err
 }
 
 func applySchemaViaHTTP(defraUrl string) error {
