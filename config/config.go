@@ -10,6 +10,57 @@ import (
 
 const CollectionName = "shinzo"
 
+// DefraDBP2PConfig represents P2P configuration for DefraDB
+type DefraDBP2PConfig struct {
+	BootstrapPeers []string `yaml:"bootstrap_peers"`
+	ListenAddr     string   `yaml:"listen_addr"`
+}
+
+// DefraDBStoreConfig represents store configuration for DefraDB
+type DefraDBStoreConfig struct {
+	Path string `yaml:"path"`
+}
+
+// DefraDBConfig represents DefraDB configuration
+type DefraDBConfig struct {
+	Url           string             `yaml:"url"`
+	KeyringSecret string             `yaml:"keyring_secret"`
+	P2P           DefraDBP2PConfig   `yaml:"p2p"`
+	Store         DefraDBStoreConfig `yaml:"store"`
+}
+
+// GethConfig represents Geth node configuration
+type GethConfig struct {
+	NodeURL string `yaml:"node_url"`
+}
+
+// PipelineStageConfig represents configuration for a pipeline stage
+type PipelineStageConfig struct {
+	Workers    int `yaml:"workers"`
+	BufferSize int `yaml:"buffer_size"`
+}
+
+// IndexerPipelineConfig represents the indexer pipeline configuration
+type IndexerPipelineConfig struct {
+	FetchBlocks         PipelineStageConfig `yaml:"fetch_blocks"`
+	ProcessTransactions PipelineStageConfig `yaml:"process_transactions"`
+	StoreData           PipelineStageConfig `yaml:"store_data"`
+}
+
+// IndexerConfig represents indexer configuration
+type IndexerConfig struct {
+	BlockPollingInterval float64               `yaml:"block_polling_interval"`
+	BatchSize            int                   `yaml:"batch_size"`
+	StartHeight          int                   `yaml:"start_height"`
+	Pipeline             IndexerPipelineConfig `yaml:"pipeline"`
+}
+
+// LoggerConfig represents logger configuration
+type LoggerConfig struct {
+	Development bool `yaml:"development"`
+}
+
+// Config represents the main configuration structure
 type Config struct {
 	DefraDB struct {
 		Host          string `yaml:"host"`
@@ -180,7 +231,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// Override with environment variables
-	
+
 	// Logger configuration
 	if loggerDebug := os.Getenv("LOGGER_DEBUG"); loggerDebug != "" {
 		if debug, err := strconv.ParseBool(loggerDebug); err == nil {

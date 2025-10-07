@@ -313,7 +313,7 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 			continue
 		}
 
-		transactions = append(transactions, localTx)
+		transactions = append(transactions, *localTx)
 	}
 
 	// Convert uncles
@@ -349,9 +349,19 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 }
 
 // convertTransaction safely converts a single transaction
-func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (types.Transaction, error) {
+func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (*types.Transaction, error) {
 	// Get transaction details with error handling
-	fromAddr := getFromAddress(tx)
+	fromAddr, err := getFromAddress(tx)
+	var fromAddrStr string
+	if err != nil {
+		// For unsigned transactions or other errors, use zero address
+		logger.Sugar.Warnf("Warning: Failed to convert transaction %s: %v", tx.Hash().Hex(), err)
+		fromAddrStr = "0x0000000000000000000000000000000000000000"
+	} else if fromAddr != nil {
+		fromAddrStr = fromAddr.Hex()
+	} else {
+		fromAddrStr = "0x0000000000000000000000000000000000000000"
+	}
 	toAddr := getToAddress(tx)
 
 	// Handle different transaction types
@@ -391,7 +401,7 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 		Hash:                 tx.Hash().Hex(),              // string
 		BlockHash:            gethBlock.Hash().Hex(),       // string
 		BlockNumber:          gethBlock.Number().String(),  // string
-		From:                 fromAddr.Hex(),               // string
+		From:                 fromAddrStr,                  // string
 		To:                   toAddr,                       // string
 		Value:                tx.Value().String(),          // string
 		Gas:                  fmt.Sprintf("%d", tx.Gas()),  // string
@@ -410,26 +420,30 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 		Status:               true,                         // Default to true, will be updated from receipt
 	}
 
-	return localTx, nil
+	return &localTx, nil
 }
 
 // Helper functions for transaction conversion
-func getFromAddress(tx *ethtypes.Transaction) common.Address {
+func getFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
+	chainId := tx.ChainId()
+	if chainId == nil || chainId.Sign() <= 0 {
+		return nil, fmt.Errorf("Received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
+	}
+
 	// Try different signers to handle various transaction types
 	signers := []ethtypes.Signer{
-		ethtypes.LatestSignerForChainID(tx.ChainId()),
-		ethtypes.NewEIP155Signer(tx.ChainId()),
-		ethtypes.NewLondonSigner(tx.ChainId()),
+		ethtypes.LatestSignerForChainID(chainId),
+		ethtypes.NewEIP155Signer(chainId),
+		ethtypes.NewLondonSigner(chainId),
 	}
 
 	for _, signer := range signers {
 		if from, err := ethtypes.Sender(signer, tx); err == nil {
-			return from
+			return &from, nil
 		}
 	}
 
-	// If all signers fail, return zero address
-	return common.Address{}
+	return nil, fmt.Errorf("No sender (from) address found")
 }
 
 func getToAddress(tx *ethtypes.Transaction) string {

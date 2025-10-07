@@ -213,7 +213,7 @@ func TestBlockHandlerErrorLogging(t *testing.T) {
 	testLogger := testutils.NewTestLogger(t)
 
 	// Create a block handler (this would be your actual handler)
-	handler, err := NewBlockHandler("localhost", 9181)
+	handler, err := NewBlockHandler("http://localhost:9181")
 	if err != nil {
 		// Instead of t.Errorf, use structured logging
 		logCtx := errors.LogContext(err)

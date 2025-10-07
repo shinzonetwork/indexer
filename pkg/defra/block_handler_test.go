@@ -3,6 +3,7 @@ package defra
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"testing"
@@ -48,7 +49,7 @@ func TestNewBlockHandler_Success(t *testing.T) {
 	host := "localhost"
 	port := 9181
 
-	handler, err := NewBlockHandler(host, port)
+	handler, err := NewBlockHandler(fmt.Sprintf("http://%s:%d", host, port))
 	if err != nil {
 		t.Errorf("Expected no error, got '%v'", err)
 		return
@@ -66,21 +67,6 @@ func TestNewBlockHandler_Success(t *testing.T) {
 	}
 	if handler.client == nil {
 		t.Error("Expected client to be non-nil")
-	}
-}
-
-func TestNewBlockHandler_InvalidPort(t *testing.T) {
-	// Test creation with invalid port (zero - the actual validation)
-	host := "localhost"
-	port := 0
-
-	handler, err := NewBlockHandler(host, port)
-	if err == nil {
-		t.Error("Expected error for zero port, got nil")
-		return
-	}
-	if handler != nil {
-		t.Error("Expected handler to be nil when creation fails")
 	}
 }
 
