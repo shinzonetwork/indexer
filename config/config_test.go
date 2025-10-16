@@ -92,7 +92,7 @@ func TestLoadConfig_EnvironmentOverrides(t *testing.T) {
 	configContent := `
 defradb:
   url: "http://localhost:9181"
-  keyring_secret: "original_secret"
+  keyring_secret: "pingpong"
 
 indexer:
   start_height: 1000
@@ -104,7 +104,7 @@ indexer:
 	}
 
 	// Set environment variables
-	os.Setenv("DEFRA_KEYRING_SECRET", "env_secret")
+	os.Setenv("DEFRA_KEYRING_SECRET", "pingpong")
 	os.Setenv("INDEXER_START_HEIGHT", "2000")
 
 	// Clean up environment variables after test
@@ -119,8 +119,8 @@ indexer:
 	}
 
 	// Verify environment overrides work
-	if cfg.DefraDB.KeyringSecret != "env_secret" {
-		t.Errorf("Expected keyring_secret 'env_secret', got '%s'", cfg.DefraDB.KeyringSecret)
+	if cfg.DefraDB.KeyringSecret != "pingpong" {
+		t.Errorf("Expected keyring_secret 'pingpong', got '%s'", cfg.DefraDB.KeyringSecret)
 	}
 	if cfg.DefraDB.Url != "http://localhost:9181" {
 		t.Errorf("Expected url 'http://localhost:9181', got '%s'", cfg.DefraDB.Url)

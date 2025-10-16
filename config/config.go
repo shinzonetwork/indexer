@@ -30,6 +30,11 @@ type DefraDBConfig struct {
 	Store         DefraDBStoreConfig `yaml:"store"`
 }
 
+// Host returns the DefraDB host URL for backward compatibility
+func (d *DefraDBConfig) Host() string {
+	return d.Url
+}
+
 // GethConfig represents Geth node configuration
 type GethConfig struct {
 	NodeURL string `yaml:"node_url"`
@@ -87,31 +92,74 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Host() method now returns Url directly for backward compatibility
-
 	// Override with environment variables
-	if keyringSecret := os.Getenv("DEFRA_KEYRING_SECRET"); keyringSecret != "" {
+	overrideWithEnvVars(&cfg)
+
+	return &cfg, nil
+}
+
+// overrideWithEnvVars overrides configuration with environment variables
+func overrideWithEnvVars(cfg *Config) {
+	// DefraDB configuration
+	if host := os.Getenv("DEFRADB_HOST"); host != "" {
+		if port := os.Getenv("DEFRADB_PORT"); port != "" {
+			cfg.DefraDB.Url = fmt.Sprintf("http://%s:%s", host, port)
+		} else {
+			cfg.DefraDB.Url = fmt.Sprintf("http://%s:9181", host)
+		}
+	}
+	
+	if keyringSecret := os.Getenv("DEFRADB_KEYRING_SECRET"); keyringSecret != "" {
 		cfg.DefraDB.KeyringSecret = keyringSecret
 	}
+	
+	if p2pEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); p2pEnabled != "" {
+		// Note: P2P config would need additional parsing for bootstrap peers
+	}
+	
+	if storePath := os.Getenv("DEFRADB_STORE_PATH"); storePath != "" {
+		cfg.DefraDB.Store.Path = storePath
+	}
 
+	// Geth configuration - prioritize GCP Geth node over managed node
+	// If GCP_GETH_RPC_URL is empty, fall back to your GCP node IP
+	if gcpGethRpcUrl := os.Getenv("GCP_GETH_RPC_URL"); gcpGethRpcUrl != "" {
+		cfg.Geth.NodeURL = gcpGethRpcUrl
+	} else if gcpRpcUrl := os.Getenv("GCP_RPC_URL"); gcpRpcUrl != "" {
+		cfg.Geth.NodeURL = gcpRpcUrl
+	}
+	// If GCP_GETH_RPC_URL is empty, use your GCP node IP from config
+	if cfg.Geth.NodeURL == "" && os.Getenv("GCP_GETH_RPC_URL") == "" {
+		cfg.Geth.NodeURL = "http://34.68.131.15:8545"
+	}
+
+	if gcpGethWsUrl := os.Getenv("GCP_GETH_WS_URL"); gcpGethWsUrl != "" {
+		cfg.Geth.WsURL = gcpGethWsUrl
+	} else if gcpWsUrl := os.Getenv("GCP_WS_URL"); gcpWsUrl != "" {
+		cfg.Geth.WsURL = gcpWsUrl
+	}
+	// If GCP_GETH_WS_URL is empty, use your GCP node IP from config
+	if cfg.Geth.WsURL == "" && os.Getenv("GCP_GETH_WS_URL") == "" {
+		cfg.Geth.WsURL = "ws://34.68.131.15:8546"
+	}
+
+	if gcpGethApiKey := os.Getenv("GCP_GETH_API_KEY"); gcpGethApiKey != "" {
+		cfg.Geth.APIKey = gcpGethApiKey
+	} else if gcpApiKey := os.Getenv("GCP_API_KEY"); gcpApiKey != "" {
+		cfg.Geth.APIKey = gcpApiKey
+	}
+
+	// Indexer configuration
 	if startHeight := os.Getenv("INDEXER_START_HEIGHT"); startHeight != "" {
 		if h, err := strconv.Atoi(startHeight); err == nil {
 			cfg.Indexer.StartHeight = h
 		}
 	}
 
-	// Override GCP configuration with environment variables
-	if gcpRpcUrl := os.Getenv("GCP_RPC_URL"); gcpRpcUrl != "" {
-		cfg.Geth.NodeURL = gcpRpcUrl
+	// Logger configuration
+	if loggerDebug := os.Getenv("LOGGER_DEBUG"); loggerDebug != "" {
+		if debug, err := strconv.ParseBool(loggerDebug); err == nil {
+			cfg.Logger.Development = debug
+		}
 	}
-
-	if gcpWsUrl := os.Getenv("GCP_WS_URL"); gcpWsUrl != "" {
-		cfg.Geth.WsURL = gcpWsUrl
-	}
-
-	if gcpApiKey := os.Getenv("GCP_API_KEY"); gcpApiKey != "" {
-		cfg.Geth.APIKey = gcpApiKey
-	}
-
-	return &cfg, nil
 }
