@@ -19,10 +19,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/types"
 
 	"github.com/sourcenetwork/defradb/node"
-<<<<<<< HEAD
 	defrahttp "github.com/sourcenetwork/defradb/http"
-=======
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 )
 
 const (
@@ -36,7 +33,6 @@ const (
 	DefaultBlockOffset = 3
 )
 
-<<<<<<< HEAD
 var requiredPeers []string = []string{} // Here, we can consider adding any "big peers" we need - these requiredPeers can be used as a quick start point to speed up the peer discovery process
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
@@ -122,54 +118,6 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			defrahttp.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
 		}
 
-=======
-var shouldIndex = false
-var IsStarted = false
-var HasIndexedAtLeastOneBlock = false
-
-// IndexingMode defines the type of indexing to perform
-type IndexingMode string
-
-const (
-	ModeRealTime IndexingMode = "realtime"
-	ModeCatchUp  IndexingMode = "catchup"
-)
-
-// StartIndexing starts the blockchain indexer in real-time mode.
-// This is a convenience wrapper around StartIndexingWithMode.
-//
-// Parameters:
-//   - defraStorePath: Path to DefraDB storage directory. Empty string assumes DefraDB is already running.
-//   - defraUrl: URL of the DefraDB GraphQL endpoint (e.g., "http://localhost:9181")
-//
-// Returns error if indexer fails to start or connect to required services.
-func StartIndexing(defraStorePath string, defraUrl string) error {
-	return StartIndexingWithMode(defraStorePath, defraUrl, ModeRealTime)
-}
-
-// StartIndexingWithMode starts the indexer with the specified mode
-func StartIndexingWithMode(defraStorePath, defraUrl string, mode IndexingMode) error {
-	return StartIndexingWithModeAndConfig(defraStorePath, defraUrl, mode, nil)
-}
-
-// StartIndexingWithModeAndConfig starts the indexer with the specified mode and optional config
-func StartIndexingWithModeAndConfig(defraStorePath, defraUrl string, mode IndexingMode, cfg *config.Config) error {
-	ctx := context.Background()
-	shouldIndex = true
-	logger.Init(true)
-
-	logger.Sugar.Info("Starting indexer with mode: ", mode)
-	logger.Sugar.Info("Defra store path: ", defraStorePath)
-	logger.Sugar.Info("Defra URL: ", defraUrl)
-
-	if defraStorePath != "" {
-		// Using embedded DefraDB
-		options := []node.Option{
-			node.WithDisableAPI(false),
-			node.WithDisableP2P(false),
-			node.WithStorePath(defraStorePath),
-		}
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 		defraNode, err := node.New(ctx, options...)
 		if err != nil {
 			return fmt.Errorf("Failed to create defra node %v: ", err)
@@ -186,48 +134,24 @@ func StartIndexingWithModeAndConfig(defraStorePath, defraUrl string, mode Indexi
 			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
 		}
 
-<<<<<<< HEAD
 		err = defra.WaitForDefraDB(cfg.DefraDB.Url)
-=======
-		err = defra.WaitForDefraDB(defraUrl)
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 		if err != nil {
 			return err
 		}
 	} else {
 		// Using external DefraDB - wait for it and apply schema via HTTP
-<<<<<<< HEAD
 		err := defra.WaitForDefraDB(cfg.DefraDB.Url)
-=======
-		err := defra.WaitForDefraDB(defraUrl)
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 		if err != nil {
 			return err
 		}
 
-<<<<<<< HEAD
 		err = applySchemaViaHTTP(cfg.DefraDB.Url)
-=======
-		err = applySchemaViaHTTP(defraUrl)
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
 			return fmt.Errorf("Failed to apply schema to external DefraDB: %v", err)
 		}
 	}
 
-<<<<<<< HEAD
 	i.shouldIndex = true
-=======
-	// Load config if not provided
-	if cfg == nil {
-		var err error
-		cfg, err = config.LoadConfig("config.yaml")
-		if err != nil {
-			logger.Sugar.Fatalf("Failed to load config: %v", err)
-		}
-	}
-	logger.Init(cfg.Logger.Development)
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 
 	// Connect to Ethereum client with WebSocket and HTTP support
 	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL, cfg.Geth.WsURL, cfg.Geth.APIKey)
@@ -247,150 +171,12 @@ func StartIndexingWithModeAndConfig(defraStorePath, defraUrl string, mode Indexi
 
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
 
-<<<<<<< HEAD
 	// Get starting block number
 	nextBlockToProcess := int64(cfg.Indexer.StartHeight)
 
 	// Main indexing loop - always get latest block from Geth
 	for i.shouldIndex {
 		i.isStarted = true
-=======
-	// Start indexing based on mode
-	switch mode {
-	case ModeCatchUp:
-		return startCatchUpIndexing(ctx, client, blockHandler)
-	case ModeRealTime:
-		return startRealTimeIndexing(ctx, client, blockHandler, cfg)
-	default:
-		return fmt.Errorf("unknown indexing mode: %s", mode)
-	}
-}
-
-// startCatchUpIndexing performs catch-up indexing from last indexed block
-func startCatchUpIndexing(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler) error {
-	logger.Sugar.Info("Starting catch-up indexing mode...")
-
-	// Get the last indexed block from DefraDB
-	lastIndexedBlock, err := getLastIndexedBlock(ctx, blockHandler)
-	if err != nil {
-		return fmt.Errorf("failed to get last indexed block: %w", err)
-	}
-
-	// Get the latest block from Ethereum
-	latestEthBlock, err := ethClient.GetLatestBlock(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get latest Ethereum block: %w", err)
-	}
-
-	latestBlockNum, err := parseBlockNumber(latestEthBlock.Number)
-	if err != nil {
-		return fmt.Errorf("failed to parse latest block number: %w", err)
-	}
-
-	// Process blocks up to the latest block (no offset for newest blocks)
-	targetBlockNum := latestBlockNum
-	if targetBlockNum < 0 {
-		targetBlockNum = 0
-	}
-
-	logger.Sugar.Infof("Last indexed block: %d, Latest Ethereum block: %d, Target block: %d",
-		lastIndexedBlock, latestBlockNum, targetBlockNum)
-
-	if lastIndexedBlock >= targetBlockNum {
-		logger.Sugar.Info("Already caught up to target block! Switching to real-time mode...")
-		return startRealTimeIndexing(ctx, ethClient, blockHandler, nil)
-	}
-
-	// Calculate blocks to catch up
-	blocksToCatchUp := targetBlockNum - lastIndexedBlock
-	logger.Sugar.Infof("Need to catch up %d blocks (processing up to latest)", blocksToCatchUp)
-
-	// Start catch-up process
-	currentBlock := lastIndexedBlock + 1
-	for currentBlock <= targetBlockNum && shouldIndex {
-		// Process blocks in batches
-		endBlock := currentBlock + DefaultBlocksToIndexAtOnce - 1
-		if endBlock > targetBlockNum {
-			endBlock = targetBlockNum
-		}
-
-		logger.Sugar.Infof("Processing blocks %d to %d", currentBlock, endBlock)
-
-		// Process batch of blocks
-		for blockNum := currentBlock; blockNum <= endBlock; blockNum++ {
-			if err := processBlock(ctx, ethClient, blockHandler, blockNum); err != nil {
-				logger.Sugar.Errorf("Failed to process block %d: %v", blockNum, err)
-
-				// Skip duplicate blocks, retry others
-				if strings.Contains(err.Error(), "already exists") {
-					logger.Sugar.Infof("Block %d already exists, continuing...", blockNum)
-					continue
-				}
-
-				// Retry logic for other errors
-				retrySuccess := false
-				for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
-					logger.Sugar.Warnf("Block %d processing failed (attempt %d/%d): %v", blockNum, attempt+1, DefaultRetryAttempts, err)
-					time.Sleep(5 * time.Second)
-
-					if err := processBlock(ctx, ethClient, blockHandler, blockNum); err == nil {
-						retrySuccess = true
-						break
-					}
-				}
-
-				if !retrySuccess {
-					return fmt.Errorf("failed to process block %d after %d attempts", blockNum, DefaultRetryAttempts)
-				}
-			}
-		}
-
-		currentBlock = endBlock + 1
-
-		// Brief pause between batches to avoid overwhelming the system
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	logger.Sugar.Info("Catch-up complete! Switching to real-time mode...")
-	return startRealTimeIndexing(ctx, ethClient, blockHandler, nil)
-}
-
-// startRealTimeIndexing performs simple, efficient real-time indexing
-func startRealTimeIndexing(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, cfg *config.Config) error {
-	logger.Sugar.Info("Starting real-time indexing mode...")
-
-	// Load config if not provided
-	if cfg == nil {
-		var err error
-		cfg, err = config.LoadConfig("config.yaml")
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
-		}
-	}
-
-	// Get starting point - get the latest block from the blockchain
-	latestEthBlock, err := ethClient.GetLatestBlock(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get latest Ethereum block: %w", err)
-	}
-
-	latestBlockNum, err := parseBlockNumber(latestEthBlock.Number)
-	if err != nil {
-		return fmt.Errorf("failed to parse latest block number: %w", err)
-	}
-
-	// Start from the latest block
-	nextBlockToProcess := latestBlockNum
-	if nextBlockToProcess < 0 {
-		nextBlockToProcess = 0
-	}
-
-	logger.Sugar.Infof("Latest Ethereum block: %d, starting real-time indexing from block %d",
-		latestBlockNum, nextBlockToProcess)
-
-	for shouldIndex {
-		IsStarted = true
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 
 		select {
 		case <-ctx.Done():
@@ -400,11 +186,7 @@ func startRealTimeIndexing(ctx context.Context, ethClient *rpc.EthereumClient, b
 			// Step 2: Process the specific block we want (nextBlockToProcess)
 			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
 
-<<<<<<< HEAD
 			err := processBlock(ctx, client, blockHandler, nextBlockToProcess)
-=======
-			err := processBlock(ctx, ethClient, blockHandler, nextBlockToProcess)
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
 					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
@@ -415,21 +197,13 @@ func startRealTimeIndexing(ctx context.Context, ethClient *rpc.EthereumClient, b
 					// Block already processed, move to next
 					logger.Sugar.Infof("Block %d already processed, moving to next", nextBlockToProcess)
 					nextBlockToProcess++
-<<<<<<< HEAD
 					i.hasIndexedAtLeastOneBlock = true
-=======
-					HasIndexedAtLeastOneBlock = true
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 					continue
 				} else if strings.Contains(err.Error(), "transaction type not supported") {
 					// Skip problematic block
 					logger.Sugar.Warnf("Block %d has unsupported transaction types, skipping", nextBlockToProcess)
 					nextBlockToProcess++
-<<<<<<< HEAD
 					i.hasIndexedAtLeastOneBlock = true
-=======
-					HasIndexedAtLeastOneBlock = true
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 					continue
 				} else {
 					// Other error - retry in 3 seconds
@@ -442,11 +216,7 @@ func startRealTimeIndexing(ctx context.Context, ethClient *rpc.EthereumClient, b
 			// Success! Move to next block (Step 3: increment by 1 and repeat)
 			logger.Sugar.Infof("Successfully processed block %d", nextBlockToProcess)
 			nextBlockToProcess++
-<<<<<<< HEAD
 			i.hasIndexedAtLeastOneBlock = true
-=======
-			HasIndexedAtLeastOneBlock = true
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 
 			// Small delay to avoid overwhelming the API
 			time.Sleep(100 * time.Millisecond)
@@ -631,7 +401,6 @@ func applySchema(ctx context.Context, defraNode *node.Node) error {
 	return err
 }
 
-<<<<<<< HEAD
 // processAccessListEntries handles the processing of access list entries for a transaction
 func processAccessListEntries(blockHandler *defra.BlockHandler, accessList []types.AccessListEntry, txDocId string) {
 	for _, accessListEntry := range accessList {
@@ -688,11 +457,6 @@ func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
-=======
-func StopIndexing() {
-	shouldIndex = false
-	IsStarted = false
->>>>>>> c99add722e93ef8b9e8d8382adba7d22b04a3bc4
 }
 
 // findSchemaFile tries multiple paths to locate the schema file from different working directories

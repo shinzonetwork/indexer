@@ -28,14 +28,3 @@ func main() {
 	}
 }
 
-// parseIndexingMode validates and converts mode string to IndexingMode
-func parseIndexingMode(mode string) (indexer.IndexingMode, error) {
-	switch mode {
-	case "catchup":
-		return indexer.ModeCatchUp, nil
-	case "realtime", "":
-		return indexer.ModeRealTime, nil
-	default:
-		return "", fmt.Errorf("invalid mode: %s. Use 'realtime' or 'catchup'", mode)
-	}
-}
