@@ -1,0 +1,32 @@
+defradb:
+  url: "http://localhost:9181"
+  keyring_secret: "pingpong"
+  p2p:
+    enabled: false
+    bootstrap_peers: []
+    listen_addr: ""
+  store:
+    path: "./data"
+
+geth:
+  node_url: "http://34.68.131.15:8545"  # Your GCP Geth node
+  ws_url: "ws://34.68.131.15:8546"      # Your GCP Geth WebSocket
+  api_key: "0EPWxZDg6O743gGkHK7yqsNEOzKUkh1TtHBYeFaWUFY"                           # No API key needed for your own node
+
+indexer:
+  block_polling_interval: 12.0
+  batch_size: 100
+  start_height: 1800000
+  pipeline:
+    fetch_blocks:
+      workers: 4
+      buffer_size: 100
+    process_transactions:
+      workers: 4
+      buffer_size: 100
+    store_data:
+      workers: 4
+      buffer_size: 100
+
+logger:
+  development: true

@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # DefraDB service
+  defradb:
+    image: ghcr.io/sourcenetwork/defradb:v0.9.0
+    container_name: shinzo-defradb
+    ports:
+      - "9181:9181"
+      - "9171:9171"  # P2P port
+    volumes:
+      - defradb_data:/data
+      - ./scripts:/scripts:ro
+    environment:
+      - DEFRADB_DATASTORE_BADGER_PATH=/data
+      - DEFRADB_API_ADDRESS=0.0.0.0:9181
+      - DEFRADB_LOG_LEVEL=info
+    command: ["start", "--store-path=/data", "--url=0.0.0.0:9181"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9181/api/v0/graphql"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - shinzo-network
+
+  # Shinzo Indexer - Catch-up mode
+  shinzo-catch-up:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shinzo-catch-up
+    depends_on:
+      defradb:
+        condition: service_healthy
+    environment:
+      # DefraDB Configuration
+      - DEFRADB_HOST=defradb
+      - DEFRADB_PORT=9181
+      - DEFRADB_KEYRING_SECRET=${DEFRADB_KEYRING_SECRET:-}
+      - DEFRADB_P2P_ENABLED=false
+      - DEFRADB_STORE_PATH=/app/data
+      
+      # GCP Blockchain Node
+      - GCP_API_KEY=${GCP_API_KEY}
+      - GCP_RPC_URL=${GCP_RPC_URL}
+      - GCP_WS_URL=${GCP_WS_URL}
+      
+      # Logger
+      - LOGGER_DEBUG=${LOGGER_DEBUG:-false}
+      
+      # Indexer
+      - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-1800000}
+    volumes:
+      - indexer_data:/app/data
+      - indexer_logs:/app/logs
+    command: ["/app/bin/catch_up"]
+    restart: unless-stopped
+    networks:
+      - shinzo-network
+    profiles:
+      - catch-up
+
+  # Shinzo Indexer - Real-time mode
+  shinzo-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shinzo-indexer
+    depends_on:
+      defradb:
+        condition: service_healthy
+    environment:
+      # DefraDB Configuration
+      - DEFRADB_HOST=defradb
+      - DEFRADB_PORT=9181
+      - DEFRADB_KEYRING_SECRET=${DEFRADB_KEYRING_SECRET:-}
+      - DEFRADB_P2P_ENABLED=false
+      - DEFRADB_STORE_PATH=/app/data
+      
+      # GCP Blockchain Node
+      - GCP_API_KEY=${GCP_API_KEY}
+      - GCP_RPC_URL=${GCP_RPC_URL}
+      - GCP_WS_URL=${GCP_WS_URL}
+      
+      # Logger
+      - LOGGER_DEBUG=${LOGGER_DEBUG:-false}
+      
+      # Indexer
+      - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-1800000}
+    volumes:
+      - indexer_data:/app/data
+      - indexer_logs:/app/logs
+    command: ["/app/bin/block_poster"]
+    restart: unless-stopped
+    networks:
+      - shinzo-network
+    profiles:
+      - indexer
+
+volumes:
+  defradb_data:
+    driver: local
+  indexer_data:
+    driver: local
+  indexer_logs:
+    driver: local
+
+networks:
+  shinzo-network:
+    driver: bridge

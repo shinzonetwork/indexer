@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shinzonetwork/indexer/pkg/errors"
 	"github.com/shinzonetwork/indexer/pkg/logger"
@@ -21,6 +22,7 @@ type BlockHandler struct {
 	client   *http.Client
 }
 
+
 func NewBlockHandler(url string) (*BlockHandler, error) {
 	if url == "" {
 		return nil, errors.NewConfigurationError("defra", "NewBlockHandler",
@@ -28,7 +30,9 @@ func NewBlockHandler(url string) (*BlockHandler, error) {
 	}
 	return &BlockHandler{
 		defraURL: strings.Replace(fmt.Sprintf("%s/api/v0/graphql", url), "127.0.0.1", "localhost", 1),
-		client:   &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second, // Add 30-second timeout to prevent hanging
+		},
 	}, nil
 }
 
@@ -84,7 +88,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		return "", errors.NewInvalidInputFormat("defra", "CreateTransaction", "tx", nil)
 	}
 
-	blockInt, err := utils.HexToInt(tx.BlockNumber)
+	blockInt, err := utils.StringToInt(tx.BlockNumber)
 	if err != nil {
 		return "", errors.NewParsingFailed("defra", "CreateTransaction", "block number", err)
 	}
@@ -308,6 +312,28 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		return "", errors.NewQueryFailed("defra", "PostToCollection", fmt.Sprintf("%v", mutation), err)
 	}
 
+	// Check for GraphQL errors first
+	if graphqlErrors, hasErrors := rawResponse["errors"].([]interface{}); hasErrors && len(graphqlErrors) > 0 {
+		if errorMap, ok := graphqlErrors[0].(map[string]interface{}); ok {
+			if message, ok := errorMap["message"].(string); ok {
+				// Handle duplicate document error gracefully
+				if strings.Contains(message, "already exists") {
+					logger.Sugar.Infof("Document already exists in %s collection, skipping creation", collection)
+					// Extract DocID from error message if possible
+					if strings.Contains(message, "DocID: ") {
+						parts := strings.Split(message, "DocID: ")
+						if len(parts) > 1 {
+							docID := strings.TrimSpace(parts[1])
+							return docID, nil
+						}
+					}
+					return "", errors.NewQueryFailed("defra", "PostToCollection", "document already exists", nil)
+				}
+				return "", errors.NewQueryFailed("defra", "PostToCollection", message, nil)
+			}
+		}
+	}
+
 	// Extract data field
 	data, ok := rawResponse["data"].(map[string]interface{})
 	if !ok {
@@ -367,22 +393,27 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 
 	// Debug: Print the mutation
 	logger.Sugar.Debug("Sending mutation: ", req.Query, "\n")
-
+	
 	// Create request
 	httpReq, err := http.NewRequestWithContext(ctx, req.Type, h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		logger.Sugar.Errorf("failed to create request: ", err)
 		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
 	}
+	
 	httpReq.Header.Set("Content-Type", "application/json")
+	
 	// Send request
 	resp, err := h.client.Do(httpReq)
 	if err != nil {
-		logger.Sugar.Errorf("failed to send request: ", err)
+		logger.Sugar.Errorf("Failed to send GraphQL request to DefraDB at %s: %v", h.defraURL, err)
+		if strings.Contains(err.Error(), "connection refused") {
+			logger.Sugar.Error("DefraDB appears to be down. Please ensure DefraDB is running on the configured port.")
+		}
 		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
 	}
+	
 	defer resp.Body.Close()
-
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

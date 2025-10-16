@@ -8,7 +8,6 @@ import (
 	"math/big"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -57,16 +56,13 @@ func StartIndexing(defraStorePath string, defraUrl string) error {
 	return StartIndexingWithMode(defraStorePath, defraUrl, ModeRealTime)
 }
 
-// StartIndexingWithMode starts the blockchain indexer with the specified indexing mode.
-// Supports both embedded DefraDB (when defraStorePath provided) and external DefraDB instances.
-//
-// Parameters:
-//   - defraStorePath: Path to DefraDB storage directory. Empty string assumes DefraDB is already running.
-//   - defraUrl: URL of the DefraDB GraphQL endpoint
-//   - mode: IndexingMode (ModeRealTime for live indexing, ModeCatchUp for historical data)
-//
-// Returns error if any component fails to initialize or connect.
-func StartIndexingWithMode(defraStorePath string, defraUrl string, mode IndexingMode) error {
+// StartIndexingWithMode starts the indexer with the specified mode
+func StartIndexingWithMode(defraStorePath, defraUrl string, mode IndexingMode) error {
+	return StartIndexingWithModeAndConfig(defraStorePath, defraUrl, mode, nil)
+}
+
+// StartIndexingWithModeAndConfig starts the indexer with the specified mode and optional config
+func StartIndexingWithModeAndConfig(defraStorePath, defraUrl string, mode IndexingMode, cfg *config.Config) error {
 	ctx := context.Background()
 	shouldIndex = true
 	logger.Init(true)
@@ -115,10 +111,13 @@ func StartIndexingWithMode(defraStorePath string, defraUrl string, mode Indexing
 		}
 	}
 
-	// Load config
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		logger.Sugar.Fatalf("Failed to load config: %v", err)
+	// Load config if not provided
+	if cfg == nil {
+		var err error
+		cfg, err = config.LoadConfig("config.yaml")
+		if err != nil {
+			logger.Sugar.Fatalf("Failed to load config: %v", err)
+		}
 	}
 	logger.Init(cfg.Logger.Development)
 
@@ -131,7 +130,7 @@ func StartIndexingWithMode(defraStorePath string, defraUrl string, mode Indexing
 	defer client.Close()
 
 	// Create DefraDB block handler
-	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Host)
+	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Url)
 	if err != nil {
 		// Log with structured context
 		logCtx := errors.LogContext(err)
@@ -172,15 +171,14 @@ func startCatchUpIndexing(ctx context.Context, ethClient *rpc.EthereumClient, bl
 		return fmt.Errorf("failed to parse latest block number: %w", err)
 	}
 
-	// Apply block offset to avoid "transaction type not supported" errors from very recent blocks
-	// Process blocks up to DefaultBlockOffset blocks behind the latest block
-	targetBlockNum := latestBlockNum - DefaultBlockOffset
+	// Process blocks up to the latest block (no offset for newest blocks)
+	targetBlockNum := latestBlockNum
 	if targetBlockNum < 0 {
 		targetBlockNum = 0
 	}
 
-	logger.Sugar.Infof("Last indexed block: %d, Latest Ethereum block: %d, Target block (with %d block offset): %d",
-		lastIndexedBlock, latestBlockNum, DefaultBlockOffset, targetBlockNum)
+	logger.Sugar.Infof("Last indexed block: %d, Latest Ethereum block: %d, Target block: %d",
+		lastIndexedBlock, latestBlockNum, targetBlockNum)
 
 	if lastIndexedBlock >= targetBlockNum {
 		logger.Sugar.Info("Already caught up to target block! Switching to real-time mode...")
@@ -189,7 +187,7 @@ func startCatchUpIndexing(ctx context.Context, ethClient *rpc.EthereumClient, bl
 
 	// Calculate blocks to catch up
 	blocksToCatchUp := targetBlockNum - lastIndexedBlock
-	logger.Sugar.Infof("Need to catch up %d blocks (stopping %d blocks behind latest)", blocksToCatchUp, DefaultBlockOffset)
+	logger.Sugar.Infof("Need to catch up %d blocks (processing up to latest)", blocksToCatchUp)
 
 	// Start catch-up process
 	currentBlock := lastIndexedBlock + 1
@@ -241,73 +239,84 @@ func startCatchUpIndexing(ctx context.Context, ethClient *rpc.EthereumClient, bl
 	return startRealTimeIndexing(ctx, ethClient, blockHandler, nil)
 }
 
-// startRealTimeIndexing performs real-time indexing using GetLatestBlock
+// startRealTimeIndexing performs simple, efficient real-time indexing
 func startRealTimeIndexing(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, cfg *config.Config) error {
 	logger.Sugar.Info("Starting real-time indexing mode...")
 
 	// Load config if not provided
 	if cfg == nil {
 		var err error
-		cfg, err = config.LoadConfig()
+		cfg, err = config.LoadConfig("config.yaml")
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 	}
 
-	ticker := time.NewTicker(12 * time.Second) // Ethereum block time
-	defer ticker.Stop()
+	// Get starting point - get the latest block from the blockchain
+	latestEthBlock, err := ethClient.GetLatestBlock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get latest Ethereum block: %w", err)
+	}
+
+	latestBlockNum, err := parseBlockNumber(latestEthBlock.Number)
+	if err != nil {
+		return fmt.Errorf("failed to parse latest block number: %w", err)
+	}
+
+	// Start from the latest block
+	nextBlockToProcess := latestBlockNum
+	if nextBlockToProcess < 0 {
+		nextBlockToProcess = 0
+	}
+
+	logger.Sugar.Infof("Latest Ethereum block: %d, starting real-time indexing from block %d",
+		latestBlockNum, nextBlockToProcess)
 
 	for shouldIndex {
 		IsStarted = true
 
 		select {
-		case <-ticker.C:
-			// Get latest block from Ethereum
-			latestBlock, err := ethClient.GetLatestBlock(ctx)
-			if err != nil {
-				logCtx := errors.LogContext(err)
-				logger.Sugar.With(logCtx).Error("Failed to get latest block from Ethereum: ", err)
-
-				// Handle specific error types
-				if strings.Contains(err.Error(), "403 Forbidden") ||
-					strings.Contains(err.Error(), "PERMISSION_DENIED") ||
-					strings.Contains(err.Error(), "unregistered callers") {
-					logger.Sugar.Warn("API key authentication failed, sleeping for 5 seconds before retry...")
-					time.Sleep(5 * time.Second)
-				} else if strings.Contains(err.Error(), "transaction type not supported") {
-					logger.Sugar.Warn("Transaction type not supported, sleeping for 2 seconds before retry...")
-					time.Sleep(2 * time.Second)
-				} else {
-					time.Sleep(1 * time.Second)
-				}
-				continue
-			}
-
-			latestBlockNum, err := parseBlockNumber(latestBlock.Number)
-			if err != nil {
-				logger.Sugar.Errorf("Failed to parse block number: %v", err)
-				continue
-			}
-
-			// In real-time mode, process the latest block immediately for critical real-time indexing
-			logger.Sugar.Infof("Processing latest block for real-time indexing: %d", latestBlockNum)
-
-			if err := processBlock(ctx, ethClient, blockHandler, latestBlockNum); err != nil {
-				// Handle transaction type errors gracefully - log but continue
-				if strings.Contains(err.Error(), "transaction type not supported") {
-					logger.Sugar.Warnf("Block %d contains unsupported transaction types, but continuing real-time indexing: %v", latestBlockNum, err)
-					// Still mark as processed since we attempted the block
-					HasIndexedAtLeastOneBlock = true
-				} else {
-					logger.Sugar.Errorf("Failed to process block %d in real-time mode: %v", latestBlockNum, err)
-				}
-			} else {
-				HasIndexedAtLeastOneBlock = true
-			}
-
 		case <-ctx.Done():
 			logger.Sugar.Info("Real-time indexing stopped")
 			return nil
+		default:
+			// Step 2: Process the specific block we want (nextBlockToProcess)
+			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
+
+			err := processBlock(ctx, ethClient, blockHandler, nextBlockToProcess)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
+					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
+					logger.Sugar.Infof("Block %d not available yet (ahead of chain), waiting 3s before retry...", nextBlockToProcess)
+					time.Sleep(3 * time.Second)
+					continue
+				} else if strings.Contains(err.Error(), "already exists") {
+					// Block already processed, move to next
+					logger.Sugar.Infof("Block %d already processed, moving to next", nextBlockToProcess)
+					nextBlockToProcess++
+					HasIndexedAtLeastOneBlock = true
+					continue
+				} else if strings.Contains(err.Error(), "transaction type not supported") {
+					// Skip problematic block
+					logger.Sugar.Warnf("Block %d has unsupported transaction types, skipping", nextBlockToProcess)
+					nextBlockToProcess++
+					HasIndexedAtLeastOneBlock = true
+					continue
+				} else {
+					// Other error - retry in 3 seconds
+					logger.Sugar.Errorf("Failed to process block %d: %v, retrying in 3s", nextBlockToProcess, err)
+					time.Sleep(3 * time.Second)
+					continue
+				}
+			}
+
+			// Success! Move to next block (Step 3: increment by 1 and repeat)
+			logger.Sugar.Infof("Successfully processed block %d", nextBlockToProcess)
+			nextBlockToProcess++
+			HasIndexedAtLeastOneBlock = true
+
+			// Small delay to avoid overwhelming the API
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
@@ -316,59 +325,128 @@ func startRealTimeIndexing(ctx context.Context, ethClient *rpc.EthereumClient, b
 
 // getLastIndexedBlock gets the highest block number from DefraDB
 func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler) (int64, error) {
-	lastBlock, err := blockHandler.GetHighestBlockNumber(ctx)
+	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
 	if err != nil {
 		// If no blocks exist, start from configured start height
 		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
 			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
-			return 0, nil
+			return 23577000, nil
 		}
 		return 0, err
 	}
-	return lastBlock, nil
+	return latestBlockNum, nil
 }
 
-// processBlock fetches and stores a single block
+// processBlock fetches and stores a single block with retry logic
 func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
-	// Fetch block from Ethereum
-	block, err := ethClient.GetBlockByNumber(ctx, big.NewInt(blockNum))
+	var block *types.Block
+	var err error
+
+	// Retry logic for fetching block from Ethereum
+	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+		block, err = ethClient.GetBlockByNumber(ctx, big.NewInt(blockNum))
+		if err == nil {
+			break
+		}
+
+		if attempt < DefaultRetryAttempts-1 {
+			retryDelay := time.Duration(attempt+1) * time.Second
+			logger.Sugar.Warnf("Failed to fetch block %d (attempt %d/%d): %v, retrying in %v",
+				blockNum, attempt+1, DefaultRetryAttempts, err, retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch block %d after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
 	}
 
-	// Store block in DefraDB
-	blockId, err := blockHandler.CreateBlock(ctx, block)
-	if err != nil {
+	// Retry logic for storing block in DefraDB
+	var blockId string
+	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+		blockId, err = blockHandler.CreateBlock(ctx, block)
+		if err == nil {
+			break
+		}
+
 		// Handle duplicate block - skip if already exists
 		if strings.Contains(err.Error(), "already exists") {
 			logger.Sugar.Infof("Block %d already exists in DefraDB, skipping...", blockNum)
 			return nil
 		}
-		return err
+
+		if attempt < DefaultRetryAttempts-1 {
+			retryDelay := time.Duration(attempt+1) * time.Second
+			logger.Sugar.Warnf("Failed to create block %d in DefraDB (attempt %d/%d): %v, retrying in %v",
+				blockNum, attempt+1, DefaultRetryAttempts, err, retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create block %d in DefraDB after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
 	}
 
 	// Store transactions with block relationships
 	for _, tx := range block.Transactions {
-		txId, err := blockHandler.CreateTransaction(ctx, &tx, blockId)
+		// Retry logic for creating transaction
+		var txId string
+		for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+			txId, err = blockHandler.CreateTransaction(ctx, &tx, blockId)
+			if err == nil {
+				break
+			}
+
+			if attempt < DefaultRetryAttempts-1 {
+				retryDelay := time.Duration(attempt+1) * time.Second
+				logger.Sugar.Warnf("Failed to create transaction %s (attempt %d/%d): %v, retrying in %v",
+					tx.Hash, attempt+1, DefaultRetryAttempts, err, retryDelay)
+				time.Sleep(retryDelay)
+			}
+		}
 		if err != nil {
-			logger.Sugar.Errorf("Failed to create transaction %s: %v", tx.Hash, err)
+			logger.Sugar.Errorf("Failed to create transaction %s after %d attempts: %v", tx.Hash, DefaultRetryAttempts, err)
 			continue
 		}
 
-		// Store transaction logs
-		for _, log := range tx.Logs {
+		// Retry logic for fetching transaction receipt
+		var receipt *types.TransactionReceipt
+		for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+			receipt, err = ethClient.GetTransactionReceipt(ctx, tx.Hash)
+			if err == nil {
+				break
+			}
+
+			if attempt < DefaultRetryAttempts-1 {
+				retryDelay := time.Duration(attempt+1) * time.Second
+				logger.Sugar.Warnf("Failed to get receipt for transaction %s (attempt %d/%d): %v, retrying in %v",
+					tx.Hash, attempt+1, DefaultRetryAttempts, err, retryDelay)
+				time.Sleep(retryDelay)
+			}
+		}
+		if err != nil {
+			logger.Sugar.Errorf("Failed to get receipt for transaction %s after %d attempts: %v", tx.Hash, DefaultRetryAttempts, err)
+			continue
+		}
+
+		// Store access list entries for EIP-2930/EIP-1559 transactions
+		for _, accessListEntry := range tx.AccessList {
+			_, err := blockHandler.CreateAccessListEntry(ctx, &accessListEntry, txId)
+			if err != nil {
+				logger.Sugar.Errorf("Failed to create access list entry for tx %s: %v", tx.Hash, err)
+				continue
+			}
+		}
+
+		// Store transaction logs from receipt
+		for _, log := range receipt.Logs {
 			_, err := blockHandler.CreateLog(ctx, &log, blockId, txId)
 			if err != nil {
 				logger.Sugar.Errorf("Failed to create log for tx %s: %v", tx.Hash, err)
 				continue
 			}
-
-			// Update log relationships
-			_, err = blockHandler.UpdateLogRelationships(ctx, blockId, txId, tx.Hash, strconv.Itoa(log.LogIndex))
-			if err != nil {
-				logger.Sugar.Errorf("Failed to update log relationships: %v", err)
-			}
+			// Note: Relationships are already established in CreateLog, no need to update separately
 		}
+
+		logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
 	}
 
 	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
@@ -386,80 +464,6 @@ func parseBlockNumber(hexStr string) (int64, error) {
 	blockNum := new(big.Int)
 	blockNum.SetString(hexStr, 10)
 	return blockNum.Int64(), nil
-}
-
-// createBlockWithRetry attempts to create a block in DefraDB with retry logic
-func createBlockWithRetry(blockHandler *defra.BlockHandler, block *types.Block, blockNum string) (string, error) {
-	var blockDocId string
-	blockRetryAttempts := 0
-
-	for {
-		var err error
-		blockDocId, err = blockHandler.CreateBlock(context.Background(), block)
-		if err == nil {
-			return blockDocId, nil // Success
-		}
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Errorf("Failed to create block: %d in DefraDB (attempt %d/%d)", blockNum, blockRetryAttempts+1, DefaultRetryAttempts)
-
-		// Check if error is retryable
-		if errors.IsRetryable(err) && blockRetryAttempts < DefaultRetryAttempts {
-			retryDelay := errors.GetRetryDelay(err, blockRetryAttempts)
-			logger.Sugar.Warnf("Retrying block: %d creation after %v", blockNum, retryDelay)
-			time.Sleep(retryDelay)
-			blockRetryAttempts++
-			continue // Retry the same block
-		}
-		// Non-retryable error or max retries exceeded - skip this block
-		if errors.IsDataError(err) || blockRetryAttempts >= DefaultRetryAttempts {
-			logger.Sugar.Errorf("Skipping block: ", blockNum, " due to error: ", err)
-			return "", err // Return error to skip block
-		}
-
-		// Critical error - may need to exit
-		if errors.IsCritical(err) {
-			logger.Sugar.Fatalf("Critical error processing block: ", blockNum, " : ", err)
-		}
-
-		// Unknown error type - skip block
-		logger.Sugar.Errorf("Unknown error processing block: ", blockNum, " : ", err)
-		return "", err
-	}
-}
-
-// processTransactions handles the processing of all transactions for a block
-func processTransactions(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, transactions []types.Transaction, blockDocId string) {
-	for _, tx := range transactions {
-		processSingleTransaction(blockHandler, client, tx, blockDocId)
-	}
-}
-
-// processSingleTransaction handles the processing of a single transaction and its related data
-func processSingleTransaction(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, tx types.Transaction, blockDocId string) {
-	// Create transaction in DefraDB (includes block relationship)
-	txDocId, err := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Error("Failed to create transaction in DefraDB: ", err)
-		return
-	}
-	logger.Sugar.Info("Created transaction with DocID: ", txDocId)
-
-	// Fetch transaction receipt to get logs and events
-	receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
-		return
-	}
-
-	// Process access list entries
-	processAccessListEntries(blockHandler, tx.AccessList, txDocId)
-
-	// Process logs from the receipt
-	processTransactionLogs(blockHandler, receipt.Logs, blockDocId, txDocId)
 }
 
 func applySchema(ctx context.Context, defraNode *node.Node) error {
@@ -492,59 +496,6 @@ func applySchema(ctx context.Context, defraNode *node.Node) error {
 
 	_, err = defraNode.DB.AddSchema(ctx, string(schema))
 	return err
-}
-
-// processAccessListEntries handles the processing of access list entries for a transaction
-func processAccessListEntries(blockHandler *defra.BlockHandler, accessList []types.AccessListEntry, txDocId string) {
-	for _, accessListEntry := range accessList {
-		ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
-	}
-}
-
-// processTransactionLogs handles the processing of logs for a transaction
-func processTransactionLogs(blockHandler *defra.BlockHandler, logs []types.Log, blockDocId, txDocId string) {
-	for _, log := range logs {
-		// Create log in DefraDB (includes block and transaction relationships)
-		logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created log with DocID: ", logDocId)
-	}
-}
-
-// buildBlock creates a new block with the same data from gethBlock
-func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types.Block {
-	return &types.Block{
-		Number:           gethBlock.Number,
-		Hash:             gethBlock.Hash,
-		ParentHash:       gethBlock.ParentHash,
-		Nonce:            gethBlock.Nonce,
-		Sha3Uncles:       gethBlock.Sha3Uncles,
-		LogsBloom:        gethBlock.LogsBloom,
-		TransactionsRoot: gethBlock.TransactionsRoot,
-		StateRoot:        gethBlock.StateRoot,
-		ReceiptsRoot:     gethBlock.ReceiptsRoot,
-		Miner:            gethBlock.Miner,
-		Difficulty:       gethBlock.Difficulty,
-		TotalDifficulty:  gethBlock.TotalDifficulty,
-		ExtraData:        gethBlock.ExtraData,
-		Size:             gethBlock.Size,
-		GasLimit:         gethBlock.GasLimit,
-		GasUsed:          gethBlock.GasUsed,
-		Timestamp:        gethBlock.Timestamp,
-		Transactions:     transactions,
-	}
 }
 
 func StopIndexing() {
