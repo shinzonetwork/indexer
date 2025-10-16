@@ -25,6 +25,7 @@ go.work.sum
 .env
 
 .defra/
+.defra2/
 
 .vscode
 
@@ -35,8 +36,21 @@ logs/*.log
 bin/*
 
 todo.txt
+notes.txt
 
 notes/
+
+# Local keys and sensitive data
+keys/
+*.key
+*.pem
+
+# Docker environment
+.env.docker
+
+# Local development files
+.tool-versions
+defra.zip
 
 # Go test coverage viewer
 coverage.html

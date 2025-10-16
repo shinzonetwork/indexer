@@ -54,7 +54,7 @@ func ConvertTransaction(tx *gethtypes.Transaction, msgSender common.Address, blo
 		Value:            tx.Value().String(),
 		Gas:              big.NewInt(int64(tx.Gas())).String(),
 		GasPrice:         tx.GasPrice().String(),
-		Input:            string(common.Bytes2Hex(tx.Data())), // common.Bytes2Hex(tx.Data()) || "0x0",
+		Input:            "0x" + common.Bytes2Hex(tx.Data()), // Properly format hex data
 		Nonce:            fmt.Sprintf("%d", tx.Nonce()),
 		TransactionIndex: int(tx.Nonce()), // Not available directly
 		Status:           status,

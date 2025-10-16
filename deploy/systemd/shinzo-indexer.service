@@ -1,0 +1,42 @@
+[Unit]
+Description=Shinzo Network Blockchain Indexer
+Documentation=https://github.com/shinzonetwork/indexer
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=shinzo
+Group=shinzo
+WorkingDirectory=/opt/shinzo
+ExecStart=/opt/shinzo/bin/block_poster
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Environment file
+EnvironmentFile=/opt/shinzo/.env
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/shinzo/data /opt/shinzo/logs
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shinzo-indexer
+
+[Install]
+WantedBy=multi-user.target

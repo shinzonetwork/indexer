@@ -15,13 +15,16 @@ build-catch-up:
 	go build -o bin/catch_up cmd/catch_up/main.go
 
 start:
-	./bin/block_poster > logs/log.txt 1>&2
-
-start-catch-up:
-	./bin/catch_up > logs/catch_up.txt 1>&2   
+	./bin/block_poster
 
 defradb:
 	sh scripts/apply_schema.sh
+
+setup-geth:
+	./scripts/setup_geth.sh
+
+setup-gcp-geth:
+	./scripts/gcp_geth_setup.sh
 
 clean:
 	rm -rf bin/ && rm -r logs/logfile && touch logs/logfile
@@ -38,6 +41,25 @@ prysm-start:
   --jwt-secret=$HOME/.ethereum/jwt.hex \
   --checkpoint-sync-url=https://mainnet.checkpoint-sync.ethpandaops.io \
   --suggested-fee-recipient=0x8E4902d854e6A7eaF44A98D6f1E600413C99Ce07
+
+geth-status:
+	@echo "🔍 Checking Geth status..."
+	@curl -s -X POST -H "Content-Type: application/json" \
+		--data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+		http://localhost:8545 | jq '.' || echo "❌ Geth not responding"
+
+gcp-geth-status:
+	@echo "🔍 Checking GCP Geth status..."
+	@if [ -z "$(GCP_IP)" ]; then \
+		echo "❌ Please provide GCP_IP. Usage: make gcp-geth-status GCP_IP=your.instance.ip"; \
+		exit 1; \
+	fi
+	@echo "Testing connection to $(GCP_IP):8545..."
+	@curl -s -X POST -H "Content-Type: application/json" \
+		--data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+		http://$(GCP_IP):8545 | jq '.' || echo "❌ GCP Geth not responding"
+	@echo "Testing WebSocket connection to $(GCP_IP):8546..."
+	@timeout 5 wscat -c ws://$(GCP_IP):8546 -x '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' || echo "❌ WebSocket not responding"
 
 test:
 	@echo "🧪 Running all tests with summary output..."

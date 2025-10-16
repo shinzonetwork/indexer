@@ -15,7 +15,7 @@ func main() {
 	flag.Parse()
 
 	// Validate and parse indexing mode
-	indexingMode, err := parseIndexingMode(*mode)
+	_, err := parseIndexingMode(*mode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Usage: %s -mode=[realtime|catchup]\n", os.Args[0])
@@ -23,7 +23,7 @@ func main() {
 	}
 
 	// Start indexing with proper error handling
-	if err := indexer.StartIndexingWithMode(*defraStorePath, *defraUrl, indexingMode); err != nil {
+	if err := indexer.StartIndexingWithMode(*defraStorePath, *defraUrl, "realtime"); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start indexing: %v\n", err)
 		os.Exit(1)
 	}

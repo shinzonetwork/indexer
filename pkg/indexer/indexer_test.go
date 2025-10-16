@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/defra"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/types"
@@ -17,6 +19,21 @@ import (
 
 func TestIndexing_StartDefraFirst(t *testing.T) {
 	logger.Init(true)
+
+	// Create test config
+	testConfig := &config.Config{
+		DefraDB: config.DefraDBConfig{
+			Url: "http://localhost:9181", // Will be set after we get the port
+		},
+		Geth: config.GethConfig{
+			NodeURL: os.Getenv("GCP_RPC_URL"),
+			WsURL:   os.Getenv("GCP_WS_URL"),
+			APIKey:  os.Getenv("GCP_API_KEY"),
+		},
+		Logger: config.LoggerConfig{
+			Development: true,
+		},
+	}
 
 	defraUrl := "127.0.0.1:0"
 	options := []node.Option{
@@ -50,6 +67,7 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
+indexerReady:
 
 	blockNumber, err := queryBlockNumber(ctx, port)
 	require.NoError(t, err)
@@ -134,6 +152,7 @@ func TestIndexing(t *testing.T) {
 	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
+indexerReady2:
 
 	blockNumber, err := queryBlockNumber(context.Background(), defra.GetPortFromUrl(DefaultConfig.DefraDB.Url))
 	require.NoError(t, err)

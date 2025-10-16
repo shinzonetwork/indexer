@@ -67,7 +67,7 @@ func Init(development bool) {
 	consoleWriter := zapcore.Lock(os.Stdout)
 
 	// Try to create logs directory and file writers
-	logsDir := "../../logs"
+	logsDir := "logs"
 	var cores []zapcore.Core
 
 	if err := os.MkdirAll(logsDir, 0755); err == nil {

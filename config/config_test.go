@@ -39,6 +39,9 @@ indexer:
     store_data:
       workers: 2
       buffer_size: 50
+
+logger:
+  development: true
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)

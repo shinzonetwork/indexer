@@ -9,9 +9,9 @@ defradb:
     path: "./data"
 
 geth:
-  node_url: "${GCP_GETH_NODE_URL}"  # Your GCP Geth node
-  ws_url: "${GCP_GETH_WS_URL}"      # Your GCP Geth WebSocket
-  api_key: "${GCP_GETH_API_KEY}"                           # No API key needed for your own node
+  node_url: "http://34.68.131.15:8545"  # Your GCP Geth node
+  ws_url: "ws://34.68.131.15:8546"      # Your GCP Geth WebSocket
+  api_key: "0EPWxZDg6O743gGkHK7yqsNEOzKUkh1TtHBYeFaWUFY"                           # No API key needed for your own node
 
 indexer:
   block_polling_interval: 12.0
@@ -22,11 +22,12 @@ indexer:
       workers: 4
       buffer_size: 100
     process_transactions:
-      workers: 4
-      buffer_size: 100
-    store_data:
+      workers: 8
+      buffer_size: 200
+    process_logs:
       workers: 4
       buffer_size: 100
 
 logger:
-  development: true
+  level: "info"
+  development: false
