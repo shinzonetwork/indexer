@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/indexer"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 )
@@ -53,8 +54,19 @@ func TestMain(m *testing.M) {
 	logger.Test("Starting live indexer with real Ethereum connections...")
 	indexerCtx, indexerCancel = context.WithCancel(context.Background())
 	go func() {
+		// Load config for live testing
+		cfg, err := config.LoadConfig("../../config/test.yaml")
+		if err != nil {
+			logger.Sugar.Errorf("Failed to load config: %v", err)
+			return
+		}
+		
+		// Override DefraDB store path for live testing
+		cfg.DefraDB.Store.Path = "../.defra"
+		
 		// Start indexer with real connections - should succeed if env vars are set
-		err := indexer.StartIndexing("../.defra", "http://localhost:9181")
+		chainIndexer := indexer.CreateIndexer(cfg)
+		err = chainIndexer.StartIndexing(false) // false = start embedded DefraDB
 		if err != nil {
 			logger.Sugar.Errorf("Live indexer failed: %v", err)
 		}

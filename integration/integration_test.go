@@ -12,11 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/indexer"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 )
 
 const graphqlURL = "http://localhost:9181/api/v0/graphql"
+
+var testChainIndexer *indexer.ChainIndexer
 
 func TestMain(m *testing.M) {
 	// Initialize logger for integration tests first
@@ -38,8 +41,22 @@ func TestMain(m *testing.M) {
 	// Start indexer but it will fail on Ethereum connection (which is fine for testing)
 	logger.Test("Starting embedded DefraDB for testing...")
 	go func() {
+		// Create a minimal config for integration testing
+		cfg := &config.Config{
+			DefraDB: config.DefraDBConfig{
+				Url: "http://localhost:9181",
+				Store: config.DefraDBStoreConfig{
+					Path: "./.defra/data",
+				},
+			},
+			Geth: config.GethConfig{
+				NodeURL: "https://ethereum-rpc.publicnode.com", // Will fail but that's expected
+			},
+		}
+		
 		// Start indexer - DefraDB will start successfully, Ethereum connection will fail (expected)
-		err := indexer.StartIndexing("./.defra/data", "http://localhost:9181")
+		testChainIndexer = indexer.CreateIndexer(cfg)
+		err := testChainIndexer.StartIndexing(false) // false = start embedded DefraDB
 		if err != nil {
 			// Expected to fail on Ethereum connection, but DefraDB should be running
 			logger.Testf("Indexer failed as expected (no Ethereum connection): %v", err)
@@ -79,7 +96,9 @@ ready:
 
 	// Teardown
 	logger.Test("TestMain - Teardown")
-	indexer.StopIndexing()
+	if testChainIndexer != nil {
+		testChainIndexer.StopIndexing()
+	}
 
 	os.Exit(exitCode)
 }
