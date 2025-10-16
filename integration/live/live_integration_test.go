@@ -24,9 +24,10 @@ const (
 )
 
 var (
-	indexerStarted = false
-	indexerCtx     context.Context
-	indexerCancel  context.CancelFunc
+	indexerStarted   = false
+	indexerCtx       context.Context
+	indexerCancel    context.CancelFunc
+	liveChainIndexer *indexer.ChainIndexer
 )
 
 // TestMain sets up and tears down the live integration test environment
@@ -60,13 +61,13 @@ func TestMain(m *testing.M) {
 			logger.Sugar.Errorf("Failed to load config: %v", err)
 			return
 		}
-		
+
 		// Override DefraDB store path for live testing
 		cfg.DefraDB.Store.Path = "../.defra"
-		
+
 		// Start indexer with real connections - should succeed if env vars are set
-		chainIndexer := indexer.CreateIndexer(cfg)
-		err = chainIndexer.StartIndexing(false) // false = start embedded DefraDB
+		liveChainIndexer = indexer.CreateIndexer(cfg)
+		err = liveChainIndexer.StartIndexing(false) // false = start embedded DefraDB
 		if err != nil {
 			logger.Sugar.Errorf("Live indexer failed: %v", err)
 		}
@@ -92,9 +93,8 @@ func TestMain(m *testing.M) {
 
 	// Teardown
 	logger.Test("TestMain - Live integration teardown")
-	indexer.StopIndexing()
-	if indexerCancel != nil {
-		indexerCancel()
+	if liveChainIndexer != nil {
+		liveChainIndexer.StopIndexing()
 	}
 
 	// Clean up test data
