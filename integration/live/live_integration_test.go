@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 
 	// Check required environment variables
 	if !checkRequiredEnvVars() {
-		logger.Sugar.Error("Required environment variables not set. Set GCP_RPC_URL, GCP_WS_URL, and GCP_API_KEY")
+		logger.Sugar.Error("Required environment variables not set. Set GCP_GETH_RPC_URL, GCP_GETH_WS_URL, and GCP_GETH_API_KEY")
 		os.Exit(0) // treat as skipped instead of failed
 	}
 
@@ -61,9 +61,14 @@ func TestMain(m *testing.M) {
 			logger.Sugar.Errorf("Failed to load config: %v", err)
 			return
 		}
-
+		
 		// Override DefraDB store path for live testing
 		cfg.DefraDB.Store.Path = "../.defra"
+		
+		// Override Geth config with environment variables for live testing
+		cfg.Geth.NodeURL = os.Getenv("GCP_GETH_RPC_URL")
+		cfg.Geth.WsURL = os.Getenv("GCP_GETH_WS_URL")
+		cfg.Geth.APIKey = os.Getenv("GCP_GETH_API_KEY")
 
 		// Start indexer with real connections - should succeed if env vars are set
 		liveChainIndexer = indexer.CreateIndexer(cfg)
@@ -106,7 +111,7 @@ func TestMain(m *testing.M) {
 
 // checkRequiredEnvVars checks if all required environment variables are set for live testing
 func checkRequiredEnvVars() bool {
-	requiredVars := []string{"GCP_RPC_URL", "GCP_WS_URL", "GCP_API_KEY"}
+	requiredVars := []string{"GCP_GETH_RPC_URL", "GCP_GETH_WS_URL", "GCP_GETH_API_KEY"}
 
 	for _, envVar := range requiredVars {
 		if os.Getenv(envVar) == "" {
