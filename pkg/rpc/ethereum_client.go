@@ -363,16 +363,17 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 // convertTransaction safely converts a single transaction
 func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (*types.Transaction, error) {
 	// Get transaction details with error handling
-	fromAddr, err := getFromAddress(tx)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get from address from transaction: %v", err)
-	}
-	
+	fromAddr, err := GetFromAddress(tx)
 	var fromAddrStr string
-	if fromAddr != nil {
+	if err != nil {
+		// For unsigned transactions or other errors, use zero address
+		logger.Sugar.Warnf("Warning: Failed to convert transaction %s: %v", tx.Hash().Hex(), err)
+		fromAddrStr = "0x0000000000000000000000000000000000000000"
+	} else if fromAddr != nil {
 		fromAddrStr = fromAddr.Hex()
+	} else {
+		fromAddrStr = "0x0000000000000000000000000000000000000000"
 	}
-	
 	toAddr := getToAddress(tx)
 
 	// Handle different transaction types
@@ -409,33 +410,33 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 	}
 
 	localTx := types.Transaction{
-		Hash:                 tx.Hash().Hex(),               // string
-		BlockHash:            gethBlock.Hash().Hex(),        // string
-		BlockNumber:          gethBlock.Number().String(),   // string
-		From:                 fromAddrStr,                   // string
-		To:                   toAddr,                        // string
-		Value:                tx.Value().String(),           // string
-		Gas:                  fmt.Sprintf("%d", tx.Gas()),   // string
-		GasPrice:             gasPrice.String(),             // string
-		MaxFeePerGas:         getMaxFeePerGas(tx),           // string
-		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),   // string
-		Input:                common.Bytes2Hex(tx.Data()),   // string
-		Nonce:                fmt.Sprintf("%d", tx.Nonce()), // string
-		TransactionIndex:     index,                         // int
-		Type:                 fmt.Sprintf("%d", tx.Type()),  // string
-		ChainId:              getChainId(tx),                // string
-		AccessList:           accessList,                    // []accessListEntry
-		V:                    v.String(),                    // string
-		R:                    r.String(),                    // string
-		S:                    s.String(),                    // string
-		Status:               true,                          // Default to true, will be updated from receipt
+		Hash:                 tx.Hash().Hex(),                          // string
+		BlockHash:            gethBlock.Hash().Hex(),                   // string
+		BlockNumber:          fmt.Sprintf("%d", gethBlock.NumberU64()), // string
+		From:                 fromAddrStr,                              // string
+		To:                   toAddr,                                   // string
+		Value:                tx.Value().String(),                      // string
+		Gas:                  fmt.Sprintf("%d", tx.Gas()),              // string
+		GasPrice:             gasPrice.String(),                        // string
+		MaxFeePerGas:         getMaxFeePerGas(tx),                      // string
+		MaxPriorityFeePerGas: getMaxPriorityFeePerGas(tx),              // string
+		Input:                "0x" + common.Bytes2Hex(tx.Data()),       // string
+		Nonce:                fmt.Sprintf("%d", tx.Nonce()),            // string
+		TransactionIndex:     index,                                    // int
+		Type:                 fmt.Sprintf("%d", tx.Type()),             // string
+		ChainId:              getChainId(tx),                           // string
+		AccessList:           accessList,                               // []accessListEntry
+		V:                    v.String(),                               // string
+		R:                    r.String(),                               // string
+		S:                    s.String(),                               // string
+		Status:               true,                                     // Default to true, will be updated from receipt
 	}
 
 	return &localTx, nil
 }
 
 // Helper functions for transaction conversion
-func getFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
+func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 	chainId := tx.ChainId()
 	if chainId == nil || chainId.Sign() <= 0 {
 		return nil, fmt.Errorf("Received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -14,6 +13,8 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/testutils"
 	"github.com/shinzonetwork/indexer/pkg/types"
 	"github.com/shinzonetwork/indexer/pkg/utils"
+
+	"net/http/httptest"
 )
 
 // TestMain sets up testing environment

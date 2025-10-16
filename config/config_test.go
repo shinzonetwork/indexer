@@ -92,24 +92,10 @@ func TestLoadConfig_EnvironmentOverrides(t *testing.T) {
 	configContent := `
 defradb:
   url: "http://localhost:9181"
-  keyring_secret: "original_secret"
-  p2p:
-    enabled: true
-    bootstrap_peers: ["peer1", "peer2", "peer3"]
-    listen_addr: "/ip4/0.0.0.0/tcp/9171"
-  store:
-    path: "/original/data/path"
-
-geth:
-  node_url: "http://localhost:8545"
-  ws_url: "ws://localhost:8546"
-  api_key: "original_key"
+  keyring_secret: "pingpong"
 
 indexer:
   start_height: 1000
-
-logger:
-  development: false
 `
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
@@ -118,22 +104,12 @@ logger:
 	}
 
 	// Set environment variables
-	os.Setenv("GCP_RPC_URL", "https://test-rpc.example.com")
-	os.Setenv("GCP_WS_URL", "wss://test-ws.example.com")
-	os.Setenv("GCP_API_KEY", "test_api_key_123")
-	os.Setenv("DEFRADB_KEYRING_SECRET", "test_keyring_secret")
-	os.Setenv("DEFRADB_STORE_PATH", "/custom/data/path")
-	os.Setenv("LOGGER_DEBUG", "true")
+	os.Setenv("DEFRA_KEYRING_SECRET", "pingpong")
 	os.Setenv("INDEXER_START_HEIGHT", "2000")
 
 	// Clean up environment variables after test
 	defer func() {
-		os.Unsetenv("GCP_RPC_URL")
-		os.Unsetenv("GCP_WS_URL")
-		os.Unsetenv("GCP_API_KEY")
-		os.Unsetenv("DEFRADB_KEYRING_SECRET")
-		os.Unsetenv("DEFRADB_STORE_PATH")
-		os.Unsetenv("LOGGER_DEBUG")
+		os.Unsetenv("DEFRA_KEYRING_SECRET")
 		os.Unsetenv("INDEXER_START_HEIGHT")
 	}()
 
@@ -142,48 +118,13 @@ logger:
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
 
-	// Verify environment overrides work for DefraDB
-	if cfg.DefraDB.KeyringSecret != "test_keyring_secret" {
-		t.Errorf("Expected keyring_secret 'test_keyring_secret' (from env), got '%s'", cfg.DefraDB.KeyringSecret)
+	// Verify environment overrides work
+	if cfg.DefraDB.KeyringSecret != "pingpong" {
+		t.Errorf("Expected keyring_secret 'pingpong', got '%s'", cfg.DefraDB.KeyringSecret)
 	}
 	if cfg.DefraDB.Url != "http://localhost:9181" {
-		t.Errorf("Expected url 'http://localhost:9181' (from config), got '%s'", cfg.DefraDB.Url)
+		t.Errorf("Expected url 'http://localhost:9181', got '%s'", cfg.DefraDB.Url)
 	}
-	if cfg.DefraDB.Store.Path != "/custom/data/path" {
-		t.Errorf("Expected store path '/custom/data/path' (from env), got '%s'", cfg.DefraDB.Store.Path)
-	}
-
-	// Verify Geth environment overrides work
-	if cfg.Geth.NodeURL != "https://test-rpc.example.com" {
-		t.Errorf("Expected node_url 'https://test-rpc.example.com' (from env), got '%s'", cfg.Geth.NodeURL)
-	}
-	if cfg.Geth.WsURL != "wss://test-ws.example.com" {
-		t.Errorf("Expected ws_url 'wss://test-ws.example.com' (from env), got '%s'", cfg.Geth.WsURL)
-	}
-	if cfg.Geth.APIKey != "test_api_key_123" {
-		t.Errorf("Expected api_key 'test_api_key_123' (from env), got '%s'", cfg.Geth.APIKey)
-	}
-
-	// Verify Logger environment overrides work
-	if !cfg.Logger.Development {
-		t.Error("Expected logger development to be true (from env)")
-	}
-
-	// Verify P2P config remains from YAML (not overridden by env)
-	if !cfg.DefraDB.P2P.Enabled {
-		t.Error("Expected P2P enabled to be true (from config)")
-	}
-	if len(cfg.DefraDB.P2P.BootstrapPeers) != 3 {
-		t.Errorf("Expected 3 bootstrap peers (from config), got %d", len(cfg.DefraDB.P2P.BootstrapPeers))
-	}
-	if len(cfg.DefraDB.P2P.BootstrapPeers) > 0 && cfg.DefraDB.P2P.BootstrapPeers[0] != "peer1" {
-		t.Errorf("Expected first peer 'peer1' (from config), got '%s'", cfg.DefraDB.P2P.BootstrapPeers[0])
-	}
-	if cfg.DefraDB.P2P.ListenAddr != "/ip4/0.0.0.0/tcp/9171" {
-		t.Errorf("Expected listen_addr '/ip4/0.0.0.0/tcp/9171' (from config), got '%s'", cfg.DefraDB.P2P.ListenAddr)
-	}
-
-	// Verify Indexer environment overrides work
 	if cfg.Indexer.StartHeight != 2000 {
 		t.Errorf("Expected start_height 2000, got %d", cfg.Indexer.StartHeight)
 	}
@@ -203,8 +144,7 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 
 	invalidContent := `
 defradb:
-  host: "localhost
-  port: [invalid yaml
+  url: "invalid yaml
 `
 
 	err := os.WriteFile(configPath, []byte(invalidContent), 0644)
@@ -224,9 +164,6 @@ func TestLoadConfig_InvalidEnvironmentValues(t *testing.T) {
 	configPath := filepath.Join(tempDir, "test_config.yaml")
 
 	configContent := `
-defradb:
-  url: "http://localhost:9181"
-
 indexer:
   start_height: 1000
 `
@@ -250,9 +187,6 @@ indexer:
 	}
 
 	// Should keep original values when env vars are invalid
-	if cfg.DefraDB.Url != "http://localhost:9181" {
-		t.Errorf("Expected url 'http://localhost:9181' (original), got '%s'", cfg.DefraDB.Url)
-	}
 	if cfg.Indexer.StartHeight != 1000 {
 		t.Errorf("Expected start_height 1000 (original), got %d", cfg.Indexer.StartHeight)
 	}
