@@ -13,6 +13,7 @@ const CollectionName = "shinzo"
 
 // DefraDBP2PConfig represents P2P configuration for DefraDB
 type DefraDBP2PConfig struct {
+	Enabled        bool     `yaml:"enabled"`
 	BootstrapPeers []string `yaml:"bootstrap_peers"`
 	ListenAddr     string   `yaml:"listen_addr"`
 }

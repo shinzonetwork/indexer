@@ -367,6 +367,12 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get from address from transaction: %v", err)
 	}
+	
+	var fromAddrStr string
+	if fromAddr != nil {
+		fromAddrStr = fromAddr.Hex()
+	}
+	
 	toAddr := getToAddress(tx)
 
 	// Handle different transaction types

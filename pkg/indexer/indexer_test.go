@@ -26,21 +26,6 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 
 	logger.Init(true)
 
-	// Create test config with mock Geth endpoints (tests should not require real Geth)
-	testConfig := &config.Config{
-		DefraDB: config.DefraDBConfig{
-			Url: "http://localhost:9181", // Will be set after we get the port
-		},
-		Geth: config.GethConfig{
-			NodeURL: "http://mock-geth:8545", // Mock endpoint for testing
-			WsURL:   "ws://mock-geth:8546",   // Mock endpoint for testing
-			APIKey:  "",                      // No API key needed for mock
-		},
-		Logger: config.LoggerConfig{
-			Development: true,
-		},
-	}
-
 	defraUrl := "127.0.0.1:0"
 	options := []node.Option{
 		node.WithDisableAPI(false),
@@ -58,22 +43,22 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 	_, err := queryBlockNumber(ctx, port)
 	require.Error(t, err)
 
-	testConfig := DefaultConfig
-	testConfig.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
+	// Create test config by copying DefaultConfig and updating the URL
+	testCfg := &config.Config{}
+	*testCfg = *DefaultConfig // Copy the config
+	testCfg.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
 
-	i := CreateIndexer(testConfig)
+	i := CreateIndexer(testCfg)
 	go func() {
 		err := i.StartIndexing(true)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
 	}()
-	defer i.StopIndexing()
 
 	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
-indexerReady:
 
 	blockNumber, err := queryBlockNumber(ctx, port)
 	require.NoError(t, err)
@@ -158,12 +143,10 @@ func TestIndexing(t *testing.T) {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
 	}()
-	defer i.StopIndexing()
 
 	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
-indexerReady2:
 
 	blockNumber, err := queryBlockNumber(context.Background(), defra.GetPortFromUrl(DefaultConfig.DefraDB.Url))
 	require.NoError(t, err)

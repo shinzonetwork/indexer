@@ -19,6 +19,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/types"
 
 	"github.com/sourcenetwork/defradb/node"
+	defrahttp "github.com/sourcenetwork/defradb/http"
 )
 
 const (
@@ -112,14 +113,9 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	if !defraStarted {
 		options := []node.Option{
 			node.WithDisableAPI(false),
-			node.WithDisableP2P(false),
+			node.WithDisableP2P(true), // Disable P2P for now
 			node.WithStorePath(cfg.DefraDB.Store.Path),
-			http.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
-			netConfig.WithBootstrapPeers(cfg.DefraDB.P2P.BootstrapPeers...),
-		}
-		listenAddress := cfg.DefraDB.P2P.ListenAddr
-		if len(listenAddress) > 0 {
-			options = append(options, netConfig.WithListenAddresses(listenAddress))
+			defrahttp.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
 		}
 
 		defraNode, err := node.New(ctx, options...)
@@ -144,12 +140,12 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		}
 	} else {
 		// Using external DefraDB - wait for it and apply schema via HTTP
-		err := defra.WaitForDefraDB(defraUrl)
+		err := defra.WaitForDefraDB(cfg.DefraDB.Url)
 		if err != nil {
 			return err
 		}
 
-		err = applySchemaViaHTTP(defraUrl)
+		err = applySchemaViaHTTP(cfg.DefraDB.Url)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
 			return fmt.Errorf("Failed to apply schema to external DefraDB: %v", err)
 		}
@@ -175,6 +171,9 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
 
+	// Get starting block number
+	nextBlockToProcess := int64(cfg.Indexer.StartHeight)
+
 	// Main indexing loop - always get latest block from Geth
 	for i.shouldIndex {
 		i.isStarted = true
@@ -187,7 +186,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			// Step 2: Process the specific block we want (nextBlockToProcess)
 			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
 
-			err := processBlock(ctx, ethClient, blockHandler, nextBlockToProcess)
+			err := processBlock(ctx, client, blockHandler, nextBlockToProcess)
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
 					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
@@ -198,13 +197,13 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 					// Block already processed, move to next
 					logger.Sugar.Infof("Block %d already processed, moving to next", nextBlockToProcess)
 					nextBlockToProcess++
-					HasIndexedAtLeastOneBlock = true
+					i.hasIndexedAtLeastOneBlock = true
 					continue
 				} else if strings.Contains(err.Error(), "transaction type not supported") {
 					// Skip problematic block
 					logger.Sugar.Warnf("Block %d has unsupported transaction types, skipping", nextBlockToProcess)
 					nextBlockToProcess++
-					HasIndexedAtLeastOneBlock = true
+					i.hasIndexedAtLeastOneBlock = true
 					continue
 				} else {
 					// Other error - retry in 3 seconds
@@ -217,47 +216,11 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			// Success! Move to next block (Step 3: increment by 1 and repeat)
 			logger.Sugar.Infof("Successfully processed block %d", nextBlockToProcess)
 			nextBlockToProcess++
-			HasIndexedAtLeastOneBlock = true
+			i.hasIndexedAtLeastOneBlock = true
 
 			// Small delay to avoid overwhelming the API
 			time.Sleep(100 * time.Millisecond)
 		}
-
-		blockNum := gethBlock.Number
-		logger.Sugar.Info("Processing latest block from Geth: ", blockNum)
-
-		// Get network ID for transaction conversion (skip if it fails)
-		networkID, err := client.GetNetworkID(context.Background())
-		if err != nil {
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Warn("Failed to get network ID... defaulting to 1: ", err)
-			networkID = big.NewInt(1) // Default to mainnet
-		}
-		_ = networkID // Use networkID if needed for transaction processing
-		logger.Sugar.Debug("Network ID: ", networkID)
-
-		// get transactions from Geth variable
-		transactions := gethBlock.Transactions
-
-		// Build the complete block
-		block := buildBlock(gethBlock, transactions)
-
-		// Create block in DefraDB with retry logic
-		blockDocId, err := createBlockWithRetry(blockHandler, block, blockNum)
-		if err != nil {
-			continue // Skip to next block if creation failed
-		}
-		logger.Sugar.Info("Created block with DocID: ", blockDocId)
-
-		// Process all transactions for this block
-		processTransactions(blockHandler, client, transactions, blockDocId)
-
-		logger.Sugar.Info("Successfully processed block: ", blockNum)
-
-		i.hasIndexedAtLeastOneBlock = true
-
-		// Sleep for 12 seconds before checking for next latest block [block time is 13 seconds on avg]
-		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
 	}
 
 	return nil
