@@ -61,10 +61,10 @@ func TestMain(m *testing.M) {
 			logger.Sugar.Errorf("Failed to load config: %v", err)
 			return
 		}
-		
+
 		// Override DefraDB store path for live testing
 		cfg.DefraDB.Store.Path = "../.defra"
-		
+
 		// Override Geth config with environment variables for live testing
 		cfg.Geth.NodeURL = os.Getenv("GCP_GETH_RPC_URL")
 		cfg.Geth.WsURL = os.Getenv("GCP_GETH_WS_URL")
