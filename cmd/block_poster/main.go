@@ -5,25 +5,33 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/indexer"
 )
 
 func main() {
-	defraStorePath := flag.String("defra-store-path", "", "Path to DefraDB store directory. If empty, assumes DefraDB is already running.")
-	defraUrl := flag.String("defra-url", "http://localhost:9181", "URL of the DefraDB instance.")
+	configPath := flag.String("config", "config/test.yaml", "Path to configuration file")
 	mode := flag.String("mode", "realtime", "Indexing mode: 'realtime' for real-time indexing, 'catchup' for catch-up indexing")
 	flag.Parse()
 
+	// Load configuration
+	cfg, err := config.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Validate and parse indexing mode
-	_, err := parseIndexingMode(*mode)
+	_, err = parseIndexingMode(*mode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Usage: %s -mode=[realtime|catchup]\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	// Start indexing with proper error handling
-	if err := indexer.StartIndexingWithMode(*defraStorePath, *defraUrl, "realtime"); err != nil {
+	// Start indexing with configuration
+	modeEnum, _ := parseIndexingMode(*mode) // Already validated above
+	if err := indexer.StartIndexingWithModeAndConfig("", cfg.DefraDB.Url, modeEnum, cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start indexing: %v\n", err)
 		os.Exit(1)
 	}
