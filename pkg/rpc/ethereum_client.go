@@ -42,13 +42,13 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 
 		if apiKey != "" {
 			logger.Sugar.Infof("Creating HTTP client with API key authentication for %s", httpNodeURL)
-			// Create RPC client with custom headers for API key authentication
-			rpcClient, err := ethrpc.DialHTTPWithClient(httpNodeURL, &http.Client{
+			// Create RPC client with custom headers for API key authentication using modern approach
+			rpcClient, err := ethrpc.DialOptions(context.Background(), httpNodeURL, ethrpc.WithHTTPClient(&http.Client{
 				Transport: &apiKeyTransport{
 					apiKey: apiKey,
 					base:   http.DefaultTransport,
 				},
-			})
+			}))
 			if err != nil {
 				logger.Sugar.Errorf("Failed to create HTTP client with API key: %v", err)
 				return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", httpNodeURL, err)
@@ -456,7 +456,7 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 	chainId := tx.ChainId()
 	if chainId == nil || chainId.Sign() <= 0 {
-		return nil, fmt.Errorf("Received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
+		return nil, fmt.Errorf("received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
 	}
 
 	// Try different signers to handle various transaction types
@@ -472,7 +472,7 @@ func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("No sender (from) address found")
+	return nil, fmt.Errorf("no sender (from) address found")
 }
 
 func getToAddress(tx *ethtypes.Transaction) string {
@@ -557,7 +557,7 @@ func createWebSocketWithHeaders(wsURL, apiKey string) (*ethclient.Client, error)
 	}
 
 	logger.Sugar.Debugf("Trying WebSocket with API key parameter: %s", wsURLWithKey)
-	rpcClient, err := ethrpc.DialWebsocket(ctx, wsURLWithKey, "")
+	rpcClient, err := ethrpc.DialOptions(ctx, wsURLWithKey)
 	if err != nil {
 		// Approach 2: Try with different parameter name
 		if strings.Contains(wsURL, "?") {
@@ -567,7 +567,7 @@ func createWebSocketWithHeaders(wsURL, apiKey string) (*ethclient.Client, error)
 		}
 
 		logger.Sugar.Debugf("Trying WebSocket with api_key parameter: %s", wsURLWithKey)
-		rpcClient, err = ethrpc.DialWebsocket(ctx, wsURLWithKey, "")
+		rpcClient, err = ethrpc.DialOptions(ctx, wsURLWithKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial WebSocket with API key: %w", err)
 		}
