@@ -71,6 +71,7 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 		logger.Sugar.Infof("Attempting WebSocket connection to %s", wsURL)
 		var wsClient *ethclient.Client
 		var err error
+		var wsConnected bool
 
 		if apiKey != "" {
 			// Create WebSocket connection with custom headers for GCP authentication
@@ -82,26 +83,42 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 				logger.Sugar.Info("Trying standard WebSocket connection as fallback")
 				wsClient, err = ethclient.Dial(wsURL)
 				if err != nil {
-					logger.Sugar.Warnf("Failed to establish fallback WebSocket connection: %v", err)
+					logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
+					return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL, 
+						fmt.Errorf("WebSocket connection failed with both API key and standard methods: %w", err))
 				} else {
 					logger.Sugar.Info("WebSocket fallback connection successful")
 					client.wsClient = wsClient
+					wsConnected = true
 				}
 			} else {
 				logger.Sugar.Info("WebSocket connection with API key header successful")
 				client.wsClient = wsClient
+				wsConnected = true
 			}
 		} else {
 			// Standard WebSocket connection without API key
 			wsClient, err = ethclient.Dial(wsURL)
 			if err != nil {
-				logger.Sugar.Warnf("Failed to establish WebSocket connection: %v", err)
-				// Don't fail completely, HTTP client can still work
+				logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
+				return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL, err)
 			} else {
 				logger.Sugar.Info("Standard WebSocket connection successful")
 				client.wsClient = wsClient
+				wsConnected = true
 			}
 		}
+
+		// Log performance implications if WebSocket failed but HTTP succeeded
+		if !wsConnected && client.httpClient != nil {
+			logger.Sugar.Warn("WebSocket connection failed but HTTP is available - indexer performance may be reduced")
+		}
+	}
+
+	// Ensure at least one client is available
+	if client.httpClient == nil && client.wsClient == nil {
+		return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", "all endpoints", 
+			fmt.Errorf("no valid connections established - both HTTP (%s) and WebSocket (%s) failed", httpNodeURL, wsURL))
 	}
 
 	return client, nil

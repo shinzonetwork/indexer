@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/shinzonetwork/indexer/pkg/logger"
@@ -57,6 +58,36 @@ func TestNewEthereumClient_InvalidHTTP(t *testing.T) {
 	_, err := NewEthereumClient("invalid-url", "", "")
 	if err == nil {
 		t.Error("Expected error for invalid HTTP URL, got nil")
+	}
+}
+
+func TestNewEthereumClient_InvalidWebSocket(t *testing.T) {
+	// Start a mock HTTP server that works
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := `{"jsonrpc":"2.0","id":1,"result":"0x1"}`
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(response))
+	}))
+	defer server.Close()
+
+	// Test that invalid WebSocket URL causes failure even with valid HTTP
+	_, err := NewEthereumClient(server.URL, "ws://invalid-websocket-url:9999", "")
+	if err == nil {
+		t.Error("Expected error for invalid WebSocket URL, got nil")
+	}
+
+	// Verify error message indicates connection failure
+	if err != nil && !strings.Contains(err.Error(), "RPC_CONNECTION_FAILED") {
+		t.Errorf("Expected RPC connection error, got: %v", err)
+	}
+}
+
+func TestNewEthereumClient_NoEndpoints(t *testing.T) {
+	// Test that providing no endpoints returns an error
+	_, err := NewEthereumClient("", "", "")
+	if err == nil {
+		t.Error("Expected error when no endpoints provided, got nil")
 	}
 }
 
