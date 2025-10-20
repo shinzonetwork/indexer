@@ -109,7 +109,7 @@ geth-status:
 		echo "🔑 Testing API key authentication..."; \
 		AUTH_RESPONSE=$$(curl -s --connect-timeout 5 --max-time 10 -X POST \
 			-H "Content-Type: application/json" \
-			-H "X-API-Key: $(GCP_GETH_API_KEY)" \
+			-H "X-API-Key: xxx..." \
 			--data '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}' \
 			$(GCP_GETH_RPC_URL) 2>/dev/null); \
 		if echo "$$AUTH_RESPONSE" | jq -e '.result' >/dev/null 2>&1; then \
@@ -266,3 +266,35 @@ stop:
 	fi; \
 	rm -f .defra/block_poster.pid;
 
+help:
+	@echo "🚀 Shinzo Network Indexer - Available Make Targets"
+	@echo "=================================================="
+	@echo ""
+	@echo "📦 Build & Test:"
+	@echo "  build              - Build the indexer binary"
+	@echo "  test               - Run all tests with summary"
+	@echo "  clean              - Clean build artifacts"
+	@echo ""
+	@echo "🔗 Connectivity Testing:"
+	@echo "  geth-status        - Comprehensive Geth node diagnostics"
+	@echo "  gcp-geth-status    - GCP Geth status (with parameters)"
+	@echo "  defra-status       - Check DefraDB status"
+	@echo ""
+	@echo "🏃 Services:"
+	@echo "  geth-start         - Start local Geth node"
+	@echo "  defra-start        - Start DefraDB"
+	@echo "  start              - Start the indexer"
+	@echo "  stop               - Stop all services"
+	@echo ""
+	@echo "🔧 Environment Variables for geth-status:"
+	@echo "  GCP_GETH_RPC_URL   - HTTP RPC endpoint (required)"
+	@echo "  GCP_GETH_API_KEY   - API key for authentication (optional)"
+	@echo "  GCP_GETH_WS_URL    - WebSocket endpoint (optional)"
+	@echo ""
+	@echo "💡 Example Usage:"
+	@echo "  export GCP_GETH_RPC_URL=http://34.68.131.15:8545"
+	@echo "  export GCP_GETH_API_KEY=your-api-key-here"
+	@echo "  make geth-status"
+	@echo ""
+	@echo "  # Or with parameters:"
+	@echo "  make gcp-geth-status GCP_GETH_RPC_URL=http://34.68.131.15:8545"
