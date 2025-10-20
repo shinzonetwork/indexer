@@ -540,7 +540,7 @@ func createWebSocketWithHeaders(wsURL, apiKey string) (*ethclient.Client, error)
 	}
 
 	logger.Sugar.Debugf("Trying WebSocket with API key parameter: %s", wsURLWithKey)
-	rpcClient, err := ethrpc.DialWebsocket(ctx, wsURLWithKey, "")
+	rpcClient, err := ethrpc.DialOptions(ctx, wsURLWithKey)
 	if err != nil {
 		// Approach 2: Try with different parameter name
 		if strings.Contains(wsURL, "?") {
@@ -550,7 +550,7 @@ func createWebSocketWithHeaders(wsURL, apiKey string) (*ethclient.Client, error)
 		}
 
 		logger.Sugar.Debugf("Trying WebSocket with api_key parameter: %s", wsURLWithKey)
-		rpcClient, err = ethrpc.DialWebsocket(ctx, wsURLWithKey, "")
+		rpcClient, err = ethrpc.DialOptions(ctx, wsURLWithKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial WebSocket with API key: %w", err)
 		}
