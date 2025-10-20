@@ -17,7 +17,7 @@ This directory contains two types of integration tests for the Shinzo Network bl
 ### Usage:
 ```bash
 # Run mock data integration tests
-cd ~/Developer/shinzo/new/new3
+cd <path-to-repo>
 go test -v ./integration/
 
 # Expected output:
