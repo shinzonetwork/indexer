@@ -23,12 +23,6 @@ start:
 defradb:
 	sh scripts/apply_schema.sh
 
-setup-geth:
-	./scripts/setup_geth.sh
-
-setup-gcp-geth:
-	./scripts/gcp_geth_setup.sh
-
 clean:
 	rm -rf bin/ && rm -r logs/logfile && touch logs/logfile
 
@@ -142,6 +136,16 @@ test:
 	echo ""; \
 	rm -f /tmp/test_output.log; \
 	exit $$exit_code
+
+test-local:
+	@echo "🧪 Running local indexer test with GCP endpoint..."
+	@if [ -z "$(GCP_GETH_RPC_URL)" ]; then \
+		echo "❌ GCP_GETH_RPC_URL not set. Please export it first:"; \
+		echo "   export GCP_GETH_RPC_URL=http://your.gcp.ip:8545"; \
+		exit 1; \
+	fi
+	@echo "✅ Using Geth endpoint: $(GCP_GETH_RPC_URL)"
+	@go test ./pkg/indexer -v -run TestIndexing
 
 integration-test:
 	@if [ -z "$(DEFRA_PATH)" ]; then \

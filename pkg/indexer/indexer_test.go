@@ -136,9 +136,29 @@ func TestIndexing(t *testing.T) {
 
 	logger.Init(true)
 
-	i := CreateIndexer(nil)
+	// Create embedded DefraDB with dynamic port to avoid conflicts
+	defraUrl := "127.0.0.1:0"
+	options := []node.Option{
+		node.WithDisableAPI(false),
+		node.WithDisableP2P(true),
+		node.WithStorePath(t.TempDir()),
+		http.WithAddress(defraUrl),
+	}
+	ctx := context.Background()
+	indexerDefra := startDefraInstance(t, ctx, options)
+	defer indexerDefra.Close(ctx)
+
+	port := defra.GetPort(indexerDefra)
+	require.NotEqual(t, -1, port, "Unable to retrieve indexer's defra port")
+
+	// Create test config with dynamic port and GCP endpoint
+	testCfg := &config.Config{}
+	*testCfg = *DefaultConfig // Copy the config
+	testCfg.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
+
+	i := CreateIndexer(testCfg)
 	go func() {
-		err := i.StartIndexing(false)
+		err := i.StartIndexing(true) // Use embedded=true to prevent conflicts
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
@@ -148,7 +168,7 @@ func TestIndexing(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	blockNumber, err := queryBlockNumber(context.Background(), defra.GetPortFromUrl(DefaultConfig.DefraDB.Url))
+	blockNumber, err := queryBlockNumber(ctx, port)
 	require.NoError(t, err)
 	require.Greater(t, blockNumber, 100)
 }
