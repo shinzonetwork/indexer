@@ -113,10 +113,6 @@ func overrideWithEnvVars(cfg *Config) {
 		cfg.DefraDB.KeyringSecret = keyringSecret
 	}
 
-	if p2pEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); p2pEnabled != "" {
-		// Note: P2P config would need additional parsing for bootstrap peers
-	}
-
 	if storePath := os.Getenv("DEFRADB_STORE_PATH"); storePath != "" {
 		cfg.DefraDB.Store.Path = storePath
 	}
