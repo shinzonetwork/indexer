@@ -53,12 +53,15 @@ go test -v ./integration/
 
 ```bash
 # Copy the template and fill in your values
-cp integration/live/test_config_template.env .env
+nano integration/live/.env
+```
 
+paste within .env:
+```bash
 # Edit .env with your GCP values:
-GCP_RPC_URL=https://json-rpc.YOUR_PROJECT.blockchainnodeengine.com
-GCP_WS_URL=wss://ws.YOUR_PROJECT.blockchainnodeengine.com  
-GCP_API_KEY=your-gcp-api-key-here
+GCP_GETH_RPC_URL=http://xx.xx.xx.xx:port
+GCP_GETH_WS_URL=wss://ws.xx.xx.xx:port  
+GCP_GETH_API_KEY=your-gcp-api-key-here
 ```
 
 ### Usage:
