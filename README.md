@@ -107,11 +107,35 @@ To avoid passing the `DEFRA_PATH=/path/to/defradb` portion of the command, set `
 
 ## Testing
 
+### Unit Tests
 To run unit tests, you can run `make test` or simply `go test ./...` per standard go.
 
+### Integration Tests
 To run the integration tests, you'll want to run
 `make integration-test`
 This runs `make bootstrap` under the hood, so you'll want to provide `DEFRA_PATH=/path/to/defradb` as an argument or set it as an environment variable (as above). After the `make integration-test` script bootstraps the infra in your local environment, it will run the integration test suite, and then finally teardown the infra.
+
+### Live Integration Tests with GCP Endpoint
+To run live integration tests with your GCP managed blockchain node:
+
+1. **Set up environment variables**:
+   ```bash
+   export GCP_GETH_RPC_URL=http://your.gcp.ip:8545
+   export GCP_GETH_WS_URL=ws://your.gcp.ip:8546  # optional
+   export GCP_GETH_API_KEY=your-api-key-here     # optional
+   ```
+
+2. **Run using the local test script**:
+   ```bash
+   ./test_local.sh
+   ```
+   
+   Or use the Makefile target:
+   ```bash
+   make test-local
+   ```
+
+This will run the indexer tests locally with your GCP endpoint instead of the public node, avoiding the port conflicts and endpoint issues that occur in GitHub Actions.
 
 ## Data Model
 
