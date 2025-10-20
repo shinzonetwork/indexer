@@ -42,13 +42,13 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 
 		if apiKey != "" {
 			logger.Sugar.Infof("Creating HTTP client with API key authentication for %s", httpNodeURL)
-			// Create RPC client with custom headers for API key authentication
-			rpcClient, err := ethrpc.DialHTTPWithClient(httpNodeURL, &http.Client{
+			// Create RPC client with custom headers for API key authentication using modern approach
+			rpcClient, err := ethrpc.DialOptions(context.Background(), httpNodeURL, ethrpc.WithHTTPClient(&http.Client{
 				Transport: &apiKeyTransport{
 					apiKey: apiKey,
 					base:   http.DefaultTransport,
 				},
-			})
+			}))
 			if err != nil {
 				logger.Sugar.Errorf("Failed to create HTTP client with API key: %v", err)
 				return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", httpNodeURL, err)
