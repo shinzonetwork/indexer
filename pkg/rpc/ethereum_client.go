@@ -439,7 +439,7 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 	chainId := tx.ChainId()
 	if chainId == nil || chainId.Sign() <= 0 {
-		return nil, fmt.Errorf("Received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
+		return nil, fmt.Errorf("received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
 	}
 
 	// Try different signers to handle various transaction types
@@ -455,7 +455,7 @@ func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("No sender (from) address found")
+	return nil, fmt.Errorf("no sender (from) address found")
 }
 
 func getToAddress(tx *ethtypes.Transaction) string {
