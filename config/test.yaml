@@ -6,7 +6,7 @@ defradb:
     bootstrap_peers: []
     listen_addr: ""
   store:
-    path: "./test_data"
+    path: "./data"
 
 geth:
   node_url: "${GCP_GETH_NODE_URL}"
