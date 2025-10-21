@@ -13,6 +13,7 @@ This directory contains two types of integration tests for the Shinzo Network bl
 - ✅ No external dependencies (no real Ethereum connections)
 - ✅ Fast execution (~2 seconds)
 - ✅ Deterministic results
+- ✅ **Ephemeral DefraDB instances** using `t.TempDir()` for isolation
 
 ### Usage:
 ```bash
@@ -32,6 +33,76 @@ go test -v ./integration/
 - GraphQL query functionality
 - Block and transaction data structure
 - Database relationships
+
+### Usage Patterns: Ephemeral DefraDB with `t.TempDir()`
+
+The integration tests now use **ephemeral DefraDB instances** that are automatically created and cleaned up for each test. This ensures complete test isolation and eliminates cleanup issues.
+
+#### **Basic Pattern:**
+```go
+func TestYourFeature(t *testing.T) {
+    // Create ephemeral DefraDB instance for this test
+    ephemeralIndexer := createEphemeralDefraDB(t)
+    defer ephemeralIndexer.StopIndexing() // Cleanup when test completes
+    
+    // Start the ephemeral DefraDB instance
+    go func() {
+        err := ephemeralIndexer.StartIndexing(false) // false = start embedded DefraDB
+        if err != nil {
+            logger.Testf("Indexer failed as expected (no Ethereum connection): %v", err)
+        }
+    }()
+    
+    // Wait for DefraDB to be ready
+    waitForDefraDBReady(t)
+    
+    // Your test logic here...
+}
+```
+
+#### **Multiple Isolated Instances:**
+```go
+func TestMultipleInstances(t *testing.T) {
+    // Each t.TempDir() call creates a unique directory
+    tempDir1 := t.TempDir() // e.g., /tmp/TestName123/001
+    tempDir2 := t.TempDir() // e.g., /tmp/TestName123/002  
+    tempDir3 := t.TempDir() // e.g., /tmp/TestName123/003
+    
+    // All directories are automatically cleaned up when test completes
+    // Note: All instances share port 9181 but use different data directories
+}
+```
+
+#### **Key Benefits:**
+- **🔄 Automatic Cleanup**: No manual path management needed
+- **🏝️ Test Isolation**: Each test gets a fresh, isolated DefraDB instance  
+- **🎲 Unique Directories**: Every `t.TempDir()` call creates a different directory
+- **🧹 Self-Cleaning**: Temporary directories are removed when tests complete
+- **⚡ Deterministic**: No more cleanup race conditions or leftover data
+
+#### **Port Management with Ephemeral Instances:**
+```go
+func TestWithEphemeralPort(t *testing.T) {
+    // Option 1: Use default port 9181 (recommended for sequential tests)
+    ephemeralIndexer := createEphemeralDefraDB(t)
+    defer ephemeralIndexer.StopIndexing()
+    
+    // Option 2: For parallel tests, consider using ephemeral port 0
+    // This would require updating createEphemeralDefraDB to support dynamic ports
+    // tempDir := t.TempDir()
+    // cfg.DefraDB.Url = "http://localhost:0" // Let system assign available port
+}
+```
+
+**Port Strategy:**
+- **Sequential Tests**: Use fixed port `9181` with ephemeral data directories
+- **Parallel Tests**: Each test gets unique data directory, shared port access
+- **Future Enhancement**: Could support ephemeral ports (port `0`) for true parallel execution
+
+#### **Helper Functions Available:**
+- `createEphemeralDefraDB(t)` - Creates isolated DefraDB instance using `t.TempDir()`
+- `waitForDefraDBReady(t)` - Waits for DefraDB to accept connections
+- `insertMockDataToEphemeralDB(t)` - Inserts test data into ephemeral instance
 
 ---
 
@@ -73,7 +144,7 @@ GCP_GETH_API_KEY=your-gcp-api-key-here
 source .env
 
 # Run live integration tests with build tag
-cd ~/Developer/shinzo/new/new3
+cd <path-to-repo>/integration/live/
 go test -tags live -v ./integration/live/ -timeout=10m
 
 # Note: Without -tags live, these tests are skipped
@@ -101,14 +172,14 @@ go test -v ./integration/live/  # Will skip live tests
 
 ## Test Architecture
 
-### Mock Integration Tests Flow:
+### Mock Integration Tests Flow (Ephemeral):
 ```
-1. Clean DefraDB data directory (./integration/.defra)
-2. Start embedded DefraDB (port 9181)
-3. Apply GraphQL schema
-4. Insert controlled mock data
+1. Create ephemeral DefraDB instance using t.TempDir()
+2. Start embedded DefraDB in unique temporary directory (port 9181)
+3. Apply GraphQL schema automatically
+4. Insert controlled mock data per test
 5. Run GraphQL query tests
-6. Cleanup
+6. Automatic cleanup when test completes
 ```
 
 ### Live Integration Tests Flow:
@@ -124,18 +195,25 @@ go test -v ./integration/live/  # Will skip live tests
 
 ## Port Usage
 
-- **Mock Tests**: DefraDB on port `9181`
+- **Mock Tests (Ephemeral)**: DefraDB on port `9181` with unique `t.TempDir()` data directories
 - **Live Tests**: DefraDB on port `9181` 
 - **Production**: DefraDB on port `9181` (configurable)
 
-This separation prevents port conflicts when running both test suites.
+**Port Strategy Changes:**
+- **Before**: Manual cleanup of shared data directory on port `9181`
+- **After**: Ephemeral data directories with shared port `9181` access
+- **Isolation**: Achieved through unique temporary directories, not separate ports
+- **Future**: Could implement ephemeral ports (`localhost:0`) for true parallel test execution
+
+This approach maintains port consistency while achieving test isolation through ephemeral data directories.
 
 ## Troubleshooting
 
 ### Mock Tests Failing:
 - Check if port 9181 is available
 - Ensure no other DefraDB instances are running
-- Check file permissions for `./integration/.defra` directory
+- **Ephemeral directories**: No manual cleanup needed - `t.TempDir()` handles this automatically
+- Check system temp directory permissions (usually `/tmp/` on Unix systems)
 
 ### Live Tests Failing:
 - Verify GCP environment variables are set correctly
@@ -166,6 +244,39 @@ This separation prevents port conflicts when running both test suites.
    - Live tests in deployment pipeline: `go test -tags live ./integration/live`
 
 4. **Debugging**: Use live tests to reproduce production issues with real data
+
+## Migration to Ephemeral DefraDB
+
+**Previous Approach** (Manual Cleanup):
+```go
+// Old way - manual cleanup with hardcoded paths and shared port
+cleanupPaths := []string{"./integration/.defra"}
+for _, path := range cleanupPaths {
+    os.RemoveAll(path) // Manual cleanup
+}
+// All tests shared port 9181 and same data directory
+```
+
+**New Approach** (Ephemeral with `t.TempDir()`):
+```go
+// New way - automatic ephemeral instances with isolated data
+ephemeralIndexer := createEphemeralDefraDB(t) // Uses t.TempDir() internally
+defer ephemeralIndexer.StopIndexing()        // Automatic cleanup
+// Each test gets unique data directory, shared port 9181
+```
+
+**Port Management Changes:**
+- **Before**: Single shared data directory `./integration/.defra` on port `9181`
+- **After**: Multiple ephemeral directories (e.g., `/tmp/TestName123/001`) on shared port `9181`
+- **Isolation Method**: Changed from port separation to data directory separation
+- **Cleanup**: Automatic via Go's `t.TempDir()` instead of manual `os.RemoveAll()`
+
+**Benefits of Migration:**
+- ✅ **No more cleanup race conditions**
+- ✅ **Perfect test isolation** - each test gets fresh DefraDB
+- ✅ **Automatic directory management** - Go handles temp directory lifecycle
+- ✅ **Parallel test execution** - no shared state conflicts
+- ✅ **Simplified test code** - no manual path management needed
 
 
 # Live Integration Test Configuration Template

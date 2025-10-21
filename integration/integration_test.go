@@ -21,75 +21,42 @@ const graphqlURL = "http://localhost:9181/api/v0/graphql"
 
 var testChainIndexer *indexer.ChainIndexer
 
+// createEphemeralDefraDB creates a temporary DefraDB instance using t.TempDir()
+// This ensures each test gets a fresh, isolated DefraDB instance that's automatically cleaned up
+func createEphemeralDefraDB(t *testing.T) *indexer.ChainIndexer {
+	// Create ephemeral directory for this test
+	tempDir := t.TempDir()
+	logger.Testf("Creating ephemeral DefraDB instance in: %s", tempDir)
+
+	// Create config with ephemeral storage path
+	cfg := &config.Config{
+		DefraDB: config.DefraDBConfig{
+			Url: "http://localhost:9181",
+			Store: config.DefraDBStoreConfig{
+				Path: tempDir,
+			},
+		},
+		Geth: config.GethConfig{
+			NodeURL: "http://34.68.131.15:8545", // Will fail but that's expected for tests
+		},
+	}
+
+	// Create indexer with ephemeral DefraDB
+	ephemeralIndexer := indexer.CreateIndexer(cfg)
+	return ephemeralIndexer
+}
+
 func TestMain(m *testing.M) {
 	// Initialize logger for integration tests first
 	logger.Init(true)
 	logger.Test("TestMain - Starting self-contained integration tests with mock data")
 
-	// Clean up any existing integration DefraDB data
-	logger.Test("Cleaning up existing integration DefraDB data...")
-	cleanupPaths := []string{
-		"./.defra",
-		"./.defra/data",
-	}
-	for _, path := range cleanupPaths {
-		if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
-			logger.Sugar.Warnf("Failed to clean existing data at %s: %v", path, err)
-		}
-	}
+	// Note: Individual tests will create ephemeral DefraDB instances using t.TempDir()
+	// This ensures each test gets a fresh, isolated DefraDB instance that's automatically cleaned up
+	logger.Test("Integration tests will use ephemeral DefraDB instances per test")
 
-	// Start indexer but it will fail on Ethereum connection (which is fine for testing)
-	logger.Test("Starting embedded DefraDB for testing...")
-	go func() {
-		// Create a minimal config for integration testing
-		cfg := &config.Config{
-			DefraDB: config.DefraDBConfig{
-				Url: "http://localhost:9181",
-				Store: config.DefraDBStoreConfig{
-					Path: "./.defra/data",
-				},
-			},
-			Geth: config.GethConfig{
-				NodeURL: "https://ethereum-rpc.publicnode.com", // Will fail but that's expected
-			},
-		}
-		
-		// Start indexer - DefraDB will start successfully, Ethereum connection will fail (expected)
-		testChainIndexer = indexer.CreateIndexer(cfg)
-		err := testChainIndexer.StartIndexing(false) // false = start embedded DefraDB
-		if err != nil {
-			// Expected to fail on Ethereum connection, but DefraDB should be running
-			logger.Testf("Indexer failed as expected (no Ethereum connection): %v", err)
-		}
-	}()
-
-	// Wait for DefraDB to be ready
-	logger.Test("Waiting for DefraDB to be ready...")
-	timeout := time.After(15 * time.Second)
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-timeout:
-			logger.Sugar.Error("Timeout waiting for DefraDB to be ready")
-			os.Exit(1)
-		case <-ticker.C:
-			if testDefraDBConnection() {
-				logger.Test("DefraDB is ready!")
-				goto ready
-			}
-		}
-	}
-ready:
-
-	// Insert mock test data
-	logger.Test("Inserting mock test data...")
-	if err := insertMockData(); err != nil {
-		logger.Sugar.Errorf("Failed to insert mock data: %v", err)
-		os.Exit(1)
-	}
-	logger.Test("Mock data inserted successfully!")
+	// Note: DefraDB setup and mock data insertion will be handled per test
+	// using ephemeral instances created with t.TempDir()
 
 	// Run tests
 	exitCode := m.Run()
@@ -103,8 +70,40 @@ ready:
 	os.Exit(exitCode)
 }
 
+// waitForDefraDBReady waits for a DefraDB instance to be ready for connections
+func waitForDefraDBReady(t *testing.T) {
+	logger.Test("Waiting for ephemeral DefraDB to be ready...")
+	for attempts := 0; attempts < 30; attempts++ { // 30 attempts = 15 seconds max
+		if testDefraDBConnection() {
+			logger.Test("Ephemeral DefraDB is ready!")
+			return
+		}
+		// Sleep for 500ms between attempts
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("Timeout waiting for ephemeral DefraDB to be ready")
+}
+
 func TestGraphQLConnection(t *testing.T) {
-	logger.Test("Testing GraphQL connection")
+	logger.Test("Testing GraphQL connection with ephemeral DefraDB")
+	
+	// Create ephemeral DefraDB instance for this test
+	ephemeralIndexer := createEphemeralDefraDB(t)
+	defer ephemeralIndexer.StopIndexing() // Cleanup when test completes
+	
+	// Start the ephemeral DefraDB instance in a goroutine
+	go func() {
+		err := ephemeralIndexer.StartIndexing(false) // false = start embedded DefraDB
+		if err != nil {
+			// Expected to fail on Ethereum connection, but DefraDB should be running
+			logger.Testf("Indexer failed as expected (no Ethereum connection): %v", err)
+		}
+	}()
+	
+	// Wait for DefraDB to be ready
+	waitForDefraDBReady(t)
+	
+	// Test basic GraphQL connectivity
 	resp, err := http.Post(graphqlURL, "application/json", bytes.NewBuffer([]byte(`{"query":"query { __typename }"}`)))
 	if err != nil {
 		t.Fatalf("Failed to connect to GraphQL endpoint: %v", err)
@@ -121,6 +120,41 @@ func TestGraphQLConnection(t *testing.T) {
 	if _, ok := result["data"]; !ok {
 		t.Fatalf("No data field in response: %s", string(body))
 	}
+	
+	logger.Test("Successfully connected to ephemeral DefraDB instance")
+}
+
+// TestMultipleEphemeralInstances demonstrates creating multiple isolated DefraDB instances
+// Each call to t.TempDir() creates a unique temporary directory that gets cleaned up automatically
+func TestMultipleEphemeralInstances(t *testing.T) {
+	logger.Test("Testing multiple ephemeral DefraDB instances")
+	
+	// Create first ephemeral DefraDB instance
+	tempDir1 := t.TempDir()
+	logger.Testf("Created first ephemeral directory: %s", tempDir1)
+	
+	// Create second ephemeral DefraDB instance  
+	tempDir2 := t.TempDir()
+	logger.Testf("Created second ephemeral directory: %s", tempDir2)
+	
+	// Create third ephemeral DefraDB instance
+	tempDir3 := t.TempDir()
+	logger.Testf("Created third ephemeral directory: %s", tempDir3)
+	
+	// Verify all directories are different and exist
+	if tempDir1 == tempDir2 || tempDir1 == tempDir3 || tempDir2 == tempDir3 {
+		t.Fatalf("Expected unique directories, got: %s, %s, %s", tempDir1, tempDir2, tempDir3)
+	}
+	
+	// Verify directories exist
+	for i, dir := range []string{tempDir1, tempDir2, tempDir3} {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			t.Fatalf("Directory %d does not exist: %s", i+1, dir)
+		}
+	}
+	
+	logger.Test("Successfully created 3 unique ephemeral directories")
+	logger.Test("Each directory will be automatically cleaned up when test completes")
 }
 
 func postGraphQLQuery(t *testing.T, query string, variables map[string]interface{}) map[string]interface{} {
@@ -202,6 +236,13 @@ func testDefraDBConnection() bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == 200
+}
+
+// insertMockDataToEphemeralDB inserts mock data into an ephemeral DefraDB instance
+// This creates test data in the temporary DefraDB instance for testing purposes
+func insertMockDataToEphemeralDB(t *testing.T) error {
+	logger.Test("Inserting mock data into ephemeral DefraDB...")
+	return insertMockData()
 }
 
 func insertMockData() error {

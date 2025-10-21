@@ -26,7 +26,7 @@ This guide sets up a complete Ethereum node (Execution + Consensus layers) on Go
 ```bash
 export PROJECT_ID="shinzo-468905"
 export ZONE="us-central1-a"
-export INDEXER_IP="66.207.195.70"  # Replace with actual IP
+export INDEXER_IP="xx.xx.xx.xx"  # Replace with actual IP
 ```
 
 ### 1.2 Create the VM Instance
