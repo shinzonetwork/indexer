@@ -3,6 +3,7 @@ package logger
 import (
 	"os"
 	"path/filepath"
+
 	"github.com/shinzonetwork/indexer/pkg/errors"
 
 	"go.uber.org/zap"
@@ -11,29 +12,62 @@ import (
 
 var Sugar *zap.SugaredLogger
 
+// Custom log levels for different contexts
+const (
+	TestLevel = zapcore.Level(-2) // Between DEBUG (-1) and INFO (0), specifically for tests
+)
+
 // using the logger looks like this:
 
 // logger.Sugar.Info("here is a log example");
 // or
 // logger := logger.Sugar()
 // logger.Info("here is a log example")
+//
+// For tests, use:
+// logger.Test("test-specific message")
+// logger.Testf("test message with %s", "formatting")
+
+// customLevelEncoder handles our custom TEST log level with color coding
+func customLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+	switch level {
+	case TestLevel:
+		enc.AppendString("\x1b[95mTEST\x1b[0m") // Pink/Magenta color for TEST level
+	default:
+		zapcore.CapitalColorLevelEncoder(level, enc)
+	}
+}
+
+// Test logs a message at TEST level - specifically for test output
+func Test(msg string) {
+	if Sugar != nil {
+		Sugar.Log(TestLevel, msg)
+	}
+}
+
+// Testf logs a formatted message at TEST level - specifically for test output
+func Testf(template string, args ...interface{}) {
+	if Sugar != nil {
+		Sugar.Logf(TestLevel, template, args...)
+	}
+}
 
 func Init(development bool) {
 	var zapLevel zapcore.Level
 	if development {
-		zapLevel = zap.DebugLevel
+		zapLevel = TestLevel // Show TEST level and above in development mode
 	} else {
 		zapLevel = zap.InfoLevel
 	}
 
 	encoderConfig := zap.NewDevelopmentEncoderConfig()
-	encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	encoderConfig.EncodeLevel = customLevelEncoder
 
 	// Create console writer (stdout)
 	consoleWriter := zapcore.Lock(os.Stdout)
 
 	// Try to create logs directory and file writers
-	logsDir := "../../logs"
+	logsDir := "logs"
 	var cores []zapcore.Core
 
 	if err := os.MkdirAll(logsDir, 0755); err == nil {

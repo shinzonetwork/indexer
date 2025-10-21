@@ -1,9 +1,12 @@
 package indexer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math/big"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -15,19 +18,33 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/rpc"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
-	"github.com/sourcenetwork/defradb/http"
-	netConfig "github.com/sourcenetwork/defradb/net/config"
 	"github.com/sourcenetwork/defradb/node"
+	defrahttp "github.com/sourcenetwork/defradb/http"
 )
 
 const (
-	BlocksToIndexAtOnce = 10
-	TotalRetryAttempts  = 3
+	// Default configuration constants - can be made configurable via config file
+	DefaultBlocksToIndexAtOnce = 10
+	DefaultRetryAttempts       = 3
+	DefaultSchemaWaitTimeout   = 15 * time.Second
+	DefaultDefraReadyTimeout   = 30 * time.Second
+	// DefaultBlockOffset is the number of blocks behind the latest block to process
+	// This prevents "transaction type not supported" errors from very recent blocks
+	DefaultBlockOffset = 3
 )
 
 var requiredPeers []string = []string{} // Here, we can consider adding any "big peers" we need - these requiredPeers can be used as a quick start point to speed up the peer discovery process
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
+
+// getGethNodeURL returns the Geth node URL from environment or fallback to public node
+func getGethNodeURL() string {
+	if gcpURL := os.Getenv("GCP_GETH_RPC_URL"); gcpURL != "" {
+		return gcpURL
+	}
+	// Fallback to public node for tests without GCP setup
+	return "https://ethereum-rpc.publicnode.com"
+}
 
 var DefaultConfig *config.Config = &config.Config{
 	DefraDB: config.DefraDBConfig{
@@ -42,7 +59,9 @@ var DefaultConfig *config.Config = &config.Config{
 		},
 	},
 	Geth: config.GethConfig{
-		NodeURL: "https://ethereum-rpc.publicnode.com",
+		NodeURL: getGethNodeURL(),
+		WsURL:   os.Getenv("GCP_GETH_WS_URL"),
+		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
 	},
 	Indexer: config.IndexerConfig{
 		BlockPollingInterval: 12.0,
@@ -105,14 +124,9 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	if !defraStarted {
 		options := []node.Option{
 			node.WithDisableAPI(false),
-			node.WithDisableP2P(false),
+			node.WithDisableP2P(true), // Disable P2P for now
 			node.WithStorePath(cfg.DefraDB.Store.Path),
-			http.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
-			netConfig.WithBootstrapPeers(cfg.DefraDB.P2P.BootstrapPeers...),
-		}
-		listenAddress := cfg.DefraDB.P2P.ListenAddr
-		if len(listenAddress) > 0 {
-			options = append(options, netConfig.WithListenAddresses(listenAddress))
+			defrahttp.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
 		}
 
 		defraNode, err := node.New(ctx, options...)
@@ -127,7 +141,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		defer defraNode.Close(ctx)
 
 		err = applySchema(ctx, defraNode)
-		if err != nil && !strings.HasPrefix(err.Error(), "collection already exists") { // Todo we are swallowing this error for now, but we should investigate how we update the schemas - do we need to not swallow this error?
+		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
 			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
 		}
 
@@ -135,15 +149,26 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		// Using external DefraDB - wait for it and apply schema via HTTP
+		err := defra.WaitForDefraDB(cfg.DefraDB.Url)
+		if err != nil {
+			return err
+		}
+
+		err = applySchemaViaHTTP(cfg.DefraDB.Url)
+		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
+			return fmt.Errorf("Failed to apply schema to external DefraDB: %v", err)
+		}
 	}
 
 	i.shouldIndex = true
 
-	// Connect to Geth RPC node (with JSON-RPC support and HTTP fallback)
-	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL) // Empty JSON-RPC addr for now, will use HTTP fallback
+	// Connect to Ethereum client with WebSocket and HTTP support
+	client, err := rpc.NewEthereumClient(cfg.Geth.NodeURL, cfg.Geth.WsURL, cfg.Geth.APIKey)
 	if err != nil {
 		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Fatalf("Failed to connect to Geth node: ", err)
+		logger.Sugar.With(logCtx).Fatalf("Failed to connect to Ethereum client: %v", err)
 	}
 	defer client.Close()
 
@@ -157,132 +182,202 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
 
+	// Get starting block number
+	nextBlockToProcess := int64(cfg.Indexer.StartHeight)
+
 	// Main indexing loop - always get latest block from Geth
 	for i.shouldIndex {
 		i.isStarted = true
 
-		// Always get the latest block from Geth as source of truth
-		gethBlock, err := client.GetLatestBlock(context.Background())
-		if err != nil {
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to get latest block from Geth: ", err)
-			continue
+		select {
+		case <-ctx.Done():
+			logger.Sugar.Info("Real-time indexing stopped")
+			return nil
+		default:
+			// Step 2: Process the specific block we want (nextBlockToProcess)
+			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
+
+			err := processBlock(ctx, client, blockHandler, nextBlockToProcess)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
+					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
+					logger.Sugar.Infof("Block %d not available yet (ahead of chain), waiting 3s before retry...", nextBlockToProcess)
+					time.Sleep(3 * time.Second)
+					continue
+				} else if strings.Contains(err.Error(), "already exists") {
+					// Block already processed, move to next
+					logger.Sugar.Infof("Block %d already processed, moving to next", nextBlockToProcess)
+					nextBlockToProcess++
+					i.hasIndexedAtLeastOneBlock = true
+					continue
+				} else if strings.Contains(err.Error(), "transaction type not supported") {
+					// Skip problematic block
+					logger.Sugar.Warnf("Block %d has unsupported transaction types, skipping", nextBlockToProcess)
+					nextBlockToProcess++
+					i.hasIndexedAtLeastOneBlock = true
+					continue
+				} else {
+					// Other error - retry in 3 seconds
+					logger.Sugar.Errorf("Failed to process block %d: %v, retrying in 3s", nextBlockToProcess, err)
+					time.Sleep(3 * time.Second)
+					continue
+				}
+			}
+
+			// Success! Move to next block (Step 3: increment by 1 and repeat)
+			logger.Sugar.Infof("Successfully processed block %d", nextBlockToProcess)
+			nextBlockToProcess++
+			i.hasIndexedAtLeastOneBlock = true
+
+			// Small delay to avoid overwhelming the API
+			time.Sleep(100 * time.Millisecond)
 		}
-
-		blockNum := gethBlock.Number
-		logger.Sugar.Info("Processing latest block from Geth: ", blockNum)
-
-		// Get network ID for transaction conversion (skip if it fails)
-		networkID, err := client.GetNetworkID(context.Background())
-		if err != nil {
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Warn("Failed to get network ID... defaulting to 1: ", err)
-			networkID = big.NewInt(1) // Default to mainnet
-		}
-		_ = networkID // Use networkID if needed for transaction processing
-		logger.Sugar.Debug("Network ID: ", networkID)
-
-		// get transactions from Geth variable
-		transactions := gethBlock.Transactions
-
-		// Build the complete block
-		block := buildBlock(gethBlock, transactions)
-
-		// Create block in DefraDB with retry logic
-		blockDocId, err := createBlockWithRetry(blockHandler, block, blockNum)
-		if err != nil {
-			continue // Skip to next block if creation failed
-		}
-		logger.Sugar.Info("Created block with DocID: ", blockDocId)
-
-		// Process all transactions for this block
-		processTransactions(blockHandler, client, transactions, blockDocId)
-
-		logger.Sugar.Info("Successfully processed block: ", blockNum)
-
-		i.hasIndexedAtLeastOneBlock = true
-
-		// Sleep for 12 seconds before checking for next latest block [block time is 13 seconds on avg]
-		time.Sleep(time.Duration(cfg.Indexer.BlockPollingInterval) * time.Second)
 	}
 
 	return nil
 }
 
-// createBlockWithRetry attempts to create a block in DefraDB with retry logic
-func createBlockWithRetry(blockHandler *defra.BlockHandler, block *types.Block, blockNum string) (string, error) {
-	var blockDocId string
-	blockRetryAttempts := 0
+// getLastIndexedBlock gets the highest block number from DefraDB
+func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler) (int64, error) {
+	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
+	if err != nil {
+		// If no blocks exist, start from configured start height
+		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
+			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
+			return 23577000, nil
+		}
+		return 0, err
+	}
+	return latestBlockNum, nil
+}
 
-	for {
-		var err error
-		blockDocId, err = blockHandler.CreateBlock(context.Background(), block)
+// processBlock fetches and stores a single block with retry logic
+func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
+	var block *types.Block
+	var err error
+
+	// Retry logic for fetching block from Ethereum
+	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+		block, err = ethClient.GetBlockByNumber(ctx, big.NewInt(blockNum))
 		if err == nil {
-			return blockDocId, nil // Success
+			break
 		}
 
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Errorf("Failed to create block: ", blockNum, " in DefraDB (attempt ", blockRetryAttempts+1)
-
-		// Check if error is retryable
-		if errors.IsRetryable(err) && blockRetryAttempts < TotalRetryAttempts {
-			retryDelay := errors.GetRetryDelay(err, blockRetryAttempts)
-			logger.Sugar.Warnf("Retrying block: ", blockNum, " creation after ", retryDelay)
+		if attempt < DefaultRetryAttempts-1 {
+			retryDelay := time.Duration(attempt+1) * time.Second
+			logger.Sugar.Warnf("Failed to fetch block %d (attempt %d/%d): %v, retrying in %v",
+				blockNum, attempt+1, DefaultRetryAttempts, err, retryDelay)
 			time.Sleep(retryDelay)
-			blockRetryAttempts++
-			continue // Retry the same block
 		}
-
-		// Non-retryable error or max retries exceeded - skip this block
-		if errors.IsDataError(err) || blockRetryAttempts >= TotalRetryAttempts {
-			logger.Sugar.Errorf("Skipping block: ", blockNum, " due to error: ", err)
-			return "", err // Return error to skip block
-		}
-
-		// Critical error - may need to exit
-		if errors.IsCritical(err) {
-			logger.Sugar.Fatalf("Critical error processing block: ", blockNum, " : ", err)
-		}
-
-		// Unknown error type - skip block
-		logger.Sugar.Errorf("Unknown error processing block: ", blockNum, " : ", err)
-		return "", err
 	}
+	if err != nil {
+		return fmt.Errorf("failed to fetch block %d after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
+	}
+
+	// Retry logic for storing block in DefraDB
+	var blockId string
+	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+		blockId, err = blockHandler.CreateBlock(ctx, block)
+		if err == nil {
+			break
+		}
+
+		// Handle duplicate block - skip if already exists
+		if strings.Contains(err.Error(), "already exists") {
+			logger.Sugar.Infof("Block %d already exists in DefraDB, skipping...", blockNum)
+			return nil
+		}
+
+		if attempt < DefaultRetryAttempts-1 {
+			retryDelay := time.Duration(attempt+1) * time.Second
+			logger.Sugar.Warnf("Failed to create block %d in DefraDB (attempt %d/%d): %v, retrying in %v",
+				blockNum, attempt+1, DefaultRetryAttempts, err, retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create block %d in DefraDB after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
+	}
+
+	// Store transactions with block relationships
+	for _, tx := range block.Transactions {
+		// Retry logic for creating transaction
+		var txId string
+		for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+			txId, err = blockHandler.CreateTransaction(ctx, &tx, blockId)
+			if err == nil {
+				break
+			}
+
+			if attempt < DefaultRetryAttempts-1 {
+				retryDelay := time.Duration(attempt+1) * time.Second
+				logger.Sugar.Warnf("Failed to create transaction %s (attempt %d/%d): %v, retrying in %v",
+					tx.Hash, attempt+1, DefaultRetryAttempts, err, retryDelay)
+				time.Sleep(retryDelay)
+			}
+		}
+		if err != nil {
+			logger.Sugar.Errorf("Failed to create transaction %s after %d attempts: %v", tx.Hash, DefaultRetryAttempts, err)
+			continue
+		}
+
+		// Retry logic for fetching transaction receipt
+		var receipt *types.TransactionReceipt
+		for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+			receipt, err = ethClient.GetTransactionReceipt(ctx, tx.Hash)
+			if err == nil {
+				break
+			}
+
+			if attempt < DefaultRetryAttempts-1 {
+				retryDelay := time.Duration(attempt+1) * time.Second
+				logger.Sugar.Warnf("Failed to get receipt for transaction %s (attempt %d/%d): %v, retrying in %v",
+					tx.Hash, attempt+1, DefaultRetryAttempts, err, retryDelay)
+				time.Sleep(retryDelay)
+			}
+		}
+		if err != nil {
+			logger.Sugar.Errorf("Failed to get receipt for transaction %s after %d attempts: %v", tx.Hash, DefaultRetryAttempts, err)
+			continue
+		}
+
+		// Store access list entries for EIP-2930/EIP-1559 transactions
+		for _, accessListEntry := range tx.AccessList {
+			_, err := blockHandler.CreateAccessListEntry(ctx, &accessListEntry, txId)
+			if err != nil {
+				logger.Sugar.Errorf("Failed to create access list entry for tx %s: %v", tx.Hash, err)
+				continue
+			}
+		}
+
+		// Store transaction logs from receipt
+		for _, log := range receipt.Logs {
+			_, err := blockHandler.CreateLog(ctx, &log, blockId, txId)
+			if err != nil {
+				logger.Sugar.Errorf("Failed to create log for tx %s: %v", tx.Hash, err)
+				continue
+			}
+			// Note: Relationships are already established in CreateLog, no need to update separately
+		}
+
+		logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
+	}
+
+	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
+	return nil
 }
 
-// processTransactions handles the processing of all transactions for a block
-func processTransactions(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, transactions []types.Transaction, blockDocId string) {
-	for _, tx := range transactions {
-		processSingleTransaction(blockHandler, client, tx, blockDocId)
-	}
-}
-
-// processSingleTransaction handles the processing of a single transaction and its related data
-func processSingleTransaction(blockHandler *defra.BlockHandler, client *rpc.EthereumClient, tx types.Transaction, blockDocId string) {
-	// Create transaction in DefraDB (includes block relationship)
-	txDocId, err := blockHandler.CreateTransaction(context.Background(), &tx, blockDocId)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Error("Failed to create transaction in DefraDB: ", err)
-		return
-	}
-	logger.Sugar.Info("Created transaction with DocID: ", txDocId)
-
-	// Fetch transaction receipt to get logs and events
-	receipt, err := client.GetTransactionReceipt(context.Background(), tx.Hash)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Warn("Failed to get transaction receipt for ", tx.Hash, ": ", err)
-		return
+// parseBlockNumber converts hex string to int64
+func parseBlockNumber(hexStr string) (int64, error) {
+	if strings.HasPrefix(hexStr, "0x") {
+		blockNum := new(big.Int)
+		blockNum.SetString(hexStr[2:], 16)
+		return blockNum.Int64(), nil
 	}
 
-	// Process access list entries
-	processAccessListEntries(blockHandler, tx.AccessList, txDocId)
-
-	// Process logs from the receipt
-	processTransactionLogs(blockHandler, receipt.Logs, blockDocId, txDocId)
+	blockNum := new(big.Int)
+	blockNum.SetString(hexStr, 10)
+	return blockNum.Int64(), nil
 }
 
 func applySchema(ctx context.Context, defraNode *node.Node) error {
@@ -373,4 +468,52 @@ func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
+}
+
+// findSchemaFile tries multiple paths to locate the schema file from different working directories
+func findSchemaFile() (string, error) {
+	schemaPaths := []string{
+		"schema/schema.graphql",          // From project root
+		"../schema/schema.graphql",       // From subdirectory (like integration/)
+		"../../schema/schema.graphql",    // From deeper subdirectory (like integration/live/)
+		"../../../schema/schema.graphql", // From even deeper directories
+	}
+
+	for _, path := range schemaPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("Failed to find schema file. Tried paths: %v", schemaPaths)
+}
+
+func applySchemaViaHTTP(defraUrl string) error {
+	fmt.Println("Applying schema via HTTP...")
+
+	schemaPath, err := findSchemaFile()
+	if err != nil {
+		return err
+	}
+
+	schema, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("Failed to read schema file: %v", err)
+	}
+
+	// Apply schema via REST API endpoint
+	schemaURL := fmt.Sprintf("%s/api/v0/schema", defraUrl)
+	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer(schema))
+	if err != nil {
+		return fmt.Errorf("Failed to send schema: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Schema application failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	fmt.Println("Schema applied successfully!")
+	return nil
 }

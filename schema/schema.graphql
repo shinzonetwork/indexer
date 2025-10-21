@@ -8,7 +8,7 @@ type Block {
     gasUsed: String
     gasLimit: String
     baseFeePerGas: String
-    nonce: Int
+    nonce: String
     miner: String
     size: String
     stateRoot: String
@@ -32,6 +32,7 @@ type Transaction {
     value: String
     gas: String
     gasPrice: String
+    gasUsed: String
     maxFeePerGas: String
     maxPriorityFeePerGas: String
     input: String

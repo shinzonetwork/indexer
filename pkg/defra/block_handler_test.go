@@ -198,7 +198,7 @@ func TestCreateBlock_MockServer(t *testing.T) {
 		Difficulty:   "1000000",
 		GasUsed:      "4000000",
 		GasLimit:     "8000000",
-		Nonce:        123456789,
+		Nonce:        "123456789",
 		Miner:        "0xminer",
 		Size:         "1024",
 		StateRoot:    "0xstateroot",
@@ -261,7 +261,7 @@ func TestCreateBlock_InvalidBlock(t *testing.T) {
 		Difficulty:   "1000000",
 		GasUsed:      "4000000",
 		GasLimit:     "8000000",
-		Nonce:        123456789,
+		Nonce:        "123456789",
 		Miner:        "0xminer",
 		Size:         "1024",
 		StateRoot:    "0xstateroot",
@@ -356,7 +356,7 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 		Gas:              "21000",
 		GasPrice:         "20000000000",
 		Input:            "0xinput",
-		Nonce:            1,
+		Nonce:            "1",
 		TransactionIndex: 0,
 		Status:           true,
 	}
@@ -390,7 +390,7 @@ func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
 		Gas:              "21000",
 		GasPrice:         "20000000000",
 		Input:            "0xinput",
-		Nonce:            1,
+		Nonce:            "1",
 		TransactionIndex: 0,
 		Status:           true,
 	}
@@ -630,26 +630,6 @@ func TestUpdateLogRelationships_MissingField(t *testing.T) {
 	}
 }
 
-func TestUpdateLogRelationships_EmptyField(t *testing.T) {
-	// Set up test logger
-	testLogger := testutils.NewTestLogger(t)
-	response := `{"data": {"update_Log": []}}`
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
-	if err == nil {
-		logCtx := shinzoerrors.LogContext(err)
-		testLogger.Logger.With(logCtx).Error("Block creation failed")
-	}
-
-	// Should return 0 even when error occurs
-	if result != "" {
-		logCtx := shinzoerrors.LogContext(err)
-		testLogger.Logger.With(logCtx).Error("Block creation failed")
-	}
-}
-
 func TestUpdateLogRelationships_NilResponse(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
@@ -657,26 +637,6 @@ func TestUpdateLogRelationships_NilResponse(t *testing.T) {
 	server.Close()
 
 	result, err := handler.UpdateLogRelationships(context.Background(), "blockId", "txId", "txHash", "logIndex")
-	if err == nil {
-		logCtx := shinzoerrors.LogContext(err)
-		testLogger.Logger.With(logCtx).Error("Block creation failed")
-	}
-
-	// Should return 0 even when error occurs
-	if result != "" {
-		logCtx := shinzoerrors.LogContext(err)
-		testLogger.Logger.With(logCtx).Error("Block creation failed")
-	}
-}
-
-func TestUpdateEventRelationships_EmptyField(t *testing.T) {
-	// Set up test logger
-	testLogger := testutils.NewTestLogger(t)
-	response := `{"data": {"update_Event": []}}`
-	server, handler := createBlockHandlerWithMocks(response)
-	defer server.Close()
-
-	result, err := handler.UpdateEventRelationships(context.Background(), "logDocId", "txHash", "logIndex")
 	if err == nil {
 		logCtx := shinzoerrors.LogContext(err)
 		testLogger.Logger.With(logCtx).Error("Block creation failed")

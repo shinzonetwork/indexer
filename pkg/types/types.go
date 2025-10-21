@@ -31,7 +31,7 @@ type Block struct {
 	GasUsed          string        `json:"gasUsed"`
 	GasLimit         string        `json:"gasLimit"`
 	BaseFeePerGas    string        `json:"baseFeePerGas,omitempty"`
-	Nonce            int           `json:"nonce"`
+	Nonce            string        `json:"nonce"`
 	Miner            string        `json:"miner"`
 	Size             string        `json:"size"`
 	StateRoot        string        `json:"stateRoot"`
@@ -57,7 +57,7 @@ type Transaction struct {
 	MaxFeePerGas         string            `json:"maxFeePerGas,omitempty"`
 	MaxPriorityFeePerGas string            `json:"maxPriorityFeePerGas,omitempty"`
 	Input                string            `json:"input"`
-	Nonce                int               `json:"nonce"`
+	Nonce                string            `json:"nonce"`
 	TransactionIndex     int               `json:"transactionIndex"`
 	Type                 string            `json:"type"`
 	ChainId              string            `json:"chainId,omitempty"`

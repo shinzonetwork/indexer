@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/defra"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/types"
@@ -16,6 +18,12 @@ import (
 )
 
 func TestIndexing_StartDefraFirst(t *testing.T) {
+	// Skip this test if we don't have a real Geth connection available
+	// This test requires actual blockchain connectivity
+	if os.Getenv("SKIP_INTEGRATION_TESTS") != "" {
+		t.Skip("Skipping integration test - SKIP_INTEGRATION_TESTS is set")
+	}
+
 	logger.Init(true)
 
 	defraUrl := "127.0.0.1:0"
@@ -35,17 +43,18 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 	_, err := queryBlockNumber(ctx, port)
 	require.Error(t, err)
 
-	testConfig := DefaultConfig
-	testConfig.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
+	// Create test config by copying DefaultConfig and updating the URL
+	testCfg := &config.Config{}
+	*testCfg = *DefaultConfig // Copy the config
+	testCfg.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
 
-	i := CreateIndexer(testConfig)
+	i := CreateIndexer(testCfg)
 	go func() {
 		err := i.StartIndexing(true)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
 	}()
-	defer i.StopIndexing()
 
 	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
@@ -120,22 +129,46 @@ func queryBlockNumber(ctx context.Context, port int) (int, error) {
 }
 
 func TestIndexing(t *testing.T) {
+	// Skip this test if we don't have a real Geth connection available
+	if os.Getenv("SKIP_INTEGRATION_TESTS") != "" {
+		t.Skip("Skipping integration test - SKIP_INTEGRATION_TESTS is set")
+	}
+
 	logger.Init(true)
 
-	i := CreateIndexer(nil)
+	// Create embedded DefraDB with dynamic port to avoid conflicts
+	defraUrl := "127.0.0.1:0"
+	options := []node.Option{
+		node.WithDisableAPI(false),
+		node.WithDisableP2P(true),
+		node.WithStorePath(t.TempDir()),
+		http.WithAddress(defraUrl),
+	}
+	ctx := context.Background()
+	indexerDefra := startDefraInstance(t, ctx, options)
+	defer indexerDefra.Close(ctx)
+
+	port := defra.GetPort(indexerDefra)
+	require.NotEqual(t, -1, port, "Unable to retrieve indexer's defra port")
+
+	// Create test config with dynamic port and GCP endpoint
+	testCfg := &config.Config{}
+	*testCfg = *DefaultConfig // Copy the config
+	testCfg.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
+
+	i := CreateIndexer(testCfg)
 	go func() {
-		err := i.StartIndexing(false)
+		err := i.StartIndexing(true) // Use embedded=true to prevent conflicts
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}
 	}()
-	defer i.StopIndexing()
 
 	for !i.IsStarted() || !i.HasIndexedAtLeastOneBlock() {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	blockNumber, err := queryBlockNumber(context.Background(), defra.GetPortFromUrl(DefaultConfig.DefraDB.Url))
+	blockNumber, err := queryBlockNumber(ctx, port)
 	require.NoError(t, err)
 	require.Greater(t, blockNumber, 100)
 }

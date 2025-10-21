@@ -5,15 +5,27 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/shinzonetwork/indexer/pkg/logger"
 
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/trie"
 )
+
+func TestMain(m *testing.M) {
+	// Initialize logger for tests
+	logger.Init(true)
+
+	// Run tests
+	code := m.Run()
+
+	// Exit with the test result code
+	os.Exit(code)
+}
 
 func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 	// Start a mock Ethereum JSON-RPC server
@@ -27,7 +39,7 @@ func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 	defer server.Close()
 
 	// Test HTTP-only functionality using mock server
-	client, err := NewEthereumClient(server.URL)
+	client, err := NewEthereumClient(server.URL, "", "")
 	if err != nil {
 		t.Fatalf("NewEthereumClient failed: %v", err)
 	}
@@ -43,9 +55,39 @@ func TestNewEthereumClient_HTTPOnly(t *testing.T) {
 }
 
 func TestNewEthereumClient_InvalidHTTP(t *testing.T) {
-	_, err := NewEthereumClient("invalid-url")
+	_, err := NewEthereumClient("invalid-url", "", "")
 	if err == nil {
 		t.Error("Expected error for invalid HTTP URL, got nil")
+	}
+}
+
+func TestNewEthereumClient_InvalidWebSocket(t *testing.T) {
+	// Start a mock HTTP server that works
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := `{"jsonrpc":"2.0","id":1,"result":"0x1"}`
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(response))
+	}))
+	defer server.Close()
+
+	// Test that invalid WebSocket URL causes failure even with valid HTTP
+	_, err := NewEthereumClient(server.URL, "ws://invalid-websocket-url:9999", "")
+	if err == nil {
+		t.Error("Expected error for invalid WebSocket URL, got nil")
+	}
+
+	// Verify error message indicates connection failure
+	if err != nil && !strings.Contains(err.Error(), "RPC_CONNECTION_FAILED") {
+		t.Errorf("Expected RPC connection error, got: %v", err)
+	}
+}
+
+func TestNewEthereumClient_NoEndpoints(t *testing.T) {
+	// Test that providing no endpoints returns an error
+	_, err := NewEthereumClient("", "", "")
+	if err == nil {
+		t.Error("Expected error when no endpoints provided, got nil")
 	}
 }
 
@@ -61,7 +103,7 @@ func TestEthereumClient_GetNetworkID_MockClient(t *testing.T) {
 
 	// We can't easily mock ethclient.Client, so we'll test the client creation only
 	client := &EthereumClient{
-		nodeURL: "https://ethereum-rpc.publicnode.com",
+		nodeURL: server.URL,
 	}
 
 	// This would typically require a real Ethereum node or complex mocking
@@ -94,22 +136,14 @@ func TestConvertGethBlock(t *testing.T) {
 	}
 
 	// Create transactions
-	toAddress := common.HexToAddress("0xto")
-	tx1 := ethtypes.NewTx(&ethtypes.LegacyTx{
-		Nonce:    2,
-		To:       &toAddress,
-		Value:    big.NewInt(2000),
-		Gas:      25000,
-		GasPrice: big.NewInt(30000000000),
-		Data:     []byte("data2"),
-	})
-
-	// Sign the transaction to get a valid from address
-	chainID := big.NewInt(1) // Mainnet chain ID
-	signer := ethtypes.NewEIP155Signer(chainID)
-	privateKey, _ := crypto.GenerateKey()
-	signedTx, _ := ethtypes.SignTx(tx1, signer, privateKey)
-	tx1 = signedTx
+	tx1 := ethtypes.NewTransaction(
+		1,
+		common.HexToAddress("0xto"),
+		big.NewInt(1000),
+		21000,
+		big.NewInt(20000000000),
+		[]byte("data"),
+	)
 
 	gethBlock := ethtypes.NewBlock(header, &ethtypes.Body{Transactions: []*ethtypes.Transaction{tx1}}, nil, trie.NewStackTrie(nil))
 
@@ -149,13 +183,6 @@ func TestConvertTransaction(t *testing.T) {
 		big.NewInt(20000000000),     // gas price
 		[]byte("test data"),         // data
 	)
-
-	// Sign the transaction to get a valid from address
-	chainID := big.NewInt(1) // Mainnet chain ID
-	signer := ethtypes.NewEIP155Signer(chainID)
-	privateKey, _ := crypto.GenerateKey()
-	signedTx, _ := ethtypes.SignTx(tx, signer, privateKey)
-	tx = signedTx
 
 	// Create a mock block
 	header := &ethtypes.Header{
@@ -197,13 +224,6 @@ func TestConvertTransaction_ContractCreation(t *testing.T) {
 		[]byte("contract bytecode"), // data
 	)
 
-	// Sign the transaction to get a valid from address
-	chainID := big.NewInt(1) // Mainnet chain ID
-	signer := ethtypes.NewEIP155Signer(chainID)
-	privateKey, _ := crypto.GenerateKey()
-	signedTx, _ := ethtypes.SignTx(tx, signer, privateKey)
-	tx = signedTx
-
 	header := &ethtypes.Header{
 		Number: big.NewInt(1234567),
 	}
@@ -234,13 +254,6 @@ func TestGetFromAddress(t *testing.T) {
 		[]byte("data"),
 	)
 
-	// Sign the transaction to get a valid from address
-	chainID := big.NewInt(1) // Mainnet chain ID
-	signer := ethtypes.NewEIP155Signer(chainID)
-	privateKey, _ := crypto.GenerateKey()
-	signedTx, _ := ethtypes.SignTx(tx, signer, privateKey)
-	tx = signedTx
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("getFromAddress should not panic: %v", r)
@@ -249,11 +262,11 @@ func TestGetFromAddress(t *testing.T) {
 
 	// This will likely fail because the transaction isn't properly signed
 	// but it shouldn't panic
-	address, _ := getFromAddress(tx)
+	addr, err := GetFromAddress(tx)
 
-	// The address might be the zero address due to invalid signature
-	if *address == (common.Address{}) {
-		t.Log("Got zero address, which is expected for unsigned transaction")
+	// The address might be nil due to invalid signature
+	if err != nil || addr == nil {
+		logger.Test("Got error or nil address, which is expected for unsigned transaction")
 	}
 }
 

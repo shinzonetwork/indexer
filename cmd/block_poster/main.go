@@ -10,34 +10,21 @@ import (
 )
 
 func main() {
-	defraStarted := flag.Bool("defra-started", false, "Pass true if you are already using a defra instance you'd like to connect to. Otherwise, this flag can be omitted altogether - this app will start a defra instance for you")
+	configPath := flag.String("config", "config/test.yaml", "Path to configuration file")
 	flag.Parse()
 
-	configPath := findConfigFile()
-	cfg, err := config.LoadConfig(configPath)
+	// Load configuration
+	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		panic(fmt.Errorf("Unable to load config: %v", err))
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
 	}
 
-	myIndexer := indexer.CreateIndexer(cfg)
-	err = myIndexer.StartIndexing(*defraStarted)
-	if err != nil {
-		panic(fmt.Errorf("Failed to start indexing: %v", err))
+	// Create and start indexer
+	chainIndexer := indexer.CreateIndexer(cfg)
+	if err := chainIndexer.StartIndexing(false); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start indexing: %v\n", err)
+		os.Exit(1)
 	}
 }
 
-func findConfigFile() string {
-	possiblePaths := []string{
-		"./config.yaml",     // From project root
-		"../config.yaml",    // From bin/ directory
-		"../../config.yaml", // From pkg/host/ directory - test context
-	}
-
-	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-
-	return "config.yaml"
-}
