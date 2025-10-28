@@ -110,7 +110,11 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		cfg = DefaultConfig
 	}
 	cfg.DefraDB.P2P.BootstrapPeers = append(cfg.DefraDB.P2P.BootstrapPeers, requiredPeers...)
-	logger.Init(cfg.Logger.Development)
+	
+	// Only initialize logger if it hasn't been initialized yet (e.g., in tests)
+	if logger.Sugar == nil {
+		logger.Init(cfg.Logger.Development)
+	}
 
 	if !defraStarted {
 		options := []node.Option{

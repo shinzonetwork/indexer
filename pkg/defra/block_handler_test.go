@@ -20,7 +20,7 @@ import (
 // TestMain sets up testing environment
 func TestMain(m *testing.M) {
 	// Initialize logger for all tests
-	logger.Init(true)
+	logger.InitConsoleOnly(true)
 
 	// Run tests
 	code := m.Run()

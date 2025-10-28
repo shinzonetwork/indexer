@@ -20,8 +20,8 @@ func TestInit_Development(t *testing.T) {
 	defer os.Chdir(originalWd)
 	os.Chdir(tempDir)
 
-	// Test development mode
-	Init(true)
+	// Test development mode (console only for tests)
+	InitConsoleOnly(true)
 
 	if Sugar == nil {
 		t.Fatal("Sugar logger should not be nil after Init")
@@ -54,8 +54,8 @@ func TestInit_Production(t *testing.T) {
 	defer os.Chdir(originalWd)
 	os.Chdir(tempDir)
 
-	// Test production mode
-	Init(false)
+	// Test production mode (console only for tests)
+	InitConsoleOnly(false)
 
 	if Sugar == nil {
 		t.Fatal("Sugar logger should not be nil after Init")
@@ -87,14 +87,14 @@ func TestInit_LogLevels(t *testing.T) {
 	defer os.Chdir(originalWd)
 	os.Chdir(tempDir)
 
-	// Test development mode (should have debug level)
-	Init(true)
+	// Test development mode (should have debug level, console only for tests)
+	InitConsoleOnly(true)
 	if Sugar == nil {
 		t.Fatal("Sugar logger should not be nil after Init")
 	}
 
-	// Test production mode (should have info level)
-	Init(false)
+	// Test production mode (should have info level, console only for tests)
+	InitConsoleOnly(false)
 	if Sugar == nil {
 		t.Fatal("Sugar logger should not be nil after Init")
 	}
@@ -117,7 +117,7 @@ func TestInit_GlobalSugarVariable(t *testing.T) {
 	// Ensure Sugar is initially nil or set it to nil
 	Sugar = nil
 
-	Init(true)
+	InitConsoleOnly(true)
 
 	// Verify the global Sugar variable is set
 	if Sugar == nil {
@@ -145,17 +145,16 @@ func TestInit_LogFileCreation(t *testing.T) {
 	defer os.Chdir(originalWd)
 	os.Chdir(tempDir)
 
-	Init(true)
+	InitConsoleOnly(true)
 
-	// Log some messages to ensure file is created
+	// Log some messages - no files should be created in console-only mode
 	Sugar.Info("Test message for file creation")
 	Sugar.Sync() // Ensure messages are flushed
 
-	// Check if log file was created
-	logFile := filepath.Join(logsDir, "logfile")
-	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		// This test might fail in some environments, so we'll make it a warning
-		Test("Warning: Log file was not created at " + logFile)
+	// Check that log file was NOT created (since we're using console-only mode)
+	logFile := filepath.Join(logsDir, "logfile.log")
+	if _, err := os.Stat(logFile); !os.IsNotExist(err) {
+		Test("Warning: Log file was created unexpectedly at " + logFile)
 	}
 }
 
@@ -178,7 +177,7 @@ func TestEncoderConfig(t *testing.T) {
 		}
 	}()
 
-	Init(true)
+	InitConsoleOnly(true)
 
 	// Test different log levels to ensure encoder works
 	Sugar.Debug("Debug level test")

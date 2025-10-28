@@ -18,7 +18,7 @@ import (
 
 func TestMain(m *testing.M) {
 	// Initialize logger for tests
-	logger.Init(true)
+	logger.InitConsoleOnly(true)
 
 	// Run tests
 	code := m.Run()
@@ -116,7 +116,7 @@ func TestEthereumClient_GetNetworkID_MockClient(t *testing.T) {
 
 func TestConvertGethBlock(t *testing.T) {
 	// Initialize logger for testing
-	logger.Init(true)
+	logger.InitConsoleOnly(true)
 
 	// Create a mock Geth block
 	header := &ethtypes.Header{

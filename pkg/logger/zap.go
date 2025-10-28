@@ -28,6 +28,16 @@ const (
 // logger.Test("test-specific message")
 // logger.Testf("test message with %s", "formatting")
 
+// InitConsoleOnly initializes logger with console output only (for tests)
+func InitConsoleOnly(development bool) {
+	initLogger(development, false)
+}
+
+// InitWithFiles initializes logger with both console and file output (for production)
+func InitWithFiles(development bool) {
+	initLogger(development, true)
+}
+
 // customLevelEncoder handles our custom TEST log level with color coding
 func customLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 	switch level {
@@ -52,7 +62,13 @@ func Testf(template string, args ...interface{}) {
 	}
 }
 
+// Init initializes logger with default behavior (files enabled unless NO_LOG_FILES env var is set)
 func Init(development bool) {
+	enableFiles := os.Getenv("NO_LOG_FILES") == ""
+	initLogger(development, enableFiles)
+}
+
+func initLogger(development bool, enableFiles bool) {
 	var zapLevel zapcore.Level
 	if development {
 		zapLevel = TestLevel // Show TEST level and above in development mode
@@ -65,45 +81,38 @@ func Init(development bool) {
 
 	// Create console writer (stdout)
 	consoleWriter := zapcore.Lock(os.Stdout)
-
-	// Try to create logs directory and file writers
-	logsDir := "logs"
 	var cores []zapcore.Core
 
-	if err := os.MkdirAll(logsDir, 0755); err == nil {
-		// Directory exists or was created successfully
-		logFile := filepath.Join(logsDir, "logfile.log")
-		errorFile := filepath.Join(logsDir, "errorfile.log")
+	// Always add console core
+	consoleCore := zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), consoleWriter, zapLevel)
+	cores = append(cores, consoleCore)
 
-		// Create file writer for all logs
-		if logFileWriter, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
-			// Core for console output
-			consoleCore := zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), consoleWriter, zapLevel)
-			cores = append(cores, consoleCore)
+	// Only create log files if enabled
+	if enableFiles {
+		logsDir := "logs"
+		if err := os.MkdirAll(logsDir, 0755); err == nil {
+			// Directory exists or was created successfully
+			logFile := filepath.Join(logsDir, "logfile.log")
+			errorFile := filepath.Join(logsDir, "errorfile.log")
 
-			// Core for all logs to logfile
-			logFileCore := zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), zapcore.AddSync(logFileWriter), zapLevel)
-			cores = append(cores, logFileCore)
+			// Create file writer for all logs
+			if logFileWriter, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
+				// Core for all logs to logfile
+				logFileCore := zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), zapcore.AddSync(logFileWriter), zapLevel)
+				cores = append(cores, logFileCore)
 
-			// Create file writer for errors only
-			if errorFileWriter, err := os.OpenFile(errorFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
-				// Core for ERROR level logs only to errorfile
-				errorCore := zapcore.NewCore(
-					zapcore.NewConsoleEncoder(encoderConfig),
-					zapcore.AddSync(errorFileWriter),
-					zapcore.ErrorLevel, // Only ERROR level and above
-				)
-				cores = append(cores, errorCore)
+				// Create file writer for errors only
+				if errorFileWriter, err := os.OpenFile(errorFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
+					// Core for ERROR level logs only to errorfile
+					errorCore := zapcore.NewCore(
+						zapcore.NewConsoleEncoder(encoderConfig),
+						zapcore.AddSync(errorFileWriter),
+						zapcore.ErrorLevel, // Only ERROR level and above
+					)
+					cores = append(cores, errorCore)
+				}
 			}
-		} else {
-			// Fallback to console only if file creation fails
-			consoleCore := zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), consoleWriter, zapLevel)
-			cores = append(cores, consoleCore)
 		}
-	} else {
-		// Fallback to console only if directory creation fails
-		consoleCore := zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), consoleWriter, zapLevel)
-		cores = append(cores, consoleCore)
 	}
 
 	// Combine all cores
