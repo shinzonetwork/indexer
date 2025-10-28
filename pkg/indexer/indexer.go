@@ -18,8 +18,8 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/rpc"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
-	"github.com/sourcenetwork/defradb/node"
 	defrahttp "github.com/sourcenetwork/defradb/http"
+	"github.com/sourcenetwork/defradb/node"
 )
 
 const (
@@ -48,14 +48,14 @@ func getGethNodeURL() string {
 
 var DefaultConfig *config.Config = &config.Config{
 	DefraDB: config.DefraDBConfig{
-		Url:           "http://localhost:9181",
+		Url:           os.Getenv("DEFRADB_URL"),
 		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
 		P2P: config.DefraDBP2PConfig{
 			BootstrapPeers: requiredPeers,
 			ListenAddr:     defaultListenAddress,
 		},
 		Store: config.DefraDBStoreConfig{
-			Path: "./.defra",
+			Path: os.Getenv("DEFRADB_STORE_PATH"),
 		},
 	},
 	Geth: config.GethConfig{
@@ -64,23 +64,7 @@ var DefaultConfig *config.Config = &config.Config{
 		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
 	},
 	Indexer: config.IndexerConfig{
-		BlockPollingInterval: 12.0,
-		BatchSize:            100,
-		StartHeight:          1800000,
-		Pipeline: config.IndexerPipelineConfig{
-			FetchBlocks: config.PipelineStageConfig{
-				Workers:    4,
-				BufferSize: 100,
-			},
-			ProcessTransactions: config.PipelineStageConfig{
-				Workers:    4,
-				BufferSize: 100,
-			},
-			StoreData: config.PipelineStageConfig{
-				Workers:    4,
-				BufferSize: 100,
-			},
-		},
+		StartHeight: 0, // Default to 0, will be overridden by config file or env vars
 	},
 	Logger: config.LoggerConfig{
 		Development: false,

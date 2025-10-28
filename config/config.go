@@ -42,25 +42,9 @@ type GethConfig struct {
 	APIKey  string `yaml:"api_key"`
 }
 
-// PipelineStageConfig represents configuration for a pipeline stage
-type PipelineStageConfig struct {
-	Workers    int `yaml:"workers"`
-	BufferSize int `yaml:"buffer_size"`
-}
-
-// IndexerPipelineConfig represents the indexer pipeline configuration
-type IndexerPipelineConfig struct {
-	FetchBlocks         PipelineStageConfig `yaml:"fetch_blocks"`
-	ProcessTransactions PipelineStageConfig `yaml:"process_transactions"`
-	StoreData           PipelineStageConfig `yaml:"store_data"`
-}
-
 // IndexerConfig represents indexer configuration
 type IndexerConfig struct {
-	BlockPollingInterval float64               `yaml:"block_polling_interval"`
-	BatchSize            int                   `yaml:"batch_size"`
-	StartHeight          int                   `yaml:"start_height"`
-	Pipeline             IndexerPipelineConfig `yaml:"pipeline"`
+	StartHeight int `yaml:"start_height"`
 }
 
 // LoggerConfig represents logger configuration
