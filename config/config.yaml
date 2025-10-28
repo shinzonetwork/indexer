@@ -8,6 +8,7 @@ defradb:
   store:
     path: "${DEFRADB_STORE_PATH}"
 
+
 geth:
   node_url: "${GCP_GETH_NODE_URL}"
   ws_url: "${GCP_GETH_WS_URL}"
@@ -17,3 +18,4 @@ indexer:
   start_height: "${START_HEIGHT}"
 logger:
   development: "${LOGGER_DEBUG}"
+
