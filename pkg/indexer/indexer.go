@@ -46,16 +46,23 @@ func getGethNodeURL() string {
 	return "https://ethereum-rpc.publicnode.com"
 }
 
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 var DefaultConfig *config.Config = &config.Config{
 	DefraDB: config.DefraDBConfig{
-		Url:           os.Getenv("DEFRADB_URL"),
+		Url:           getEnvOrDefault("DEFRADB_URL", "http://localhost:9181"),
 		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
 		P2P: config.DefraDBP2PConfig{
 			BootstrapPeers: requiredPeers,
 			ListenAddr:     defaultListenAddress,
 		},
 		Store: config.DefraDBStoreConfig{
-			Path: os.Getenv("DEFRADB_STORE_PATH"),
+			Path: getEnvOrDefault("DEFRADB_STORE_PATH", "./.defra"),
 		},
 	},
 	Geth: config.GethConfig{
@@ -64,7 +71,7 @@ var DefaultConfig *config.Config = &config.Config{
 		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
 	},
 	Indexer: config.IndexerConfig{
-		StartHeight: 0, // Default to 0, will be overridden by config file or env vars
+		StartHeight: 1800000, // Default for tests, will be overridden by config file or env vars
 	},
 	Logger: config.LoggerConfig{
 		Development: false,
