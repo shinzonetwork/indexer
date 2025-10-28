@@ -33,7 +33,7 @@ var (
 // TestMain sets up and tears down the live integration test environment
 func TestMain(m *testing.M) {
 	// Initialize logger for live integration tests first
-	logger.Init(true)
+	logger.InitConsoleOnly(true)
 	logger.Test("TestMain - Starting live integration tests with real Ethereum data")
 
 	// Check required environment variables
