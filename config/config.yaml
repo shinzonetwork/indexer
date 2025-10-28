@@ -1,12 +1,13 @@
 defradb:
-  url: "http://localhost:9181"
-  keyring_secret: "test_secret"
+  url: "${DEFRADB_URL}"
+  keyring_secret: "${DEFRADB_KEYRING_SECRET}"
   p2p:
-    enabled: false
-    bootstrap_peers: []
-    listen_addr: ""
+    enabled: "${DEFRADB_P2P_ENABLED}"
+    bootstrap_peers: "${DEFRADB_P2P_BOOTSTRAP_PEERS}"
+    listen_addr: "${DEFRADB_P2P_LISTEN_ADDR}"
   store:
-    path: "./defra"
+    path: "${DEFRADB_STORE_PATH}"
+
 
 geth:
   node_url: "${GCP_GETH_NODE_URL}"
@@ -14,19 +15,7 @@ geth:
   api_key: "${GCP_GETH_API_KEY}"
 
 indexer:
-  block_polling_interval: 12.0
-  batch_size: 10
-  start_height: 23000000
-  pipeline:
-    fetch_blocks:
-      workers: 2
-      buffer_size: 50
-    process_transactions:
-      workers: 4
-      buffer_size: 100
-    store_data:
-      workers: 2
-      buffer_size: 50
-
+  start_height: "${START_HEIGHT}"
 logger:
-  development: true
+  development: "${LOGGER_DEBUG}"
+

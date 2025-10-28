@@ -27,19 +27,7 @@ geth:
   node_url: "http://localhost:8545"
 
 indexer:
-  block_polling_interval: 3.0
-  batch_size: 100
   start_height: 1000
-  pipeline:
-    fetch_blocks:
-      workers: 4
-      buffer_size: 100
-    process_transactions:
-      workers: 8
-      buffer_size: 200
-    store_data:
-      workers: 2
-      buffer_size: 50
 
 logger:
   development: true
@@ -81,12 +69,6 @@ logger:
 	}
 
 	// Test Indexer config
-	if cfg.Indexer.BlockPollingInterval != 3.0 {
-		t.Errorf("Expected block_polling_interval 3.0, got %f", cfg.Indexer.BlockPollingInterval)
-	}
-	if cfg.Indexer.BatchSize != 100 {
-		t.Errorf("Expected batch_size 100, got %d", cfg.Indexer.BatchSize)
-	}
 	if cfg.Indexer.StartHeight != 1000 {
 		t.Errorf("Expected start_height 1000, got %d", cfg.Indexer.StartHeight)
 	}
