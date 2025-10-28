@@ -455,11 +455,25 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 // Helper functions for transaction conversion
 func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 	chainId := tx.ChainId()
+	
+	// Handle pre-EIP-155 transactions (before block 2,675,000)
 	if chainId == nil || chainId.Sign() <= 0 {
-		return nil, fmt.Errorf("received invalid chain id") // Otherwise, when we go to create a `modernSigner`, we will panic if these conditions are met
+		// Use HomesteadSigner for pre-EIP-155 transactions
+		homesteadSigner := ethtypes.HomesteadSigner{}
+		if from, err := ethtypes.Sender(homesteadSigner, tx); err == nil {
+			return &from, nil
+		}
+		
+		// Fallback to FrontierSigner for even older transactions
+		frontierSigner := ethtypes.FrontierSigner{}
+		if from, err := ethtypes.Sender(frontierSigner, tx); err == nil {
+			return &from, nil
+		}
+		
+		return nil, fmt.Errorf("unable to recover sender from pre-EIP-155 transaction")
 	}
 
-	// Try different signers to handle various transaction types
+	// Try different signers to handle various transaction types (post-EIP-155)
 	signers := []ethtypes.Signer{
 		ethtypes.LatestSignerForChainID(chainId),
 		ethtypes.NewEIP155Signer(chainId),

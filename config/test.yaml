@@ -6,7 +6,7 @@ defradb:
     bootstrap_peers: []
     listen_addr: ""
   store:
-    path: "./data"
+    path: "./defra"
 
 geth:
   node_url: "${GCP_GETH_NODE_URL}"
@@ -16,7 +16,7 @@ geth:
 indexer:
   block_polling_interval: 12.0
   batch_size: 10
-  start_height: 1800000
+  start_height: 23000000
   pipeline:
     fetch_blocks:
       workers: 2
