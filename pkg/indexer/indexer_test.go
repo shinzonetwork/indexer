@@ -24,7 +24,7 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 		t.Skip("Skipping integration test - SKIP_INTEGRATION_TESTS is set")
 	}
 
-	logger.InitConsoleOnly(true)
+	logger.Init(true)
 
 	defraUrl := "127.0.0.1:0"
 	options := []node.Option{
@@ -134,7 +134,7 @@ func TestIndexing(t *testing.T) {
 		t.Skip("Skipping integration test - SKIP_INTEGRATION_TESTS is set")
 	}
 
-	logger.InitConsoleOnly(true)
+	logger.Init(true)
 
 	// Create embedded DefraDB with dynamic port to avoid conflicts
 	defraUrl := "127.0.0.1:0"
@@ -158,7 +158,7 @@ func TestIndexing(t *testing.T) {
 
 	i := CreateIndexer(testCfg)
 	go func() {
-		err := i.StartIndexing(true) // Use embedded=true to prevent conflicts
+		err := i.StartIndexing(true)
 		if err != nil {
 			panic(fmt.Sprintf("Encountered unexpected error starting defra dependency: %v", err))
 		}

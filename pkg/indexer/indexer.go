@@ -57,6 +57,7 @@ var DefaultConfig *config.Config = &config.Config{
 	DefraDB: config.DefraDBConfig{
 		Url:           getEnvOrDefault("DEFRADB_URL", "http://localhost:9181"),
 		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
+		Playground:    os.Getenv("DEFRADB_PLAYGROUND") == "true",
 		P2P: config.DefraDBP2PConfig{
 			BootstrapPeers: requiredPeers,
 			ListenAddr:     defaultListenAddress,
@@ -71,10 +72,10 @@ var DefaultConfig *config.Config = &config.Config{
 		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
 	},
 	Indexer: config.IndexerConfig{
-		StartHeight: 1800000, // Default for tests, will be overridden by config file or env vars
+		StartHeight: 23000000, // Default for tests, will be overridden by config file or env vars
 	},
 	Logger: config.LoggerConfig{
-		Development: false,
+		Development: true,
 	},
 }
 
@@ -110,13 +111,16 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		cfg = DefaultConfig
 	}
 	cfg.DefraDB.P2P.BootstrapPeers = append(cfg.DefraDB.P2P.BootstrapPeers, requiredPeers...)
-	
+
 	// Only initialize logger if it hasn't been initialized yet (e.g., in tests)
 	if logger.Sugar == nil {
 		logger.Init(cfg.Logger.Development)
 	}
 
 	if !defraStarted {
+		// Enable GraphQL playground based on config
+		defrahttp.PlaygroundEnabled = cfg.DefraDB.Playground
+
 		options := []node.Option{
 			node.WithDisableAPI(false),
 			node.WithDisableP2P(true), // Disable P2P for now
