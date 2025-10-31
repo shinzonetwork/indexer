@@ -214,7 +214,7 @@ if errors.IsRetryable(err) {
 ### Logging Strategy
 
 The indexer uses Uber Zap for structured logging:
-- Global logger initialization via `logger.Init()`
+- Global logger initialization via `logger.Init()` | `logger.InitConsoleOnly()` | `logger.InitWithFiles()`
 - Context-aware error logging with `logger.LogError()`
 - Structured fields for monitoring and debugging
 - Different log levels based on error severity

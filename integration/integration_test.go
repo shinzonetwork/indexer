@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,18 +13,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shinzonetwork/indexer/config"
-	"github.com/shinzonetwork/indexer/pkg/indexer"
 	"github.com/shinzonetwork/indexer/pkg/logger"
+	defrahttp "github.com/sourcenetwork/defradb/http"
+	"github.com/sourcenetwork/defradb/node"
 )
 
 const graphqlURL = "http://localhost:9181/api/v0/graphql"
 
-var testChainIndexer *indexer.ChainIndexer
+var defraNode *node.Node
 
 func TestMain(m *testing.M) {
 	// Initialize logger for integration tests first
-	logger.Init(true)
+	logger.InitWithFiles(true)
 	logger.Test("TestMain - Starting self-contained integration tests with mock data")
 
 	// Clean up any existing integration DefraDB data
@@ -38,29 +39,37 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	// Start indexer but it will fail on Ethereum connection (which is fine for testing)
-	logger.Test("Starting embedded DefraDB for testing...")
+	// Start embedded DefraDB directly for mock data testing (no indexer needed)
+	logger.Test("Starting embedded DefraDB for mock data testing...")
 	go func() {
-		// Create a minimal config for integration testing
-		cfg := &config.Config{
-			DefraDB: config.DefraDBConfig{
-				Url: "http://localhost:9181",
-				Store: config.DefraDBStoreConfig{
-					Path: "./.defra/data",
-				},
-			},
-			Geth: config.GethConfig{
-				NodeURL: "https://ethereum-rpc.publicnode.com", // Will fail but that's expected
-			},
+		ctx := context.Background()
+		
+		// Create DefraDB node directly without indexer
+		options := []node.Option{
+			node.WithDisableAPI(false),
+			node.WithDisableP2P(true),
+			node.WithStorePath("./.defra/data"),
+			defrahttp.WithAddress("127.0.0.1:9181"),
 		}
 		
-		// Start indexer - DefraDB will start successfully, Ethereum connection will fail (expected)
-		testChainIndexer = indexer.CreateIndexer(cfg)
-		err := testChainIndexer.StartIndexing(false) // false = start embedded DefraDB
+		var err error
+		defraNode, err = node.New(ctx, options...)
 		if err != nil {
-			// Expected to fail on Ethereum connection, but DefraDB should be running
-			logger.Testf("Indexer failed as expected (no Ethereum connection): %v", err)
+			logger.Sugar.Fatalf("Failed to create DefraDB node: %v", err)
 		}
+		
+		err = defraNode.Start(ctx)
+		if err != nil {
+			logger.Sugar.Fatalf("Failed to start DefraDB node: %v", err)
+		}
+		
+		// Apply schema to DefraDB
+		err = applySchema(ctx, defraNode)
+		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
+			logger.Sugar.Fatalf("Failed to apply schema: %v", err)
+		}
+		
+		logger.Test("DefraDB node started successfully with schema applied")
 	}()
 
 	// Wait for DefraDB to be ready
@@ -96,8 +105,10 @@ ready:
 
 	// Teardown
 	logger.Test("TestMain - Teardown")
-	if testChainIndexer != nil {
-		testChainIndexer.StopIndexing()
+	if defraNode != nil {
+		ctx := context.Background()
+		defraNode.Close(ctx)
+		logger.Test("DefraDB node closed")
 	}
 
 	os.Exit(exitCode)
@@ -646,4 +657,37 @@ func hasBlocks() bool {
 
 	blocks, ok := data["Block"].([]interface{})
 	return ok && len(blocks) > 0
+}
+
+// applySchema applies the GraphQL schema to DefraDB node
+func applySchema(ctx context.Context, defraNode *node.Node) error {
+	fmt.Println("Applying schema...")
+
+	// Try different possible paths for the schema file
+	possiblePaths := []string{
+		"schema/schema.graphql",       // From project root
+		"../schema/schema.graphql",    // From integration/ directory
+		"../../schema/schema.graphql", // From deeper directories
+	}
+
+	var schemaPath string
+	var err error
+	for _, path := range possiblePaths {
+		if _, err = os.Stat(path); err == nil {
+			schemaPath = path
+			break
+		}
+	}
+
+	if schemaPath == "" {
+		return fmt.Errorf("failed to find schema file in any of the expected locations: %v", possiblePaths)
+	}
+
+	schema, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read schema file: %v", err)
+	}
+
+	_, err = defraNode.DB.AddSchema(ctx, string(schema))
+	return err
 }

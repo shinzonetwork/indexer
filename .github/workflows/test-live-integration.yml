@@ -1,4 +1,4 @@
-name: CI
+name: Integration Tests
 
 on:
   push:
@@ -27,13 +27,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Run unit tests (default)
-        run: go test ./...
-
       - name: Run live integration tests
         env:
-          GCP_RPC_URL: ${{ secrets.GCP_RPC_URL }}
-          GCP_WS_URL:  ${{ secrets.GCP_WS_URL }}
-          GCP_API_KEY: ${{ secrets.GCP_API_KEY }}
+          GCP_GETH_RPC_URL: ${{ secrets.GCP_GETH_RPC_URL }}
+          GCP_GETH_WS_URL:  ${{ secrets.GCP_GETH_WS_URL }}
+          GCP_GETH_API_KEY: ${{ secrets.GCP_GETH_API_KEY }}
         run: |
           go test -tags live ./integration/live -v

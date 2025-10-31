@@ -1,21 +1,22 @@
+# Default configuration - environment variables will override these
 defradb:
-  url: "${DEFRADB_URL}"
-  keyring_secret: "${DEFRADB_KEYRING_SECRET}"
+  url: ""  # Empty = embedded DefraDB
+  keyring_secret: ""
+  playground: true
   p2p:
-    enabled: "${DEFRADB_P2P_ENABLED}"
-    bootstrap_peers: "${DEFRADB_P2P_BOOTSTRAP_PEERS}"
-    listen_addr: "${DEFRADB_P2P_LISTEN_ADDR}"
+    enabled: true
+    bootstrap_peers: []
+    listen_addr: "/ip4/127.0.0.1/tcp/9171"
   store:
-    path: "${DEFRADB_STORE_PATH}"
-
+    path: "./.defra"
 
 geth:
-  node_url: "${GCP_GETH_NODE_URL}"
+  node_url: "${GCP_GETH_RPC_URL}"  # Fallback
   ws_url: "${GCP_GETH_WS_URL}"
   api_key: "${GCP_GETH_API_KEY}"
 
 indexer:
-  start_height: "${START_HEIGHT}"
+  start_height: 23000000
 logger:
-  development: "${LOGGER_DEBUG}"
+  development: true
 
