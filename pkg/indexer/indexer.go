@@ -37,15 +37,6 @@ var requiredPeers []string = []string{} // Here, we can consider adding any "big
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
 
-// getGethNodeURL returns the Geth node URL from environment or fallback to public node
-func getGethNodeURL() string {
-	if gcpURL := os.Getenv("GCP_GETH_RPC_URL"); gcpURL != "" {
-		return gcpURL
-	}
-	// Fallback to public node for tests without GCP setup
-	return "https://ethereum-rpc.publicnode.com"
-}
-
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -67,7 +58,7 @@ var DefaultConfig *config.Config = &config.Config{
 		},
 	},
 	Geth: config.GethConfig{
-		NodeURL: getGethNodeURL(),
+		NodeURL: os.Getenv("GCP_GETH_RPC_URL"),
 		WsURL:   os.Getenv("GCP_GETH_WS_URL"),
 		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
 	},
@@ -181,7 +172,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	} else {
 		defraURL = cfg.DefraDB.Url
 	}
-	
+
 	blockHandler, err := defra.NewBlockHandler(defraURL)
 	if err != nil {
 		return fmt.Errorf("failed to create block handler for block check: %v", err)
