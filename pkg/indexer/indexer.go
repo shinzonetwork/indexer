@@ -146,8 +146,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		if err != nil {
 			return fmt.Errorf("Failed to start defra node %v: ", err)
 		}
-		defer defraNode.Close(ctx)
-		
+
 		// Store the defraNode reference for port access
 		i.defraNode = defraNode
 
@@ -156,7 +155,9 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
 		}
 
-		err = defra.WaitForDefraDB(cfg.DefraDB.Url)
+		// Use the actual DefraDB URL from the started node, not the config URL
+		actualDefraURL := defraNode.APIURL
+		err = defra.WaitForDefraDB(actualDefraURL)
 		if err != nil {
 			return err
 		}
@@ -173,12 +174,19 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		}
 	}
 
-	// Check if defra has any block
-	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Url)
+	// Check if defra has any block - use actual DefraDB URL for embedded node
+	var defraURL string
+	if !defraStarted && i.defraNode != nil {
+		defraURL = i.defraNode.APIURL
+	} else {
+		defraURL = cfg.DefraDB.Url
+	}
+	
+	blockHandler, err := defra.NewBlockHandler(defraURL)
 	if err != nil {
 		return fmt.Errorf("failed to create block handler for block check: %v", err)
 	}
-	
+
 	nBlock, err := blockHandler.GetHighestBlockNumber(ctx)
 	if err != nil {
 		// If no blocks exist, start from configured start height (error is expected)

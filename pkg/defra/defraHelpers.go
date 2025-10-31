@@ -13,8 +13,8 @@ func GetPort(targetNode *node.Node) int {
 }
 
 func GetPortFromUrl(url string) int {
-	// Check if it's localhost format (http://127.0.0.1:port or http://localhost:port)
-	if !strings.Contains(url, "127.0.0.1:") && !strings.Contains(url, "localhost:") {
+	// Check if it's localhost format (http://127.0.0.1:port, http://localhost:port, or http://[::]:port)
+	if !strings.Contains(url, "127.0.0.1:") && !strings.Contains(url, "localhost:") && !strings.Contains(url, "[::]:") {
 		return -1
 	}
 
