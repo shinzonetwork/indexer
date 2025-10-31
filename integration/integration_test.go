@@ -23,7 +23,7 @@ var testChainIndexer *indexer.ChainIndexer
 
 func TestMain(m *testing.M) {
 	// Initialize logger for integration tests first
-	logger.Init(true)
+	logger.InitWithFiles(true)
 	logger.Test("TestMain - Starting self-contained integration tests with mock data")
 
 	// Clean up any existing integration DefraDB data
@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 				NodeURL: "https://ethereum-rpc.publicnode.com", // Will fail but that's expected
 			},
 		}
-		
+
 		// Start indexer - DefraDB will start successfully, Ethereum connection will fail (expected)
 		testChainIndexer = indexer.CreateIndexer(cfg)
 		err := testChainIndexer.StartIndexing(false) // false = start embedded DefraDB

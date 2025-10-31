@@ -56,7 +56,7 @@ func TestMain(m *testing.M) {
 	indexerCtx, indexerCancel = context.WithCancel(context.Background())
 	go func() {
 		// Load config for live testing
-		cfg, err := config.LoadConfig("../../config/test.yaml")
+		cfg, err := config.LoadConfig("../../config/config.yaml")
 		if err != nil {
 			logger.Sugar.Errorf("Failed to load config: %v", err)
 			return

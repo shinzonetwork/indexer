@@ -24,7 +24,7 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 		t.Skip("Skipping integration test - SKIP_INTEGRATION_TESTS is set")
 	}
 
-	logger.Init(true)
+	logger.InitConsoleOnly(true)
 
 	defraUrl := "127.0.0.1:0"
 	options := []node.Option{
@@ -134,7 +134,7 @@ func TestIndexing(t *testing.T) {
 		t.Skip("Skipping integration test - SKIP_INTEGRATION_TESTS is set")
 	}
 
-	logger.Init(true)
+	logger.InitConsoleOnly(true)
 
 	// Create embedded DefraDB with dynamic port to avoid conflicts
 	defraUrl := "127.0.0.1:0"
