@@ -258,19 +258,19 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	return nil
 }
 
-// getLastIndexedBlock gets the highest block number from DefraDB
-func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler, cfg *config.Config) (int64, error) {
-	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
-	if err != nil {
-		// If no blocks exist, start from configured start height
-		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
-			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
-			return int64(cfg.Indexer.StartHeight), nil
-		}
-		return 0, err
-	}
-	return latestBlockNum, nil
-}
+// // getLastIndexedBlock gets the highest block number from DefraDB
+// func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler, cfg *config.Config) (int64, error) {
+// 	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
+// 	if err != nil {
+// 		// If no blocks exist, start from configured start height
+// 		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
+// 			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
+// 			return int64(cfg.Indexer.StartHeight), nil
+// 		}
+// 		return 0, err
+// 	}
+// 	return latestBlockNum, nil
+// }
 
 // processBlock fetches and stores a single block with retry logic
 func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
@@ -489,6 +489,13 @@ func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
+	
+	// Close embedded DefraDB node if it exists
+	if i.defraNode != nil {
+		ctx := context.Background()
+		i.defraNode.Close(ctx)
+		i.defraNode = nil
+	}
 }
 
 // findSchemaFile tries multiple paths to locate the schema file from different working directories
