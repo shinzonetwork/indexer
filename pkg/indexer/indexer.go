@@ -84,6 +84,7 @@ type ChainIndexer struct {
 	shouldIndex               bool
 	isStarted                 bool
 	hasIndexedAtLeastOneBlock bool
+	defraNode                 *node.Node // Embedded DefraDB node (nil if using external)
 }
 
 func (i *ChainIndexer) IsStarted() bool {
@@ -92,6 +93,14 @@ func (i *ChainIndexer) IsStarted() bool {
 
 func (i *ChainIndexer) HasIndexedAtLeastOneBlock() bool {
 	return i.hasIndexedAtLeastOneBlock
+}
+
+// GetDefraDBPort returns the port of the embedded DefraDB node, or -1 if using external DefraDB
+func (i *ChainIndexer) GetDefraDBPort() int {
+	if i.defraNode == nil {
+		return -1
+	}
+	return defra.GetPort(i.defraNode)
 }
 
 func CreateIndexer(cfg *config.Config) *ChainIndexer {
@@ -138,6 +147,9 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			return fmt.Errorf("Failed to start defra node %v: ", err)
 		}
 		defer defraNode.Close(ctx)
+		
+		// Store the defraNode reference for port access
+		i.defraNode = defraNode
 
 		err = applySchema(ctx, defraNode)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
@@ -157,10 +169,21 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 		err = applySchemaViaHTTP(cfg.DefraDB.Url)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
-			return fmt.Errorf("Failed to apply schema to external DefraDB: %v", err)
+			return fmt.Errorf("failed to apply schema to external DefraDB: %v", err)
 		}
 	}
 
+	// Check if defra has any block
+	nBlock, errs := defra.GetHighestBlockNumber(cfg.DefraDB.Url)
+	if errs != nil {
+		return errs
+	}
+	// if yes increment by 1
+	if nBlock != 0 {
+		cfg.Indexer.StartHeight = int(nBlock + 1)
+	}
+
+	// create indexing bool
 	i.shouldIndex = true
 
 	// Connect to Ethereum client with WebSocket and HTTP support
@@ -184,7 +207,6 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	// Get starting block number
 	nextBlockToProcess := int64(cfg.Indexer.StartHeight)
 
-	// Main indexing loop - always get latest block from Geth
 	for i.shouldIndex {
 		i.isStarted = true
 
@@ -237,13 +259,13 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 }
 
 // getLastIndexedBlock gets the highest block number from DefraDB
-func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler) (int64, error) {
+func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler, cfg *config.Config) (int64, error) {
 	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
 	if err != nil {
 		// If no blocks exist, start from configured start height
 		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
 			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
-			return 23577000, nil
+			return int64(cfg.Indexer.StartHeight), nil
 		}
 		return 0, err
 	}

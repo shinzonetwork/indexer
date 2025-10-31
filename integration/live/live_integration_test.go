@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -18,9 +19,9 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/logger"
 )
 
-const (
-	liveGraphqlURL = "http://localhost:9181/api/v0/graphql" // Different port to avoid conflicts
-	liveDefraURL   = "http://localhost:9181"
+var (
+	liveGraphqlURL = "" // Will be set dynamically when DefraDB starts
+	liveDefraURL   = "" // Will be set dynamically when DefraDB starts
 )
 
 var (
@@ -47,9 +48,6 @@ func TestMain(m *testing.M) {
 	if err := os.RemoveAll("./integration/.defra"); err != nil {
 		logger.Sugar.Warnf("Failed to clean existing live data: %v", err)
 	}
-
-	// Set DefraDB port for live tests to avoid conflicts
-	os.Setenv("DEFRADB_PORT", "9181")
 
 	// Start live indexer with real Ethereum connections
 	logger.Test("Starting live indexer with real Ethereum connections...")
@@ -124,20 +122,38 @@ func checkRequiredEnvVars() bool {
 	return true
 }
 
-// waitForLiveDefraDB waits for DefraDB to be ready
+// waitForLiveDefraDB waits for DefraDB to be ready using the indexer's embedded port
 func waitForLiveDefraDB(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
+	
 	for time.Now().Before(deadline) {
-		if testLiveDefraDBConnection() {
-			return true
+		// Try to get the port directly from the indexer's embedded DefraDB
+		if liveChainIndexer != nil {
+			port := liveChainIndexer.GetDefraDBPort()
+			if port > 0 {
+				testURL := fmt.Sprintf("http://localhost:%d", port)
+				if resp, err := http.Get(testURL + "/api/v0/schema"); err == nil {
+					resp.Body.Close()
+					if resp.StatusCode == 200 {
+						liveDefraURL = testURL
+						liveGraphqlURL = testURL + "/api/v0/graphql"
+						logger.Test(fmt.Sprintf("✓ DefraDB ready at %s (port %d from embedded node)", testURL, port))
+						return true
+					}
+				}
+			}
 		}
-		time.Sleep(2 * time.Second)
+		
+		time.Sleep(1 * time.Second)
 	}
 	return false
 }
 
 // testLiveDefraDBConnection tests if DefraDB is responding
 func testLiveDefraDBConnection() bool {
+	if liveDefraURL == "" {
+		return false
+	}
 	resp, err := http.Get(liveDefraURL + "/api/v0/schema")
 	if err != nil {
 		return false
@@ -160,6 +176,9 @@ func waitForLiveBlocks(timeout time.Duration) bool {
 
 // hasLiveBlocks checks if any blocks have been indexed from live Ethereum
 func hasLiveBlocks() bool {
+	if liveGraphqlURL == "" {
+		return false
+	}
 	query := `{"query":"query { Block(limit: 1) { number hash } }"}`
 	resp, err := http.Post(liveGraphqlURL, "application/json", bytes.NewBuffer([]byte(query)))
 	if err != nil {
@@ -386,6 +405,9 @@ func TestLiveIndexerPerformance(t *testing.T) {
 
 // getLiveBlockCount returns the total number of blocks indexed
 func getLiveBlockCount() int {
+	if liveGraphqlURL == "" {
+		return 0
+	}
 	query := `{"query":"query { Block { _count } }"}`
 	resp, err := http.Post(liveGraphqlURL, "application/json", bytes.NewBuffer([]byte(query)))
 	if err != nil {
