@@ -174,13 +174,19 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	}
 
 	// Check if defra has any block
-	nBlock, errs := defra.GetHighestBlockNumber(cfg.DefraDB.Url)
-	if errs != nil {
-		return errs
+	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Url)
+	if err != nil {
+		return fmt.Errorf("failed to create block handler for block check: %v", err)
 	}
-	// if yes increment by 1
-	if nBlock != 0 {
+	
+	nBlock, err := blockHandler.GetHighestBlockNumber(ctx)
+	if err != nil {
+		// If no blocks exist, start from configured start height (error is expected)
+		logger.Sugar.Info("No existing blocks found, starting from configured height")
+	} else if nBlock > 0 {
+		// if yes increment by 1
 		cfg.Indexer.StartHeight = int(nBlock + 1)
+		logger.Sugar.Infof("Found existing blocks up to %d, starting from %d", nBlock, cfg.Indexer.StartHeight)
 	}
 
 	// create indexing bool
@@ -194,13 +200,8 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	}
 	defer client.Close()
 
-	// Create DefraDB block handler
-	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Url)
-	if err != nil {
-		// Log with structured context
-		logCtx := errors.LogContext(err)
-		logger.Sugar.With(logCtx).Fatalf("Failed to create block handler: ", err)
-	}
+	// Reuse the block handler created earlier for processing
+	// (blockHandler was already created above for the block check)
 
 	logger.Sugar.Info("Starting indexer - will process latest blocks from Geth ", cfg.Geth.NodeURL)
 
