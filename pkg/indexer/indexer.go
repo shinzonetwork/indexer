@@ -37,39 +37,6 @@ var requiredPeers []string = []string{} // Here, we can consider adding any "big
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
 
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-var DefaultConfig *config.Config = &config.Config{
-	DefraDB: config.DefraDBConfig{
-		Url:           getEnvOrDefault("DEFRADB_URL", "http://localhost:9181"),
-		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
-		Playground:    os.Getenv("DEFRADB_PLAYGROUND") == "true",
-		P2P: config.DefraDBP2PConfig{
-			BootstrapPeers: requiredPeers,
-			ListenAddr:     defaultListenAddress,
-			Enabled:        os.Getenv("DEFRADB_P2P_ENABLED") == "true",
-		},
-		Store: config.DefraDBStoreConfig{
-			Path: getEnvOrDefault("DEFRADB_STORE_PATH", "./.defra"),
-		},
-	},
-	Geth: config.GethConfig{
-		NodeURL: os.Getenv("GCP_GETH_RPC_URL"),
-		WsURL:   os.Getenv("GCP_GETH_WS_URL"),
-		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
-	},
-	Indexer: config.IndexerConfig{
-		StartHeight: 23000000, // Default for tests, will be overridden by config file or env vars
-	},
-	Logger: config.LoggerConfig{
-		Development: true,
-	},
-}
 
 type ChainIndexer struct {
 	cfg                       *config.Config
@@ -119,7 +86,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	cfg := i.cfg
 
 	if cfg == nil {
-		cfg = DefaultConfig
+		return fmt.Errorf("configuration is required - use config.LoadConfig() to load configuration")
 	}
 	cfg.DefraDB.P2P.BootstrapPeers = append(cfg.DefraDB.P2P.BootstrapPeers, requiredPeers...)
 
@@ -271,19 +238,6 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	return nil
 }
 
-// // getLastIndexedBlock gets the highest block number from DefraDB
-// func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler, cfg *config.Config) (int64, error) {
-// 	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
-// 	if err != nil {
-// 		// If no blocks exist, start from configured start height
-// 		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
-// 			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
-// 			return int64(cfg.Indexer.StartHeight), nil
-// 		}
-// 		return 0, err
-// 	}
-// 	return latestBlockNum, nil
-// }
 
 // processBlock fetches and stores a single block with retry logic
 func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
@@ -446,58 +400,6 @@ func applySchema(ctx context.Context, defraNode *node.Node) error {
 	return err
 }
 
-// processAccessListEntries handles the processing of access list entries for a transaction
-func processAccessListEntries(blockHandler *defra.BlockHandler, accessList []types.AccessListEntry, txDocId string) {
-	for _, accessListEntry := range accessList {
-		ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
-	}
-}
-
-// processTransactionLogs handles the processing of logs for a transaction
-func processTransactionLogs(blockHandler *defra.BlockHandler, logs []types.Log, blockDocId, txDocId string) {
-	for _, log := range logs {
-		// Create log in DefraDB (includes block and transaction relationships)
-		logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created log with DocID: ", logDocId)
-	}
-}
-
-// buildBlock creates a new block with the same data from gethBlock
-func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types.Block {
-	return &types.Block{
-		Number:           gethBlock.Number,
-		Hash:             gethBlock.Hash,
-		ParentHash:       gethBlock.ParentHash,
-		Nonce:            gethBlock.Nonce,
-		Sha3Uncles:       gethBlock.Sha3Uncles,
-		LogsBloom:        gethBlock.LogsBloom,
-		TransactionsRoot: gethBlock.TransactionsRoot,
-		StateRoot:        gethBlock.StateRoot,
-		ReceiptsRoot:     gethBlock.ReceiptsRoot,
-		Miner:            gethBlock.Miner,
-		Difficulty:       gethBlock.Difficulty,
-		TotalDifficulty:  gethBlock.TotalDifficulty,
-		ExtraData:        gethBlock.ExtraData,
-		Size:             gethBlock.Size,
-		GasLimit:         gethBlock.GasLimit,
-		GasUsed:          gethBlock.GasUsed,
-		Timestamp:        gethBlock.Timestamp,
-		Transactions:     transactions,
-	}
-}
 
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false

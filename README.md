@@ -6,7 +6,7 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 - **GoLang**: High-performance indexing engine with concurrent processing
 - **DefraDB**: Decentralized P2P datastore for blockchain data storage and querying
-- **GCP Managed Blockchain Node**: Dual WebSocket/HTTP connections to Google Cloud managed Ethereum nodes
+- ** Managed Blockchain Node**: Dual WebSocket/HTTP connections to Google Cloud managed Ethereum nodes
 - **Uber Zap**: Structured logging with global logger integration
 - **GraphQL**: Flexible query interface for indexed blockchain data
 - **Viper Configuration**: YAML-based configuration with environment variable overrides
@@ -41,7 +41,7 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 - Go 1.20+
 - [DefraDB](https://github.com/sourcenetwork/defradb) (for local development)
-- GCP Managed Blockchain Node (Ethereum) with API access
+-  Managed Blockchain Node (Ethereum) with API access
 - Node.js v23.10.0 (for DefraDB playground)
 
 ## Prerequisite Setup
@@ -53,7 +53,7 @@ A high-performance blockchain indexing solution built with Source Network, Defra
    echo "v23.10.0" > .nvmrc
    ```
 
-2. **Set up GCP Managed Blockchain Node**:
+2. **Set up  Managed Blockchain Node**:
    - Create an Ethereum node in Google Cloud Blockchain Node Engine
    - Note the JSON-RPC and WebSocket endpoints
    - Configure API key authentication if required
@@ -74,10 +74,10 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 3. Create environment variables in `.env`:
    ```bash
-   # GCP Managed Blockchain Node Configuration
-   GCP_GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
-   GCP_GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
-   GCP_GETH_API_KEY=your-x-goog-api-key-header-value
+   #  Managed Blockchain Node Configuration
+   GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
+   GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
+   GETH_API_KEY=your-x-goog-api-key-header-value
    
    # DefraDB Configuration
    DEFRADB_URL=http://localhost:9181
@@ -116,7 +116,7 @@ A high-performance blockchain indexing solution built with Source Network, Defra
        path: "./.defra"
    
    geth:
-     node_url: "<your-geth-node-url>"  # GCP managed blockchain node
+     node_url: "<your-geth-node-url>"  #  managed blockchain node
      ws_url: "<your-geth-ws-url>"
      api_key: "<your-geth-api-key>"    # Recommend using a .env file
    
@@ -163,7 +163,7 @@ go build -o bin/block_poster cmd/block_poster/main.go
 ### Available Makefile Targets
 - `make build` - Build the indexer binary
 - `make test` - Run all tests with summary
-- `make geth-status` - Check GCP Geth node connectivity
+- `make geth-status` - Check  Geth node connectivity
 - `make start` - Start the indexer
 - `make stop` - Stop all services
 - `make help` - Show all available targets
@@ -178,29 +178,25 @@ To run the integration tests, you'll want to run
 `make integration-test`
 This runs `make bootstrap` under the hood, so you'll want to provide `DEFRA_PATH=/path/to/defradb` as an argument or set it as an environment variable (as above). After the `make integration-test` script bootstraps the infra in your local environment, it will run the integration test suite, and then finally teardown the infra.
 
-### Live Integration Tests with GCP Endpoint
-To run live integration tests with your GCP managed blockchain node:
+### Live Integration Tests with  Endpoint
+To run live integration tests with your  managed blockchain node:
 
 1. **Set up environment variables**:
    ```bash
-   export GCP_GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
-   export GCP_GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
-   export GCP_GETH_API_KEY=your-x-goog-api-key-header-value
+   export GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
+   export GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
+   export GETH_API_KEY=your-x-goog-api-key-header-value
    ```
 
    b: **Use a .env file for environment variables**
    ```bash
    touch .env
-   #GCP Managed Node
-export GCP_GETH_API_KEY=AIzaSyChwEoj24VGkyItUPd9vQV5mC8w9Vi0mg8
-export GCP_GETH_RPC_URL=https://json-rpc.che8qim8flet1lfjpapfmtl42.blockchainnodeengine.com
-export GCP_GETH_WS_URL=ws://ws.che8qim8flet1lfjpapfmtl42.blockchainnodeengine.com
 
 
-#GCP Geth node
-GCP_GETH_API_KEY=0EPWxZDg6O743gGkHK7yqsNEOzKUkh1TtHBYeFaWUFY
-GCP_GETH_RPC_URL=http://34.68.131.15:8545
-GCP_GETH_WS_URL=ws://34.68.131.15:8546
+# Geth node
+GETH_API_KEY=your-x-goog-api-key-header-value
+GETH_RPC_URL=http://your.ip:port
+GETH_WS_URL=ws://your.ip:port
 
 LOGGER_DEBUG=false
 DEFRADB_PLAYGROUND=true
@@ -215,7 +211,7 @@ DEFRA_PATH=<your-defradb-path>
 START_HEIGHT=<your-start-height-number>
    ```
 
-2. **Test GCP node connectivity**:
+2. **Test  node connectivity**:
    ```bash
    make geth-status
    ```
@@ -230,7 +226,7 @@ START_HEIGHT=<your-start-height-number>
    make test-local
    ```
 
-This will run the indexer tests locally with your GCP managed blockchain node, providing comprehensive diagnostics and avoiding public node limitations.
+This will run the indexer tests locally with your  managed blockchain node, providing comprehensive diagnostics and avoiding public node limitations.
 
 ## Data Model
 

@@ -88,7 +88,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		return "", errors.NewInvalidInputFormat("defra", "CreateTransaction", "tx", nil)
 	}
 
-	blockInt, err := utils.StringToInt(tx.BlockNumber)
+	blockInt, err := strconv.ParseInt(tx.BlockNumber, 10, 64)
 	if err != nil {
 		return "", errors.NewParsingFailed("defra", "CreateTransaction", "block number", err)
 	}

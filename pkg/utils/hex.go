@@ -25,19 +25,3 @@ func HexToInt(s string) (int64, error) {
 	return result, nil
 }
 
-// IntToString converts any integer type to a decimal string
-func IntToString[T ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](num T) string {
-	return fmt.Sprintf("%d", num)
-}
-
-// StringToInt converts a decimal string to an int64
-func StringToInt(s string) (int64, error) {
-	if s == "" {
-		return 0, errors.NewParsingFailed("utils", "StringToInt", "empty string", nil)
-	}
-	result, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0, errors.NewParsingFailed("utils", "StringToInt", "decimal number", err)
-	}
-	return result, nil
-}

@@ -164,8 +164,6 @@ sudo chmod 600 /data/jwt/jwt.hex
 API_KEY=$(openssl rand -base64 32)
 echo "Generated API Key: $API_KEY"
 
-#Generated API Key: 0EPWxZDg6O743gGkHK7yqsNEOzKUkh1TtHBYeFaWUFY=
-
 # Save API key to file for reference
 echo "$API_KEY" | sudo tee /data/jwt/api-key.txt
 sudo chown $USER:$USER /data/jwt/api-key.txt
