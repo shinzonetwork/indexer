@@ -4,11 +4,12 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 ## Architecture
 
-- **GoLang**: Indexing engine for storing block data at source
-- **DefraDB**: P2P datastore for blockchain data storage and querying
-- **Ethereum Go Client**: RPC connectivity to Ethereum nodes
-- **Uber Zap**: High-performance structured logging
-- **GraphQL**: Flexible query interface for blockchain data
+- **GoLang**: High-performance indexing engine with concurrent processing
+- **DefraDB**: Decentralized P2P datastore for blockchain data storage and querying
+- **GCP Managed Blockchain Node**: Dual WebSocket/HTTP connections to Google Cloud managed Ethereum nodes
+- **Uber Zap**: Structured logging with global logger integration
+- **GraphQL**: Flexible query interface for indexed blockchain data
+- **Viper Configuration**: YAML-based configuration with environment variable overrides
 
 ### Recent Improvements
 
@@ -39,24 +40,31 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 ## Prerequisites
 
 - Go 1.20+
-- [DefraDB](https://github.com/sourcenetwork/defradb)
-- [Source Network CLI](https://docs.sourcenetwork.io/cli)
-- [Geth](https://geth.ethereum.org/docs/) 
-  - either run locally or hosted.
+- [DefraDB](https://github.com/sourcenetwork/defradb) (for local development)
+- GCP Managed Blockchain Node (Ethereum) with API access
+- Node.js v23.10.0 (for DefraDB playground)
 
-## Prerequisit setup
+## Prerequisite Setup
 
-- Install [DefraDB](https://github.com/sourcenetwork/defradb)
-- Navigate to defradb
-- Add a .nvmrc file with the node `v23.10.0`
+1. **Install DefraDB** (for local development):
+   ```bash
+   git clone https://github.com/sourcenetwork/defradb
+   cd defradb
+   echo "v23.10.0" > .nvmrc
+   ```
+
+2. **Set up GCP Managed Blockchain Node**:
+   - Create an Ethereum node in Google Cloud Blockchain Node Engine
+   - Note the JSON-RPC and WebSocket endpoints
+   - Configure API key authentication if required
 
 
 ## Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/shinzonetwork/version1.git
-   cd version1
+   git clone https://github.com/shinzonetwork/indexer.git
+   cd indexer
    ```
 
 2. Install Go dependencies:
@@ -66,13 +74,24 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 3. Create environment variables in `.env`:
    ```bash
-    DEFRA_KEYRING_SECRET=<DefraDB_SECRET> # DEFRA KEY RING PASSWORD
-    VERSION=<VERSION> # verisoning 
-    DEFRA_LOGGING_DEVELOPMENT=<DEFRA_LOGGING_DEVELOPMENT> # logging switch
-    DEFRA_DEVELOPMENT=<DEFRA_DEVELOPMENT>
-    DEFRA_P2P_ENABLED=<DEFRA_P2P_ENABLED> # p2p enable true required for prod
-    RPC_URL=<RPC_URL> # RPC HTTP URL
-    DEFRADB_URL=<DEFRADB_URL> # DefraDB HTTP URL
+   # GCP Managed Blockchain Node Configuration
+   GCP_GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
+   GCP_GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
+   GCP_GETH_API_KEY=your-x-goog-api-key-header-value
+   
+   # DefraDB Configuration
+   DEFRADB_URL=http://localhost:9181
+   DEFRADB_KEYRING_SECRET=your-keyring-secret
+   DEFRADB_PLAYGROUND=true
+   DEFRADB_P2P_ENABLED=true
+   DEFRADB_P2P_BOOTSTRAP_PEERS=[]
+   DEFRADB_P2P_LISTEN_ADDR="/ip4/127.0.0.1/tcp/9171"
+   
+   # Indexer Configuration
+   INDEXER_START_HEIGHT=23000000
+   
+   # Logger Configuration
+   LOGGER_DEBUG=true
    ```
 
 ## Configuration
@@ -82,28 +101,72 @@ A high-performance blockchain indexing solution built with Source Network, Defra
    - Main schema defines relationships between blocks, transactions, logs, and events
    - Each entity has its own schema file in `schema/types/blockchain/`
 
-2. Update `config.yaml` with your settings:
+2. The configuration uses `config/config.yaml` with environment variable overrides:
    ```yaml
+   # Default configuration - environment variables will override these
+   defradb:
+     url: ""  # Empty = embedded DefraDB
+     keyring_secret: ""
+     playground: true
+     p2p:
+       enabled: true
+       bootstrap_peers: []
+       listen_addr: "/ip4/127.0.0.1/tcp/9171"
+     store:
+       path: "./.defra"
+   
    geth:
-       node_url: "localhost:<PORT>" || "https://ethereum-rpc.publicnode.com"
-
-   defra:
-     url: ${DEFRA_URL}
+     node_url: "<your-geth-node-url>"  # GCP managed blockchain node
+     ws_url: "<your-geth-ws-url>"
+     api_key: "<your-geth-api-key>"    # Recommend using a .env file
+   
+   indexer:
+     start_height: 23000000
+   logger:
+     development: true
    ```
 
 ## How to Run
 
-`go build -o bin/indexer cmd/block_poster/main.go`
-then
-`./bin/indexer` // can optionally pass in `-defra-started=true` flag if you've already started a defra instance elsewhere
+### Using Makefile (Recommended)
+```bash
+# Build the indexer
+make build
 
-or
-`go run cmd/block_poster/main.go` // again, can optionally pass in `-defra-started=true` flag if you've already started a defra instance elsewhere
+# Start the indexer
+make start
 
-or, to open the playground as well, use
-`make playground DEFRA_PATH=/path/to/defradb` // this defra path should be the path to the defra repo cloned on your machine
+# Or build and run in one step
+go run cmd/block_poster/main.go
+```
 
-To avoid passing the `DEFRA_PATH=/path/to/defradb` portion of the command, set `DEFRA_PATH` as an environment variable.
+### Using DefraDB Playground 
+TODO: update to be config var
+```bash
+# Start with playground (requires DefraDB repo path)
+make playground DEFRA_PATH=/path/to/defradb
+
+# Set DEFRA_PATH as environment variable to avoid passing it each time
+export DEFRA_PATH=/path/to/defradb
+make playground
+```
+
+### Manual Build
+```bash
+# Build binary
+go build -o bin/block_poster cmd/block_poster/main.go
+
+# Run binary
+./bin/block_poster
+```
+
+### Available Makefile Targets
+- `make build` - Build the indexer binary
+- `make test` - Run all tests with summary
+- `make geth-status` - Check GCP Geth node connectivity
+- `make start` - Start the indexer
+- `make stop` - Stop all services
+- `make help` - Show all available targets
 
 ## Testing
 
@@ -120,12 +183,44 @@ To run live integration tests with your GCP managed blockchain node:
 
 1. **Set up environment variables**:
    ```bash
-   export GCP_GETH_RPC_URL=http://your.gcp.ip:8545
-   export GCP_GETH_WS_URL=ws://your.gcp.ip:8546  # optional
-   export GCP_GETH_API_KEY=your-api-key-here     # optional
+   export GCP_GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
+   export GCP_GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
+   export GCP_GETH_API_KEY=your-x-goog-api-key-header-value
    ```
 
-2. **Run using the local test script**:
+   b: **Use a .env file for environment variables**
+   ```bash
+   touch .env
+   #GCP Managed Node
+export GCP_GETH_API_KEY=AIzaSyChwEoj24VGkyItUPd9vQV5mC8w9Vi0mg8
+export GCP_GETH_RPC_URL=https://json-rpc.che8qim8flet1lfjpapfmtl42.blockchainnodeengine.com
+export GCP_GETH_WS_URL=ws://ws.che8qim8flet1lfjpapfmtl42.blockchainnodeengine.com
+
+
+#GCP Geth node
+GCP_GETH_API_KEY=0EPWxZDg6O743gGkHK7yqsNEOzKUkh1TtHBYeFaWUFY
+GCP_GETH_RPC_URL=http://34.68.131.15:8545
+GCP_GETH_WS_URL=ws://34.68.131.15:8546
+
+LOGGER_DEBUG=false
+DEFRADB_PLAYGROUND=true
+DEFRADB_URL=http://localhost:9181 | empty for embedded defradb
+DEFRADB_KEYRING_SECRET=<your-defradb-keyring-secret>
+DEFRADB_P2P_ENABLED=true
+DEFRADB_P2P_BOOTSRAP_PEERS=[]
+DEFRADB_P2P_LISTEN_ADDR=""
+DEFRADB_STORE_PATH=<your-defradb-store-path>
+DEFRA_PATH=<your-defradb-path>
+
+START_HEIGHT=<your-start-height-number>
+   ```
+
+2. **Test GCP node connectivity**:
+   ```bash
+   make geth-status
+   ```
+
+3. **Run local tests**:
    ```bash
    ./test_local.sh
    ```
@@ -135,7 +230,7 @@ To run live integration tests with your GCP managed blockchain node:
    make test-local
    ```
 
-This will run the indexer tests locally with your GCP endpoint instead of the public node, avoiding the port conflicts and endpoint issues that occur in GitHub Actions.
+This will run the indexer tests locally with your GCP managed blockchain node, providing comprehensive diagnostics and avoiding public node limitations.
 
 ## Data Model
 

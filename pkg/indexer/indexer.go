@@ -52,6 +52,7 @@ var DefaultConfig *config.Config = &config.Config{
 		P2P: config.DefraDBP2PConfig{
 			BootstrapPeers: requiredPeers,
 			ListenAddr:     defaultListenAddress,
+			Enabled:        os.Getenv("DEFRADB_P2P_ENABLED") == "true",
 		},
 		Store: config.DefraDBStoreConfig{
 			Path: getEnvOrDefault("DEFRADB_STORE_PATH", "./.defra"),
@@ -489,7 +490,7 @@ func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
-	
+
 	// Close embedded DefraDB node if it exists
 	if i.defraNode != nil {
 		ctx := context.Background()
@@ -529,14 +530,17 @@ func applySchemaViaHTTP(defraUrl string) error {
 		return fmt.Errorf("Failed to read schema file: %v", err)
 	}
 
+	fmt.Println("Schema file found at: ", schemaPath)
+	fmt.Println("Schema content: ", string(schema))
 	// Apply schema via REST API endpoint
 	schemaURL := fmt.Sprintf("%s/api/v0/schema", defraUrl)
 	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer(schema))
+	fmt.Println("POST: ", schemaURL)
 	if err != nil {
 		return fmt.Errorf("Failed to send schema: %v", err)
 	}
 	defer resp.Body.Close()
-
+	fmt.Println("Response status: ", resp.Status)
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("Schema application failed with status %d: %s", resp.StatusCode, string(body))

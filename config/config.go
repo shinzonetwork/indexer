@@ -15,6 +15,7 @@ const CollectionName = "shinzo"
 type DefraDBP2PConfig struct {
 	BootstrapPeers []string `yaml:"bootstrap_peers"`
 	ListenAddr     string   `yaml:"listen_addr"`
+	Enabled        bool     `yaml:"enabled"`
 }
 
 // DefraDBStoreConfig represents store configuration for DefraDB
@@ -121,7 +122,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 
 	if p2pEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); p2pEnabled != "" {
-		// Note: P2P config would need additional parsing for bootstrap peers
+		if parsed, err := strconv.ParseBool(p2pEnabled); err == nil {
+			cfg.DefraDB.P2P.Enabled = parsed
+		}
 	}
 
 	if listenAddr := os.Getenv("DEFRADB_P2P_LISTEN_ADDR"); listenAddr != "" {
