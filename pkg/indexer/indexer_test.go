@@ -35,8 +35,9 @@ func TestCreateIndexer(t *testing.T) {
 		},
 	}
 
-	indexer := CreateIndexer(cfg)
+	indexer, err := CreateIndexer(cfg)
 
+	assert.NoError(t, err)
 	assert.NotNil(t, indexer)
 	assert.Equal(t, cfg, indexer.cfg)
 	assert.False(t, indexer.shouldIndex)
@@ -47,25 +48,28 @@ func TestCreateIndexer(t *testing.T) {
 
 // TestCreateIndexerWithNilConfig tests indexer creation with nil config
 func TestCreateIndexerWithNilConfig(t *testing.T) {
-	indexer := CreateIndexer(nil)
+	indexer, err := CreateIndexer(nil)
 
-	assert.NotNil(t, indexer)
-	assert.Nil(t, indexer.cfg)
-	assert.False(t, indexer.shouldIndex)
-	assert.False(t, indexer.isStarted)
-	assert.False(t, indexer.hasIndexedAtLeastOneBlock)
+	assert.Error(t, err)
+	assert.Nil(t, indexer)
+	assert.Contains(t, err.Error(), "config is nil")
+	assert.Contains(t, err.Error(), "CONFIGURATION_ERROR")
 }
 
 // TestIndexerStateManagement tests the state management methods
 func TestIndexerStateManagement(t *testing.T) {
-	indexer := CreateIndexer(nil)
+	cfg := &config.Config{
+		DefraDB: config.DefraDBConfig{Url: "http://localhost:9181"},
+	}
+	indexer, err := CreateIndexer(cfg)
+	assert.NoError(t, err)
 
 	// Test initial state
 	assert.False(t, indexer.IsStarted())
 	assert.False(t, indexer.HasIndexedAtLeastOneBlock())
-	assert.Equal(t, -1, indexer.GetDefraDBPort())
 
 	// Test state changes
+	indexer.shouldIndex = true
 	indexer.isStarted = true
 	indexer.hasIndexedAtLeastOneBlock = true
 
@@ -75,28 +79,40 @@ func TestIndexerStateManagement(t *testing.T) {
 
 // TestGetDefraDBPortWithEmbeddedNode tests port retrieval with embedded node
 func TestGetDefraDBPortWithEmbeddedNode(t *testing.T) {
-	indexer := CreateIndexer(nil)
+	cfg := &config.Config{
+		DefraDB: config.DefraDBConfig{Url: "http://localhost:9181"},
+	}
+	indexer, err := CreateIndexer(cfg)
+	assert.NoError(t, err)
 
 	// Initially no embedded node
 	assert.Equal(t, -1, indexer.GetDefraDBPort())
 
-	// Note: We can't easily test with a real DefraDB node in unit tests
-	// This would require integration testing
+	// Note: We can't easily test with an actual embedded node in unit tests
+	// as it requires starting DefraDB, which is covered in integration tests
 }
 
 // TestStopIndexing tests the stop indexing functionality
 func TestStopIndexing(t *testing.T) {
-	indexer := CreateIndexer(nil)
+	cfg := &config.Config{
+		DefraDB: config.DefraDBConfig{Url: "http://localhost:9181"},
+	}
+	indexer, err := CreateIndexer(cfg)
+	assert.NoError(t, err)
 
 	// Set some state
 	indexer.shouldIndex = true
 	indexer.isStarted = true
+	indexer.hasIndexedAtLeastOneBlock = true
 
 	// Stop indexing
 	indexer.StopIndexing()
 
+	// Verify state is reset
 	assert.False(t, indexer.shouldIndex)
 	assert.False(t, indexer.isStarted)
+	// hasIndexedAtLeastOneBlock should remain true (historical fact)
+	assert.True(t, indexer.hasIndexedAtLeastOneBlock)
 }
 
 // TestGetEnvOrDefault tests the environment variable helper function
@@ -229,11 +245,12 @@ func TestFindSchemaFile(t *testing.T) {
 
 // TestStartIndexingWithNilConfig tests starting indexer with nil config
 func TestStartIndexingWithNilConfig(t *testing.T) {
-	indexer := CreateIndexer(nil)
+	indexer, err := CreateIndexer(nil)
+	assert.Error(t, err)
 
 	// This should use DefaultConfig and fail at Ethereum connection
 	// We expect it to fail because no Ethereum client is configured
-	err := indexer.StartIndexing(true) // true = external DefraDB mode
+	err = indexer.StartIndexing(true) // true = external DefraDB mode
 
 	assert.Error(t, err)
 	// The error could be either DefraDB or Ethereum connection failure
@@ -265,8 +282,9 @@ func TestIndexerConfigHandling(t *testing.T) {
 		},
 	}
 
-	indexer := CreateIndexer(customCfg)
+	indexer, err := CreateIndexer(customCfg)
 
+	assert.NoError(t, err)
 	assert.Equal(t, customCfg, indexer.cfg)
 	assert.Equal(t, "http://localhost:8888", indexer.cfg.DefraDB.Url)
 	assert.Equal(t, 500, indexer.cfg.Indexer.StartHeight)
@@ -384,8 +402,9 @@ func TestIndexerLifecycle(t *testing.T) {
 		},
 	}
 
-	indexer := CreateIndexer(cfg)
+	indexer, err := CreateIndexer(cfg)
 
+	assert.NoError(t, err)
 	// Test initial state
 	assert.False(t, indexer.IsStarted())
 	assert.False(t, indexer.HasIndexedAtLeastOneBlock())

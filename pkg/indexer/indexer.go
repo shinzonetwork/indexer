@@ -95,13 +95,23 @@ func (i *ChainIndexer) GetDefraDBPort() int {
 	return defra.GetPort(i.defraNode)
 }
 
-func CreateIndexer(cfg *config.Config) *ChainIndexer {
+func CreateIndexer(cfg *config.Config) (*ChainIndexer, error) {
+	if cfg == nil {
+		return nil, errors.NewConfigurationError(
+			"indexer",
+			"CreateIndexer",
+			"config is nil",
+			"host=nil, port=nil",
+			nil,
+			errors.WithMetadata("host", "nil"),
+			errors.WithMetadata("port", "nil"))
+	}
 	return &ChainIndexer{
 		cfg:                       cfg,
 		shouldIndex:               false,
 		isStarted:                 false,
 		hasIndexedAtLeastOneBlock: false,
-	}
+	}, nil
 }
 
 func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
@@ -529,18 +539,13 @@ func applySchemaViaHTTP(defraUrl string) error {
 	if err != nil {
 		return fmt.Errorf("Failed to read schema file: %v", err)
 	}
-
-	fmt.Println("Schema file found at: ", schemaPath)
-	fmt.Println("Schema content: ", string(schema))
 	// Apply schema via REST API endpoint
 	schemaURL := fmt.Sprintf("%s/api/v0/schema", defraUrl)
 	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer(schema))
-	fmt.Println("POST: ", schemaURL)
 	if err != nil {
 		return fmt.Errorf("Failed to send schema: %v", err)
 	}
 	defer resp.Body.Close()
-	fmt.Println("Response status: ", resp.Status)
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("Schema application failed with status %d: %s", resp.StatusCode, string(body))
