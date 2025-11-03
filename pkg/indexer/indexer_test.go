@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -243,22 +242,15 @@ func TestFindSchemaFile(t *testing.T) {
 	}
 }
 
-// TestStartIndexingWithNilConfig tests starting indexer with nil config
-func TestStartIndexingWithNilConfig(t *testing.T) {
+// TestCreateIndexerWithNilConfigError tests that CreateIndexer fails immediately with nil config
+func TestCreateIndexerWithNilConfigError(t *testing.T) {
+	// This should fail immediately when creating the indexer
 	indexer, err := CreateIndexer(nil)
-	assert.Error(t, err)
-
-	// This should use DefaultConfig and fail at Ethereum connection
-	// We expect it to fail because no Ethereum client is configured
-	err = indexer.StartIndexing(true) // true = external DefraDB mode
 
 	assert.Error(t, err)
-	// The error could be either DefraDB or Ethereum connection failure
-	assert.True(t,
-		strings.Contains(err.Error(), "Failed to connect to Ethereum client") ||
-			strings.Contains(err.Error(), "DefraDB failed to become ready") ||
-			strings.Contains(err.Error(), "no valid connections established"),
-		"Expected connection failure error, got: %v", err)
+	assert.Nil(t, indexer)
+	assert.Contains(t, err.Error(), "config is nil")
+	assert.Contains(t, err.Error(), "CONFIGURATION_ERROR")
 }
 
 // TestIndexerConfigHandling tests configuration handling
