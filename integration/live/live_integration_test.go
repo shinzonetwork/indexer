@@ -69,7 +69,10 @@ func TestMain(m *testing.M) {
 		cfg.Geth.APIKey = os.Getenv("GCP_GETH_API_KEY")
 
 		// Start indexer with real connections - should succeed if env vars are set
-		liveChainIndexer = indexer.CreateIndexer(cfg)
+		liveChainIndexer, err = indexer.CreateIndexer(cfg)
+		if err != nil {
+			logger.Sugar.Errorf("create indexer failed: %v", err)
+		}
 		err = liveChainIndexer.StartIndexing(false) // false = start embedded DefraDB
 		if err != nil {
 			logger.Sugar.Errorf("Live indexer failed: %v", err)

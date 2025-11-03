@@ -179,8 +179,10 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	// Check if defra has any block - use actual DefraDB URL for embedded node
 	var defraURL string
 	if !defraStarted && i.defraNode != nil {
+		// Using embedded DefraDB - use the actual URL from the started node
 		defraURL = i.defraNode.APIURL
 	} else {
+		// Using external DefraDB - use the configured URL
 		defraURL = cfg.DefraDB.Url
 	}
 
