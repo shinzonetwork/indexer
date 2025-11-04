@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config/test.yaml", "Path to configuration file")
+	configPath := flag.String("config", "config/config.yaml", "Path to configuration file")
 	flag.Parse()
 
 	// Load configuration
@@ -21,10 +21,13 @@ func main() {
 	}
 
 	// Create and start indexer
-	chainIndexer := indexer.CreateIndexer(cfg)
-	if err := chainIndexer.StartIndexing(false); err != nil {
+	chainIndexer, err := indexer.CreateIndexer(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create indexer: %v\n", err)
+		os.Exit(1)
+	}
+	if err := chainIndexer.StartIndexing(cfg.DefraDB.Url != ""); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start indexing: %v\n", err)
 		os.Exit(1)
 	}
 }
-

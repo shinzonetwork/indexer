@@ -15,6 +15,7 @@ const CollectionName = "shinzo"
 type DefraDBP2PConfig struct {
 	BootstrapPeers []string `yaml:"bootstrap_peers"`
 	ListenAddr     string   `yaml:"listen_addr"`
+	Enabled        bool     `yaml:"enabled"`
 }
 
 // DefraDBStoreConfig represents store configuration for DefraDB
@@ -26,6 +27,7 @@ type DefraDBStoreConfig struct {
 type DefraDBConfig struct {
 	Url           string             `yaml:"url"`
 	KeyringSecret string             `yaml:"keyring_secret"`
+	Playground    bool               `yaml:"playground"`
 	P2P           DefraDBP2PConfig   `yaml:"p2p"`
 	Store         DefraDBStoreConfig `yaml:"store"`
 }
@@ -76,16 +78,31 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Override with environment variables
-	overrideWithEnvVars(&cfg)
+	// Apply environment variable overrides
+	applyEnvOverrides(&cfg)
+
+	// Validate configuration
+	if err := validateConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
 
 	return &cfg, nil
 }
 
-// overrideWithEnvVars overrides configuration with environment variables
-func overrideWithEnvVars(cfg *Config) {
+// validateConfig validates the configuration
+func validateConfig(cfg *Config) error {
+	if cfg.Indexer.StartHeight < 0 {
+		return fmt.Errorf("start_height must be >= 0")
+	}
+	return nil
+}
+
+// applyEnvOverrides applies environment variable overrides to configuration
+func applyEnvOverrides(cfg *Config) {
 	// DefraDB configuration
-	if host := os.Getenv("DEFRADB_HOST"); host != "" {
+	if defraUrl := os.Getenv("DEFRADB_URL"); defraUrl != "" {
+		cfg.DefraDB.Url = defraUrl
+	} else if host := os.Getenv("DEFRADB_HOST"); host != "" {
 		if port := os.Getenv("DEFRADB_PORT"); port != "" {
 			cfg.DefraDB.Url = fmt.Sprintf("http://%s:%s", host, port)
 		} else {
@@ -97,8 +114,21 @@ func overrideWithEnvVars(cfg *Config) {
 		cfg.DefraDB.KeyringSecret = keyringSecret
 	}
 
+	if playground := os.Getenv("DEFRADB_PLAYGROUND"); playground != "" {
+		if parsed, err := strconv.ParseBool(playground); err == nil {
+			cfg.DefraDB.Playground = parsed
+		}
+		// If parsing fails, keep the YAML default value
+	}
+
 	if p2pEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); p2pEnabled != "" {
-		// Note: P2P config would need additional parsing for bootstrap peers
+		if parsed, err := strconv.ParseBool(p2pEnabled); err == nil {
+			cfg.DefraDB.P2P.Enabled = parsed
+		}
+	}
+
+	if listenAddr := os.Getenv("DEFRADB_P2P_LISTEN_ADDR"); listenAddr != "" {
+		cfg.DefraDB.P2P.ListenAddr = listenAddr
 	}
 
 	if storePath := os.Getenv("DEFRADB_STORE_PATH"); storePath != "" {
