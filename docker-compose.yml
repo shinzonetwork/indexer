@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  # Shinzo Network Ethereum Indexer
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse HEAD)}
+        VERSION: ${VERSION:-dev}
+    container_name: shinzo-indexer
+    restart: unless-stopped
+    environment:
+      # DefraDB Configuration (empty for embedded mode)
+      - DEFRADB_URL=
+      - DEFRADB_KEYRING_SECRET=${DEFRADB_KEYRING_SECRET:-}
+      
+      # GCP Blockchain Node Configuration
+      - GCP_GETH_RPC_URL=${GCP_GETH_RPC_URL}
+      - GCP_GETH_WS_URL=${GCP_GETH_WS_URL}
+      - GCP_GETH_API_KEY=${GCP_GETH_API_KEY}
+      
+      # Indexer Configuration
+      - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-23000000}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      # Persistent storage for DefraDB (embedded mode)
+      - defradb_data:/app/.defra
+      # Logs
+      - ./logs:/app/logs
+      # Configuration (for development overrides)
+      - ./config:/app/config:ro
+    ports:
+      - "8080:8080"  # Health check and metrics endpoint
+      - "9171:9171"  # DefraDB P2P port (if using embedded mode)
+    networks:
+      - shinzo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.indexer.rule=Host(`indexer.localhost`)"
+      - "traefik.http.services.indexer.loadbalancer.server.port=8080"
+
+  # Note: DefraDB runs in embedded mode within the indexer
+  # Uncomment the section below if you want to run DefraDB as a separate service
+  
+  # defradb:
+  #   image: sourcenetwork/defradb:v0.19.0
+  #   container_name: shinzo-defradb
+  #   restart: unless-stopped
+  #   command: ["start", "--rootdir", "/data", "--p2paddr", "/ip4/0.0.0.0/tcp/9171"]
+  #   environment:
+  #     - DEFRA_ROOTDIR=/data
+  #   volumes:
+  #     - defradb_data:/data
+  #   ports:
+  #     - "9181:9181"  # HTTP API
+  #     - "9172:9171"  # P2P (different port to avoid conflict)
+  #   networks:
+  #     - shinzo-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9181/api/v0/graphql"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 30s
+
+  # Monitoring - Prometheus (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: shinzo-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - shinzo-network
+    profiles:
+      - monitoring
+
+  # Monitoring - Grafana (Optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: shinzo-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - shinzo-network
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+
+volumes:
+  defradb_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  shinzo-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
