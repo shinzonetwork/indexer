@@ -174,6 +174,12 @@ func TestConvertGethBlockToDefraBlock(t *testing.T) {
 			},
 		},
 	}
+	
+	cfg := &config.Config{
+		DefraDB: config.DefraDBConfig{
+			Url: "http://localhost:9181",
+		},
+	}
 	indexer, err := CreateIndexer(cfg)
 	assert.NoError(t, err)
 
@@ -359,9 +365,7 @@ func (m *MockBlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, er
 	if m.createError != nil {
 		return 0, m.createError
 	}
-	return highest, nil
-}
-
+	
 	var highest int64 = 0
 	for blockNum := range m.blocks {
 		if blockNum > highest {
