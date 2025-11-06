@@ -22,7 +22,6 @@ type BlockHandler struct {
 	client   *http.Client
 }
 
-
 func NewBlockHandler(url string) (*BlockHandler, error) {
 	if url == "" {
 		return nil, errors.NewConfigurationError("defra", "NewBlockHandler",
@@ -400,9 +399,9 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 		logger.Sugar.Errorf("failed to create request: ", err)
 		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
 	}
-	
+
 	httpReq.Header.Set("Content-Type", "application/json")
-	
+
 	// Send request
 	resp, err := h.client.Do(httpReq)
 	if err != nil {
@@ -412,7 +411,7 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 		}
 		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
 	}
-	
+
 	defer resp.Body.Close()
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)

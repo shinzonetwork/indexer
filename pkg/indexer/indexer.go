@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shinzonetwork/indexer/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/errors"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/rpc"
+	"github.com/shinzonetwork/indexer/pkg/server"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
 	defrahttp "github.com/sourcenetwork/defradb/http"
@@ -37,13 +39,16 @@ var requiredPeers []string = []string{} // Here, we can consider adding any "big
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
 
-
 type ChainIndexer struct {
 	cfg                       *config.Config
 	shouldIndex               bool
 	isStarted                 bool
 	hasIndexedAtLeastOneBlock bool
 	defraNode                 *node.Node // Embedded DefraDB node (nil if using external)
+	healthServer              *server.HealthServer
+	currentBlock              int64
+	lastProcessedTime         time.Time
+	mutex                     sync.RWMutex
 }
 
 func (i *ChainIndexer) IsStarted() bool {
@@ -158,14 +163,21 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		return fmt.Errorf("failed to create block handler for block check: %v", err)
 	}
 
+	startHeight := int64(cfg.Indexer.StartHeight)
+
 	nBlock, err := blockHandler.GetHighestBlockNumber(ctx)
 	if err != nil {
+		// if error.
 		// If no blocks exist, start from configured start height (error is expected)
 		logger.Sugar.Info("No existing blocks found, starting from configured height")
-	} else if nBlock > 0 {
+	} else if nBlock > 0 && nBlock > startHeight {
+		// if nBlock is greater than startHeight; use block from defra
 		// if yes increment by 1
 		cfg.Indexer.StartHeight = int(nBlock + 1)
 		logger.Sugar.Infof("Found existing blocks up to %d, starting from %d", nBlock, cfg.Indexer.StartHeight)
+	} else {
+		// if nBlock is less than startHeight
+		logger.Sugar.Infof("No existing blocks found, starting from configured height")
 	}
 
 	// create indexing bool
@@ -187,6 +199,22 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	// Get starting block number
 	nextBlockToProcess := int64(cfg.Indexer.StartHeight)
 
+	// Start health server
+	var healthDefraURL string
+	if cfg.DefraDB.Url != "" {
+		healthDefraURL = cfg.DefraDB.Url
+	} else if i.defraNode != nil {
+		healthDefraURL = fmt.Sprintf("http://localhost:%d", defra.GetPort(i.defraNode))
+	}
+	i.healthServer = server.NewHealthServer(8080, i, healthDefraURL)
+
+	// Start health server in background
+	go func() {
+		if err := i.healthServer.Start(); err != nil {
+			logger.Sugar.Errorf("Health server failed: %v", err)
+		}
+	}()
+
 	for i.shouldIndex {
 		i.isStarted = true
 
@@ -198,7 +226,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			// Step 2: Process the specific block we want (nextBlockToProcess)
 			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
 
-			err := processBlock(ctx, client, blockHandler, nextBlockToProcess)
+			err := i.processBlock(ctx, client, blockHandler, nextBlockToProcess)
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
 					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
@@ -238,9 +266,8 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	return nil
 }
 
-
 // processBlock fetches and stores a single block with retry logic
-func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
+func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
 	var block *types.Block
 	var err error
 
@@ -352,6 +379,7 @@ func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandl
 	}
 
 	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
+	i.updateBlockInfo(blockNum)
 	return nil
 }
 
@@ -400,20 +428,63 @@ func applySchema(ctx context.Context, defraNode *node.Node) error {
 	return err
 }
 
-
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
 
+	// Stop health server
+	if i.healthServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		i.healthServer.Stop(ctx)
+	}
+
 	// Close embedded DefraDB node if it exists
 	if i.defraNode != nil {
-		ctx := context.Background()
-		i.defraNode.Close(ctx)
+		i.defraNode.Close(context.Background())
 		i.defraNode = nil
 	}
 }
 
-// findSchemaFile tries multiple paths to locate the schema file from different working directories
+// Health checker interface implementation
+func (i *ChainIndexer) IsHealthy() bool {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+
+	// Consider healthy if started and processed at least one block recently
+	if !i.isStarted {
+		return false
+	}
+
+	// If we've never processed a block, we're still healthy (starting up)
+	if i.lastProcessedTime.IsZero() {
+		return true
+	}
+
+	// Consider unhealthy if no blocks processed in last 10 minutes
+	return time.Since(i.lastProcessedTime) < 10*time.Minute
+}
+
+func (i *ChainIndexer) GetCurrentBlock() int64 {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+	return i.currentBlock
+}
+
+func (i *ChainIndexer) GetLastProcessedTime() time.Time {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+	return i.lastProcessedTime
+}
+
+// updateBlockInfo updates the current block and last processed time
+func (i *ChainIndexer) updateBlockInfo(blockNum int64) {
+	i.mutex.Lock()
+	defer i.mutex.Unlock()
+	i.currentBlock = blockNum
+	i.lastProcessedTime = time.Now()
+}
+
 func findSchemaFile() (string, error) {
 	schemaPaths := []string{
 		"schema/schema.graphql",          // From project root
