@@ -174,6 +174,16 @@ func TestConvertGethBlockToDefraBlock(t *testing.T) {
 			},
 		},
 	}
+	indexer, err := CreateIndexer(cfg)
+	assert.NoError(t, err)
+
+	// Set some state
+	indexer.shouldIndex = true
+	indexer.isStarted = true
+	indexer.hasIndexedAtLeastOneBlock = true
+
+	// Stop indexing
+	indexer.StopIndexing()
 
 	// Test block structure
 	transactions := gethBlock.Transactions
@@ -349,6 +359,8 @@ func (m *MockBlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, er
 	if m.createError != nil {
 		return 0, m.createError
 	}
+	return highest, nil
+}
 
 	var highest int64 = 0
 	for blockNum := range m.blocks {

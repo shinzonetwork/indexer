@@ -6,7 +6,8 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 - **GoLang**: High-performance indexing engine with concurrent processing
 - **DefraDB**: Decentralized P2P datastore for blockchain data storage and querying
-- ** Managed Blockchain Node**: Dual WebSocket/HTTP connections to Google Cloud managed Ethereum nodes
+
+- **Managed Blockchain Node**: Dual WebSocket/HTTP connections to Google Cloud managed Ethereum nodes
 - **Uber Zap**: Structured logging with global logger integration
 - **GraphQL**: Flexible query interface for indexed blockchain data
 - **Viper Configuration**: YAML-based configuration with environment variable overrides
@@ -150,7 +151,6 @@ make playground DEFRA_PATH=/path/to/defradb
 export DEFRA_PATH=/path/to/defradb
 make playground
 ```
-
 ### Manual Build
 ```bash
 # Build binary
@@ -186,7 +186,7 @@ To run live integration tests with your  managed blockchain node:
    export GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
    export GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
    export GETH_API_KEY=your-x-goog-api-key-header-value
-   ```
+```
 
    b: **Use a .env file for environment variables**
    ```bash
