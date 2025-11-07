@@ -15,6 +15,7 @@ import (
 	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/defra"
 	"github.com/shinzonetwork/indexer/pkg/errors"
+	"github.com/shinzonetwork/indexer/pkg/identity"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/rpc"
 	"github.com/shinzonetwork/indexer/pkg/server"
@@ -45,6 +46,7 @@ type ChainIndexer struct {
 	isStarted                 bool
 	hasIndexedAtLeastOneBlock bool
 	defraNode                 *node.Node // Embedded DefraDB node (nil if using external)
+	identityProvider          identity.DefraIdentityProvider // DefraDB identity provider
 	healthServer              *server.HealthServer
 	currentBlock              int64
 	lastProcessedTime         time.Time
@@ -106,8 +108,10 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 		options := []node.Option{
 			node.WithDisableAPI(false),
-			node.WithDisableP2P(true), // Disable P2P for now
+			node.WithDisableP2P(false), // Enable P2P to access peer identity
 			node.WithStorePath(cfg.DefraDB.Store.Path),
+			node.WithStoreType(node.BadgerStore), // Explicitly set store type
+			node.WithEnableDevelopment(true), // Enable development mode
 			defrahttp.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
 		}
 
@@ -123,7 +127,12 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 		// Store the defraNode reference for port access
 		i.defraNode = defraNode
-
+		
+		// Initialize identity provider after DefraDB node is created
+		i.identityProvider = identity.NewDefraNodeIdentityProvider(i.defraNode)
+		logger.Sugar.Info("Identity provider initialized for embedded DefraDB node")
+		
+		// Apply schema to the embedded DefraDB node
 		err = applySchema(ctx, defraNode)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
 			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
@@ -206,7 +215,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	} else if i.defraNode != nil {
 		healthDefraURL = fmt.Sprintf("http://localhost:%d", defra.GetPort(i.defraNode))
 	}
-	i.healthServer = server.NewHealthServer(8080, i, healthDefraURL)
+	i.healthServer = server.NewHealthServerWithAuth(8080, i, healthDefraURL, i, cfg.DefraDB.KeyringSecret)
 
 	// Start health server in background
 	go func() {
@@ -424,8 +433,13 @@ func applySchema(ctx context.Context, defraNode *node.Node) error {
 		return fmt.Errorf("Failed to read schema file: %v", err)
 	}
 
-	_, err = defraNode.DB.AddSchema(ctx, string(schema))
-	return err
+	collections, err := defraNode.DB.AddSchema(ctx, string(schema))
+	if err != nil {
+		return fmt.Errorf("failed to add schema to DefraDB: %w", err)
+	}
+	
+	fmt.Printf("Successfully applied schema, created %d collections\n", len(collections))
+	return nil
 }
 
 func (i *ChainIndexer) StopIndexing() {
@@ -528,4 +542,52 @@ func applySchemaViaHTTP(defraUrl string) error {
 
 	fmt.Println("Schema applied successfully!")
 	return nil
+}
+
+// GetDefraIdentity returns the complete DefraDB identity information
+func (i *ChainIndexer) GetDefraIdentity(ctx context.Context) (*identity.DefraIdentity, error) {
+	if i.identityProvider == nil {
+		return nil, fmt.Errorf("identity provider not initialized")
+	}
+	return i.identityProvider.GetIdentity(ctx)
+}
+
+// GetDefraPeerID returns the DefraDB peer ID
+func (i *ChainIndexer) GetDefraPeerID(ctx context.Context) (string, error) {
+	if i.identityProvider == nil {
+		return "", fmt.Errorf("identity provider not initialized")
+	}
+	return i.identityProvider.GetPeerID(ctx)
+}
+
+// GetDefraPublicKey returns the DefraDB public key in hex format
+func (i *ChainIndexer) GetDefraPublicKey(ctx context.Context) (string, error) {
+	if i.identityProvider == nil {
+		return "", fmt.Errorf("identity provider not initialized")
+	}
+	return i.identityProvider.GetPublicKey(ctx)
+}
+
+// GetKeyInfo returns information about the DefraDB key state
+func (i *ChainIndexer) GetKeyInfo(ctx context.Context) (*identity.KeyInfo, error) {
+	if i.identityProvider == nil {
+		return nil, fmt.Errorf("identity provider not initialized")
+	}
+	
+	// Get the store path from config
+	storePath := i.cfg.DefraDB.Store.Path
+	if storePath == "" {
+		storePath = "./defra" // default path
+	}
+	
+	return i.identityProvider.GetKeyInfo(ctx, storePath)
+}
+
+
+// GetDefraAddresses returns the DefraDB listening addresses
+func (i *ChainIndexer) GetDefraAddresses(ctx context.Context) ([]string, error) {
+	if i.identityProvider == nil {
+		return nil, fmt.Errorf("identity provider not initialized")
+	}
+	return i.identityProvider.GetAddresses(ctx)
 }

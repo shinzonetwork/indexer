@@ -46,6 +46,16 @@ var startTime = time.Now()
 
 // NewHealthServer creates a new health server
 func NewHealthServer(port int, indexer HealthChecker, defraURL string) *HealthServer {
+	return NewHealthServerWithIdentity(port, indexer, defraURL, nil)
+}
+
+// NewHealthServerWithIdentity creates a new health server with identity endpoints
+func NewHealthServerWithIdentity(port int, indexer HealthChecker, defraURL string, identityProvider IdentityProvider) *HealthServer {
+	return NewHealthServerWithAuth(port, indexer, defraURL, identityProvider, "")
+}
+
+// NewHealthServerWithAuth creates a new health server with authenticated identity endpoints
+func NewHealthServerWithAuth(port int, indexer HealthChecker, defraURL string, identityProvider IdentityProvider, keyringSecret string) *HealthServer {
 	mux := http.NewServeMux()
 	
 	hs := &HealthServer{
@@ -64,6 +74,15 @@ func NewHealthServer(port int, indexer HealthChecker, defraURL string) *HealthSe
 	mux.HandleFunc("/ready", hs.readinessHandler)
 	mux.HandleFunc("/metrics", hs.metricsHandler)
 	mux.HandleFunc("/", hs.rootHandler)
+	
+	// Register authenticated identity routes if provider and keyring secret are available
+	if identityProvider != nil && keyringSecret != "" {
+		authHandler := NewAuthenticatedIdentityHandler(identityProvider, keyringSecret)
+		mux.HandleFunc("/auth/node-identity", authHandler.HandleAuthenticatedNodeIdentity)
+		mux.HandleFunc("/auth/public-key", authHandler.HandleAuthenticatedPublicKey)
+		mux.HandleFunc("/auth/peer-id", authHandler.HandleAuthenticatedPeerID)
+		mux.HandleFunc("/auth/key-info", authHandler.HandleAuthenticatedKeyInfo)
+	}
 
 	return hs
 }
@@ -178,16 +197,28 @@ func (hs *HealthServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	endpoints := []string{
+		"/health - Liveness probe",
+		"/ready - Readiness probe", 
+		"/metrics - Basic metrics",
+	}
+	
+	// Add authenticated identity endpoints if available
+	// Note: These require keyring secret authentication
+	endpoints = append(endpoints, 
+		"POST /auth/node-identity - Complete DefraDB identity (requires keyring_secret)",
+		"POST /auth/public-key - DefraDB public key (requires keyring_secret)",
+		"POST /auth/peer-id - DefraDB peer ID (requires keyring_secret)",
+		"POST /auth/key-info - DefraDB key persistence info (requires keyring_secret)",
+	)
+
 	response := map[string]interface{}{
 		"service":   "Shinzo Network Indexer",
 		"version":   "1.0.0",
 		"status":    "running",
 		"timestamp": time.Now(),
-		"endpoints": []string{
-			"/health - Liveness probe",
-			"/ready - Readiness probe", 
-			"/metrics - Basic metrics",
-		},
+		"endpoints": endpoints,
+		"note":      "Identity endpoints require POST method with keyring_secret authentication",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
