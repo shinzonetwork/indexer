@@ -8,12 +8,11 @@ import (
 	"testing"
 	"time"
 
+	appdefra "github.com/shinzonetwork/app-sdk/pkg/defra"
 	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/defra"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/types"
-	"github.com/sourcenetwork/defradb/http"
-	"github.com/sourcenetwork/defradb/node"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,27 +25,29 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 
 	logger.InitConsoleOnly(true)
 
-	defraUrl := "127.0.0.1:0"
-	options := []node.Option{
-		node.WithDisableAPI(false),
-		node.WithDisableP2P(true),
-		node.WithStorePath(t.TempDir()),
-		http.WithAddress(defraUrl),
-	}
 	ctx := context.Background()
-	indexerDefra := startDefraInstance(t, ctx, options)
+	
+	// Use app-sdk to start defra instance for testing
+	appConfig := appdefra.DefaultConfig
+	schemaApplier := &appdefra.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"}
+	indexerDefra, err := appdefra.StartDefraInstanceWithTestConfig(t, appConfig, schemaApplier, "Block", "Transaction", "AccessListEntry", "Log")
+	require.NoError(t, err)
 	defer indexerDefra.Close(ctx)
 
 	port := defra.GetPort(indexerDefra)
 	require.NotEqual(t, -1, port, "Unable to retrieve indexer's defra port")
 
-	_, err := queryBlockNumber(ctx, port)
+	// Get the actual API URL from the defra node
+	defraUrl := indexerDefra.APIURL
+	
+	_, err = queryBlockNumberFromUrl(ctx, defraUrl)
 	require.Error(t, err)
 
 	// Create test config by copying DefaultConfig and updating the URL
+	// Use the actual defra URL (can be LAN IP or localhost)
 	testCfg := &config.Config{}
 	*testCfg = *DefaultConfig // Copy the config
-	testCfg.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
+	testCfg.ShinzoAppConfig.DefraDB.Url = defraUrl
 
 	i := CreateIndexer(testCfg)
 	go func() {
@@ -60,30 +61,13 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	blockNumber, err := queryBlockNumber(ctx, port)
+	blockNumber, err := queryBlockNumberFromUrl(ctx, defraUrl)
 	require.NoError(t, err)
 	require.Greater(t, blockNumber, 100)
 }
 
-func startDefraInstance(t *testing.T, ctx context.Context, options []node.Option) *node.Node {
-	myNode, err := node.New(ctx, options...)
-	require.NoError(t, err)
-	require.NotNil(t, myNode)
-
-	err = myNode.Start(ctx)
-	require.NoError(t, err)
-
-	err = applySchema(ctx, myNode)
-	require.NoError(t, err)
-
-	err = defra.WaitForDefraDB(myNode.APIURL)
-	require.NoError(t, err)
-
-	return myNode
-}
-
-func queryBlockNumber(ctx context.Context, port int) (int, error) {
-	handler, err := defra.NewBlockHandler(fmt.Sprintf("http://localhost:%d", port))
+func queryBlockNumberFromUrl(ctx context.Context, defraUrl string) (int, error) {
+	handler, err := defra.NewBlockHandler(defraUrl)
 	if err != nil {
 		return 0, fmt.Errorf("Error building block handler: %v", err)
 	}
@@ -136,25 +120,26 @@ func TestIndexing(t *testing.T) {
 
 	logger.InitConsoleOnly(true)
 
-	// Create embedded DefraDB with dynamic port to avoid conflicts
-	defraUrl := "127.0.0.1:0"
-	options := []node.Option{
-		node.WithDisableAPI(false),
-		node.WithDisableP2P(true),
-		node.WithStorePath(t.TempDir()),
-		http.WithAddress(defraUrl),
-	}
 	ctx := context.Background()
-	indexerDefra := startDefraInstance(t, ctx, options)
+	
+	// Use app-sdk to start defra instance for testing
+	appConfig := appdefra.DefaultConfig
+	schemaApplier := &appdefra.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"}
+	indexerDefra, err := appdefra.StartDefraInstanceWithTestConfig(t, appConfig, schemaApplier, "Block", "Transaction", "AccessListEntry", "Log")
+	require.NoError(t, err)
 	defer indexerDefra.Close(ctx)
 
 	port := defra.GetPort(indexerDefra)
 	require.NotEqual(t, -1, port, "Unable to retrieve indexer's defra port")
 
+	// Get the actual API URL from the defra node
+	defraUrl := indexerDefra.APIURL
+
 	// Create test config with dynamic port and GCP endpoint
+	// Use the actual defra URL (can be LAN IP or localhost)
 	testCfg := &config.Config{}
 	*testCfg = *DefaultConfig // Copy the config
-	testCfg.DefraDB.Url = fmt.Sprintf("http://localhost:%d", port)
+	testCfg.ShinzoAppConfig.DefraDB.Url = defraUrl
 
 	i := CreateIndexer(testCfg)
 	go func() {
@@ -168,7 +153,7 @@ func TestIndexing(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	blockNumber, err := queryBlockNumber(ctx, port)
+	blockNumber, err := queryBlockNumberFromUrl(ctx, defraUrl)
 	require.NoError(t, err)
 	require.Greater(t, blockNumber, 100)
 }

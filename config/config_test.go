@@ -44,16 +44,17 @@ logger:
 	}
 
 	// Test DefraDB config
-	if cfg.DefraDB.Url != "http://localhost:9181" {
-		t.Errorf("Expected url 'http://localhost:9181', got '%s'", cfg.DefraDB.Url)
+	defraDB := cfg.DefraDB()
+	if defraDB.Url != "http://localhost:9181" {
+		t.Errorf("Expected url 'http://localhost:9181', got '%s'", defraDB.Url)
 	}
-	if cfg.DefraDB.KeyringSecret != "test_secret" {
-		t.Errorf("Expected keyring_secret 'test_secret', got '%s'", cfg.DefraDB.KeyringSecret)
+	if defraDB.KeyringSecret != "test_secret" {
+		t.Errorf("Expected keyring_secret 'test_secret', got '%s'", defraDB.KeyringSecret)
 	}
 
 	// Test P2P config
-	if len(cfg.DefraDB.P2P.BootstrapPeers) != 2 {
-		t.Errorf("Expected 2 bootstrap peers, got %d", len(cfg.DefraDB.P2P.BootstrapPeers))
+	if len(defraDB.P2P.BootstrapPeers) != 2 {
+		t.Errorf("Expected 2 bootstrap peers, got %d", len(defraDB.P2P.BootstrapPeers))
 	}
 
 	// Test Geth config - check for host and port
@@ -109,11 +110,12 @@ indexer:
 	}
 
 	// Verify environment overrides work
-	if cfg.DefraDB.KeyringSecret != "pingpong" {
-		t.Errorf("Expected keyring_secret 'pingpong', got '%s'", cfg.DefraDB.KeyringSecret)
+	defraDB := cfg.DefraDB()
+	if defraDB.KeyringSecret != "pingpong" {
+		t.Errorf("Expected keyring_secret 'pingpong', got '%s'", defraDB.KeyringSecret)
 	}
-	if cfg.DefraDB.Url != "http://localhost:9181" {
-		t.Errorf("Expected url 'http://localhost:9181', got '%s'", cfg.DefraDB.Url)
+	if defraDB.Url != "http://localhost:9181" {
+		t.Errorf("Expected url 'http://localhost:9181', got '%s'", defraDB.Url)
 	}
 	if cfg.Indexer.StartHeight != 2000 {
 		t.Errorf("Expected start_height 2000, got %d", cfg.Indexer.StartHeight)

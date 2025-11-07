@@ -12,14 +12,18 @@ import (
 	"testing"
 	"time"
 
+	appsdkconfig "github.com/shinzonetwork/app-sdk/pkg/config"
+	"github.com/shinzonetwork/app-sdk/pkg/networking"
 	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/indexer"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 )
 
-const graphqlURL = "http://localhost:9181/api/v0/graphql"
-
-var testChainIndexer *indexer.ChainIndexer
+var (
+	testChainIndexer *indexer.ChainIndexer
+	testDefraURL     string // Store the actual defra URL from the indexer
+	graphqlURL       string // Will be set based on actual defra URL
+)
 
 func TestMain(m *testing.M) {
 	// Initialize logger for integration tests first
@@ -40,31 +44,50 @@ func TestMain(m *testing.M) {
 
 	// Start indexer but it will fail on Ethereum connection (which is fine for testing)
 	logger.Test("Starting embedded DefraDB for testing...")
+	// Store config URL for fallback
+	configDefraURL := "http://localhost:9181"
 	go func() {
 		// Create a minimal config for integration testing
-		cfg := &config.Config{
-			DefraDB: config.DefraDBConfig{
-				Url: "http://localhost:9181",
-				Store: config.DefraDBStoreConfig{
+		appCfg := &appsdkconfig.Config{
+			DefraDB: appsdkconfig.DefraDBConfig{
+				Url: configDefraURL,
+				Store: appsdkconfig.DefraStoreConfig{
 					Path: "./.defra/data",
 				},
 			},
+		}
+		cfg := &config.Config{
+			ShinzoAppConfig: appCfg,
 			Geth: config.GethConfig{
 				NodeURL: "https://ethereum-rpc.publicnode.com", // Will fail but that's expected
 			},
 		}
-		
+
 		// Start indexer - DefraDB will start successfully, Ethereum connection will fail (expected)
 		testChainIndexer = indexer.CreateIndexer(cfg)
 		err := testChainIndexer.StartIndexing(false) // false = start embedded DefraDB
 		if err != nil {
 			// Expected to fail on Ethereum connection, but DefraDB should be running
+			// defraURL should already be set by this point since defra starts before Ethereum connection
 			logger.Testf("Indexer failed as expected (no Ethereum connection): %v", err)
 		}
 	}()
 
-	// Wait for DefraDB to be ready
+	// Give the goroutine a moment to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Wait for DefraDB to be ready and get the actual URL
 	logger.Test("Waiting for DefraDB to be ready...")
+	// Get LAN IP to construct defra URL (app-sdk replaces localhost with LAN IP)
+	lanIP, err := networking.GetLANIP()
+	if err != nil {
+		logger.Sugar.Errorf("Failed to get LAN IP: %v", err)
+		os.Exit(1)
+	}
+	// app-sdk replaces "http://localhost:9181" with "http://LAN_IP:9181"
+	// Construct the expected URL
+	expectedDefraURL := fmt.Sprintf("http://%s:9181", lanIP)
+
 	timeout := time.After(15 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -75,8 +98,23 @@ func TestMain(m *testing.M) {
 			logger.Sugar.Error("Timeout waiting for DefraDB to be ready")
 			os.Exit(1)
 		case <-ticker.C:
-			if testDefraDBConnection() {
-				logger.Test("DefraDB is ready!")
+			// First, try to get the actual defra URL from the indexer
+			if testChainIndexer != nil {
+				testDefraURL = testChainIndexer.DefraURL()
+				if testDefraURL != "" {
+					// Try connecting to the actual defra URL
+					if testDefraDBConnection(testDefraURL) {
+						graphqlURL = testDefraURL + "/api/v0/graphql"
+						logger.Testf("DefraDB is ready at %s!", testDefraURL)
+						goto ready
+					}
+				}
+			}
+			// Fallback: try the expected URL based on LAN IP (app-sdk behavior)
+			if testDefraDBConnection(expectedDefraURL) {
+				graphqlURL = expectedDefraURL + "/api/v0/graphql"
+				testDefraURL = expectedDefraURL // Store it for later use
+				logger.Testf("DefraDB is ready at %s (detected from LAN IP)!", expectedDefraURL)
 				goto ready
 			}
 		}
@@ -195,8 +233,14 @@ func MakeQuery(t *testing.T, queryPath string, query string, args map[string]int
 	return result
 }
 
-func testDefraDBConnection() bool {
-	resp, err := http.Get("http://localhost:9181/api/v0/schema")
+func testDefraDBConnection(defraURL string) bool {
+	if defraURL == "" {
+		return false
+	}
+	// Try the GraphQL endpoint instead of schema endpoint
+	graphqlEndpoint := strings.TrimSuffix(defraURL, "/") + "/api/v0/graphql"
+	query := `{"query":"query { __typename }"}`
+	resp, err := http.Post(graphqlEndpoint, "application/json", bytes.NewBuffer([]byte(query)))
 	if err != nil {
 		return false
 	}
@@ -245,7 +289,7 @@ func insertMockData() error {
 		return fmt.Errorf("failed to marshal block1 mutation: %v", err)
 	}
 
-	resp, err := http.Post("http://localhost:9181/api/v0/graphql", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post(graphqlURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("block1 creation failed: %v", err)
 	}
@@ -319,7 +363,7 @@ func insertMockData() error {
 		return fmt.Errorf("failed to marshal block2 mutation: %v", err)
 	}
 
-	resp, err = http.Post("http://localhost:9181/api/v0/graphql", "application/json", bytes.NewBuffer(jsonData))
+	resp, err = http.Post(graphqlURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("block2 creation failed: %v", err)
 	}
@@ -394,7 +438,7 @@ func insertMockData() error {
 		return fmt.Errorf("failed to marshal tx1 mutation: %v", err)
 	}
 
-	resp, err = http.Post("http://localhost:9181/api/v0/graphql", "application/json", bytes.NewBuffer(jsonData))
+	resp, err = http.Post(graphqlURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("tx1 creation failed: %v", err)
 	}
@@ -469,7 +513,7 @@ func insertMockData() error {
 		return fmt.Errorf("failed to marshal tx2 mutation: %v", err)
 	}
 
-	resp, err = http.Post("http://localhost:9181/api/v0/graphql", "application/json", bytes.NewBuffer(jsonData))
+	resp, err = http.Post(graphqlURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("tx2 creation failed: %v", err)
 	}
@@ -535,7 +579,7 @@ func insertMockData() error {
 		return fmt.Errorf("failed to marshal log1 mutation: %v", err)
 	}
 
-	resp, err = http.Post("http://localhost:9181/api/v0/graphql", "application/json", bytes.NewBuffer(jsonData))
+	resp, err = http.Post(graphqlURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("log1 creation failed: %v", err)
 	}
@@ -591,7 +635,7 @@ func insertMockData() error {
 		return fmt.Errorf("failed to marshal log2 mutation: %v", err)
 	}
 
-	resp, err = http.Post("http://localhost:9181/api/v0/graphql", "application/json", bytes.NewBuffer(jsonData))
+	resp, err = http.Post(graphqlURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("log2 creation failed: %v", err)
 	}
@@ -624,7 +668,7 @@ func insertMockData() error {
 
 func hasBlocks() bool {
 	query := `{"query":"query { Block(limit: 1) { number } }"}`
-	resp, err := http.Post("http://localhost:9181/api/v0/graphql", "application/json", bytes.NewBuffer([]byte(query)))
+	resp, err := http.Post(graphqlURL, "application/json", bytes.NewBuffer([]byte(query)))
 	if err != nil {
 		return false
 	}

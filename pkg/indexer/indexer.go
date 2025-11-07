@@ -11,15 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shinzonetwork/indexer/config"
+	appsdkconfig "github.com/shinzonetwork/app-sdk/pkg/config"
+	appdefra "github.com/shinzonetwork/app-sdk/pkg/defra"
+	indexerconfig "github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/defra"
 	"github.com/shinzonetwork/indexer/pkg/errors"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/rpc"
 	"github.com/shinzonetwork/indexer/pkg/types"
-
-	defrahttp "github.com/sourcenetwork/defradb/http"
-	"github.com/sourcenetwork/defradb/node"
 )
 
 const (
@@ -53,36 +52,39 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-var DefaultConfig *config.Config = &config.Config{
-	DefraDB: config.DefraDBConfig{
-		Url:           getEnvOrDefault("DEFRADB_URL", "http://localhost:9181"),
-		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
-		P2P: config.DefraDBP2PConfig{
-			BootstrapPeers: requiredPeers,
-			ListenAddr:     defaultListenAddress,
+var DefaultConfig *indexerconfig.Config = &indexerconfig.Config{
+	ShinzoAppConfig: &appsdkconfig.Config{
+		DefraDB: appsdkconfig.DefraDBConfig{
+			Url:           getEnvOrDefault("DEFRADB_URL", "http://localhost:9181"),
+			KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
+			P2P: appsdkconfig.DefraP2PConfig{
+				BootstrapPeers: requiredPeers,
+				ListenAddr:     defaultListenAddress,
+			},
+			Store: appsdkconfig.DefraStoreConfig{
+				Path: getEnvOrDefault("DEFRADB_STORE_PATH", "./.defra"),
+			},
 		},
-		Store: config.DefraDBStoreConfig{
-			Path: getEnvOrDefault("DEFRADB_STORE_PATH", "./.defra"),
+		Logger: appsdkconfig.LoggerConfig{
+			Development: false,
 		},
 	},
-	Geth: config.GethConfig{
+	Geth: indexerconfig.GethConfig{
 		NodeURL: getGethNodeURL(),
 		WsURL:   os.Getenv("GCP_GETH_WS_URL"),
 		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
 	},
-	Indexer: config.IndexerConfig{
+	Indexer: indexerconfig.IndexerConfig{
 		StartHeight: 1800000, // Default for tests, will be overridden by config file or env vars
-	},
-	Logger: config.LoggerConfig{
-		Development: false,
 	},
 }
 
 type ChainIndexer struct {
-	cfg                       *config.Config
+	cfg                       *indexerconfig.Config
 	shouldIndex               bool
 	isStarted                 bool
 	hasIndexedAtLeastOneBlock bool
+	defraURL                  string // Store the actual defra URL (may differ from config due to LAN IP)
 }
 
 func (i *ChainIndexer) IsStarted() bool {
@@ -93,12 +95,18 @@ func (i *ChainIndexer) HasIndexedAtLeastOneBlock() bool {
 	return i.hasIndexedAtLeastOneBlock
 }
 
-func CreateIndexer(cfg *config.Config) *ChainIndexer {
+// DefraURL returns the actual defra URL being used (may differ from config due to LAN IP replacement)
+func (i *ChainIndexer) DefraURL() string {
+	return i.defraURL
+}
+
+func CreateIndexer(cfg *indexerconfig.Config) *ChainIndexer {
 	return &ChainIndexer{
 		cfg:                       cfg,
 		shouldIndex:               false,
 		isStarted:                 false,
 		hasIndexedAtLeastOneBlock: false,
+		defraURL:                  "",
 	}
 }
 
@@ -109,49 +117,47 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	if cfg == nil {
 		cfg = DefaultConfig
 	}
-	cfg.DefraDB.P2P.BootstrapPeers = append(cfg.DefraDB.P2P.BootstrapPeers, requiredPeers...)
-	
-	// Only initialize logger if it hasn't been initialized yet (e.g., in tests)
-	if logger.Sugar == nil {
-		logger.Init(cfg.Logger.Development)
+
+	// Ensure ShinzoAppConfig is set
+	if cfg.ShinzoAppConfig == nil {
+		cfg.ShinzoAppConfig = appdefra.DefaultConfig
 	}
 
+	// Append required peers to bootstrap peers
+	cfg.ShinzoAppConfig.DefraDB.P2P.BootstrapPeers = append(cfg.ShinzoAppConfig.DefraDB.P2P.BootstrapPeers, requiredPeers...)
+
+	// Only initialize logger if it hasn't been initialized yet (e.g., in tests)
+	if logger.Sugar == nil {
+		logger.Init(cfg.Logger().Development)
+	}
+
+	var defraUrl string
 	if !defraStarted {
-		options := []node.Option{
-			node.WithDisableAPI(false),
-			node.WithDisableP2P(true), // Disable P2P for now
-			node.WithStorePath(cfg.DefraDB.Store.Path),
-			defrahttp.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
-		}
-
-		defraNode, err := node.New(ctx, options...)
+		// Use app-sdk to start defra instance
+		schemaApplier := &appdefra.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"}
+		defraNode, err := appdefra.StartDefraInstance(cfg.ShinzoAppConfig, schemaApplier, "Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {
-			return fmt.Errorf("Failed to create defra node %v: ", err)
-		}
-
-		err = defraNode.Start(ctx)
-		if err != nil {
-			return fmt.Errorf("Failed to start defra node %v: ", err)
+			return fmt.Errorf("failed to start defra instance: %v", err)
 		}
 		defer defraNode.Close(ctx)
 
-		err = applySchema(ctx, defraNode)
-		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
-			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
-		}
-
-		err = defra.WaitForDefraDB(cfg.DefraDB.Url)
+		// Wait for defra to be ready - use the actual API URL from the node
+		defraUrl = defraNode.APIURL
+		i.defraURL = defraUrl // Store the actual URL
+		err = defra.WaitForDefraDB(defraUrl)
 		if err != nil {
 			return err
 		}
 	} else {
 		// Using external DefraDB - wait for it and apply schema via HTTP
-		err := defra.WaitForDefraDB(cfg.DefraDB.Url)
+		defraUrl = cfg.DefraDB().Url
+		i.defraURL = defraUrl // Store the URL
+		err := defra.WaitForDefraDB(defraUrl)
 		if err != nil {
 			return err
 		}
 
-		err = applySchemaViaHTTP(cfg.DefraDB.Url)
+		err = applySchemaViaHTTP(defraUrl)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
 			return fmt.Errorf("Failed to apply schema to external DefraDB: %v", err)
 		}
@@ -167,8 +173,8 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	}
 	defer client.Close()
 
-	// Create DefraDB block handler
-	blockHandler, err := defra.NewBlockHandler(cfg.DefraDB.Url)
+	// Create DefraDB block handler - use the actual defra URL
+	blockHandler, err := defra.NewBlockHandler(defraUrl)
 	if err != nil {
 		// Log with structured context
 		logCtx := errors.LogContext(err)
@@ -373,38 +379,6 @@ func parseBlockNumber(hexStr string) (int64, error) {
 	blockNum := new(big.Int)
 	blockNum.SetString(hexStr, 10)
 	return blockNum.Int64(), nil
-}
-
-func applySchema(ctx context.Context, defraNode *node.Node) error {
-	fmt.Println("Applying schema...")
-
-	// Try different possible paths for the schema file
-	possiblePaths := []string{
-		"schema/schema.graphql",       // From project root
-		"../schema/schema.graphql",    // From bin/ directory
-		"../../schema/schema.graphql", // From pkg/host/ directory - test context
-	}
-
-	var schemaPath string
-	var err error
-	for _, path := range possiblePaths {
-		if _, err = os.Stat(path); err == nil {
-			schemaPath = path
-			break
-		}
-	}
-
-	if schemaPath == "" {
-		return fmt.Errorf("Failed to find schema file in any of the expected locations: %v", possiblePaths)
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("Failed to read schema file: %v", err)
-	}
-
-	_, err = defraNode.DB.AddSchema(ctx, string(schema))
-	return err
 }
 
 // processAccessListEntries handles the processing of access list entries for a transaction

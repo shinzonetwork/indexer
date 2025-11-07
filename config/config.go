@@ -5,35 +5,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/joho/godotenv"
+	"github.com/shinzonetwork/app-sdk/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 
 const CollectionName = "shinzo"
-
-// DefraDBP2PConfig represents P2P configuration for DefraDB
-type DefraDBP2PConfig struct {
-	BootstrapPeers []string `yaml:"bootstrap_peers"`
-	ListenAddr     string   `yaml:"listen_addr"`
-}
-
-// DefraDBStoreConfig represents store configuration for DefraDB
-type DefraDBStoreConfig struct {
-	Path string `yaml:"path"`
-}
-
-// DefraDBConfig represents DefraDB configuration
-type DefraDBConfig struct {
-	Url           string             `yaml:"url"`
-	KeyringSecret string             `yaml:"keyring_secret"`
-	P2P           DefraDBP2PConfig   `yaml:"p2p"`
-	Store         DefraDBStoreConfig `yaml:"store"`
-}
-
-// Host returns the DefraDB host URL for backward compatibility
-func (d *DefraDBConfig) Host() string {
-	return d.Url
-}
 
 // GethConfig represents Geth node configuration
 type GethConfig struct {
@@ -47,25 +23,38 @@ type IndexerConfig struct {
 	StartHeight int `yaml:"start_height"`
 }
 
-// LoggerConfig represents logger configuration
-type LoggerConfig struct {
-	Development bool `yaml:"development"`
-}
-
 // Config represents the main configuration structure
 type Config struct {
-	DefraDB DefraDBConfig `yaml:"defradb"`
-	Geth    GethConfig    `yaml:"geth"`
-	Indexer IndexerConfig `yaml:"indexer"`
-	Logger  LoggerConfig  `yaml:"logger"`
+	ShinzoAppConfig *config.Config  // Embedded app-sdk config for defra
+	Geth            GethConfig    `yaml:"geth"`
+	Indexer         IndexerConfig `yaml:"indexer"`
+}
+
+// DefraDBConfig provides backward compatibility access to defradb config
+func (c *Config) DefraDB() config.DefraDBConfig {
+	if c.ShinzoAppConfig == nil {
+		return config.DefraDBConfig{}
+	}
+	return c.ShinzoAppConfig.DefraDB
+}
+
+// Logger provides backward compatibility access to logger config
+func (c *Config) Logger() config.LoggerConfig {
+	if c.ShinzoAppConfig == nil {
+		return config.LoggerConfig{}
+	}
+	return c.ShinzoAppConfig.Logger
 }
 
 // LoadConfig loads configuration from a YAML file and environment variables
 func LoadConfig(path string) (*Config, error) {
-	// Load .env file if it exists
-	_ = godotenv.Load()
+	// Load app-sdk config first (handles defradb and logger)
+	shinzoAppConfig, err := config.LoadConfig(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load app-sdk config: %w", err)
+	}
 
-	// Load YAML config
+	// Load YAML config for indexer-specific config
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -76,35 +65,18 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Override with environment variables
+	// Set the app-sdk config
+	cfg.ShinzoAppConfig = shinzoAppConfig
+
+	// Override with environment variables for indexer-specific config
 	overrideWithEnvVars(&cfg)
 
 	return &cfg, nil
 }
 
 // overrideWithEnvVars overrides configuration with environment variables
+// Note: DefraDB and Logger config are handled by app-sdk's config.LoadConfig
 func overrideWithEnvVars(cfg *Config) {
-	// DefraDB configuration
-	if host := os.Getenv("DEFRADB_HOST"); host != "" {
-		if port := os.Getenv("DEFRADB_PORT"); port != "" {
-			cfg.DefraDB.Url = fmt.Sprintf("http://%s:%s", host, port)
-		} else {
-			cfg.DefraDB.Url = fmt.Sprintf("http://%s:9181", host)
-		}
-	}
-
-	if keyringSecret := os.Getenv("DEFRADB_KEYRING_SECRET"); keyringSecret != "" {
-		cfg.DefraDB.KeyringSecret = keyringSecret
-	}
-
-	if p2pEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); p2pEnabled != "" {
-		// Note: P2P config would need additional parsing for bootstrap peers
-	}
-
-	if storePath := os.Getenv("DEFRADB_STORE_PATH"); storePath != "" {
-		cfg.DefraDB.Store.Path = storePath
-	}
-
 	// Geth configuration - prioritize GCP Geth node over managed node
 	// If GCP_GETH_RPC_URL is empty, fall back to your GCP node IP
 	if gcpGethRpcUrl := os.Getenv("GCP_GETH_RPC_URL"); gcpGethRpcUrl != "" {
@@ -137,13 +109,6 @@ func overrideWithEnvVars(cfg *Config) {
 	if startHeight := os.Getenv("INDEXER_START_HEIGHT"); startHeight != "" {
 		if h, err := strconv.Atoi(startHeight); err == nil {
 			cfg.Indexer.StartHeight = h
-		}
-	}
-
-	// Logger configuration
-	if loggerDebug := os.Getenv("LOGGER_DEBUG"); loggerDebug != "" {
-		if debug, err := strconv.ParseBool(loggerDebug); err == nil {
-			cfg.Logger.Development = debug
 		}
 	}
 }

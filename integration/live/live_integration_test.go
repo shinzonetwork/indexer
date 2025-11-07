@@ -63,7 +63,11 @@ func TestMain(m *testing.M) {
 		}
 
 		// Override DefraDB store path for live testing
-		cfg.DefraDB.Store.Path = "../.defra"
+		if cfg.ShinzoAppConfig == nil {
+			logger.Sugar.Error("ShinzoAppConfig is nil")
+			return
+		}
+		cfg.ShinzoAppConfig.DefraDB.Store.Path = "../.defra"
 
 		// Override Geth config with environment variables for live testing
 		cfg.Geth.NodeURL = os.Getenv("GCP_GETH_RPC_URL")
