@@ -207,11 +207,25 @@ func MakeQuery(t *testing.T, queryPath string, query string, args map[string]int
 }
 
 func testDefraDBConnection() bool {
-	resp, err := http.Get("http://localhost:9181/api/v0/schema")
+	// Use the same introspection query as waitForDefra.go
+	query := `{"query":"{ __schema { types { name } } }"}`
+	
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+	
+	req, err := http.NewRequest("POST", "http://localhost:9181/api/v0/graphql", strings.NewReader(query))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
+	
 	return resp.StatusCode == 200
 }
 

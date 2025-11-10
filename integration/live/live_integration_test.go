@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,27 +73,30 @@ func TestMain(m *testing.M) {
 		liveChainIndexer, err = indexer.CreateIndexer(cfg)
 		if err != nil {
 			logger.Sugar.Errorf("create indexer failed: %v", err)
+			return
 		}
-		err = liveChainIndexer.StartIndexing(false) // false = start embedded DefraDB
-		if err != nil {
-			logger.Sugar.Errorf("Live indexer failed: %v", err)
+
+		// Start indexer in background
+		go func() {
+			logger.Test("Starting indexer...")
+			err = liveChainIndexer.StartIndexing(false) // false = start embedded DefraDB
+			if err != nil {
+				logger.Sugar.Errorf("Live indexer failed: %v", err)
+				return
+			}
+			logger.Test("Indexer started successfully")
+		}()
+
+		// Wait for at least one block to be indexed (proves everything works)
+		logger.Test("Waiting for blocks to be indexed...")
+		if !waitForAnyBlock(60 * time.Second) {
+			logger.Sugar.Error("No blocks were indexed - test failed")
+			os.Exit(1)
 		}
+		
+		logger.Test("✅ Live integration test passed - blocks are being indexed!")
+		indexerStarted = true
 	}()
-
-	// Wait for live DefraDB to be ready
-	logger.Test("Waiting for live DefraDB to be ready...")
-	if !waitForLiveDefraDB(30 * time.Second) {
-		logger.Sugar.Error("Failed to start live DefraDB - skipping live integration tests")
-		os.Exit(1)
-	}
-	logger.Test("Live DefraDB is ready!")
-	indexerStarted = true
-
-	// Wait for some live blocks to be indexed
-	logger.Test("Waiting for live blocks to be indexed...")
-	if !waitForLiveBlocks(60 * time.Second) {
-		logger.Sugar.Warn("No live blocks indexed within timeout - tests may fail")
-	}
 
 	// Run tests
 	result := m.Run()
@@ -125,29 +129,63 @@ func checkRequiredEnvVars() bool {
 	return true
 }
 
-// waitForLiveDefraDB waits for DefraDB to be ready using the indexer's embedded port
-func waitForLiveDefraDB(timeout time.Duration) bool {
+// waitForAnyBlock waits for at least one block to be indexed
+func waitForAnyBlock(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	
 	for time.Now().Before(deadline) {
+		// Try multiple approaches to find DefraDB
+		var testURLs []string
+		
 		// Try to get the port directly from the indexer's embedded DefraDB
 		if liveChainIndexer != nil {
 			port := liveChainIndexer.GetDefraDBPort()
 			if port > 0 {
-				testURL := fmt.Sprintf("http://localhost:%d", port)
-				if resp, err := http.Get(testURL + "/api/v0/schema"); err == nil {
-					resp.Body.Close()
+				testURLs = append(testURLs, fmt.Sprintf("http://localhost:%d", port))
+			}
+		}
+		
+		// Try common DefraDB ports
+		commonPorts := []int{9181, 9180, 9182}
+		for _, port := range commonPorts {
+			testURLs = append(testURLs, fmt.Sprintf("http://localhost:%d", port))
+		}
+		
+		// Test each URL for blocks
+		for _, testURL := range testURLs {
+			query := `{"query":"{ Block { _count } }"}`
+			client := &http.Client{Timeout: 2 * time.Second}
+			
+			req, err := http.NewRequest("POST", testURL+"/api/v0/graphql", strings.NewReader(query))
+			if err == nil {
+				req.Header.Set("Content-Type", "application/json")
+				if resp, err := client.Do(req); err == nil {
 					if resp.StatusCode == 200 {
-						liveDefraURL = testURL
-						liveGraphqlURL = testURL + "/api/v0/graphql"
-						logger.Test(fmt.Sprintf("✓ DefraDB ready at %s (port %d from embedded node)", testURL, port))
-						return true
+						body, err := io.ReadAll(resp.Body)
+						resp.Body.Close()
+						if err == nil {
+							var result map[string]interface{}
+							if json.Unmarshal(body, &result) == nil {
+								if data, ok := result["data"].(map[string]interface{}); ok {
+									if block, ok := data["Block"].(map[string]interface{}); ok {
+										if count, ok := block["_count"].(float64); ok && count > 0 {
+											logger.Test(fmt.Sprintf("✅ Found %v blocks indexed at %s", count, testURL))
+											liveDefraURL = testURL
+											liveGraphqlURL = testURL + "/api/v0/graphql"
+											return true
+										}
+									}
+								}
+							}
+						}
+					} else {
+						resp.Body.Close()
 					}
 				}
 			}
 		}
 		
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 	return false
 }
