@@ -12,7 +12,7 @@ import (
 // It will retry until the endpoint responds with a valid schema or until max attempts are reached
 func WaitForDefraDB(url string) error {
 	fmt.Println("Waiting for defra...")
-	maxAttempts := 30
+	maxAttempts := 15  // Reduced to prevent excessive waiting in tests
 
 	// Construct the GraphQL endpoint URL
 	graphqlURL := strings.TrimSuffix(url, "/") + "/api/v0/graphql"
@@ -21,8 +21,9 @@ func WaitForDefraDB(url string) error {
 		Timeout: 5 * time.Second,
 	}
 
-	// GraphQL query to check if the schema is ready
-	query := `{"query":"{ Block { __typename } }"}`
+	// Simple GraphQL introspection query to check if DefraDB is ready
+	// This doesn't require any specific schema to be applied
+	query := `{"query":"{ __schema { types { name } } }"}`
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Create request
