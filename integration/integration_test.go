@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/indexer"
 	"github.com/shinzonetwork/indexer/pkg/logger"
+	"github.com/sourcenetwork/defradb/node"
 )
 
 var (
@@ -27,7 +29,7 @@ var (
 
 func TestMain(m *testing.M) {
 	// Initialize logger for integration tests first
-	logger.Init(true)
+	logger.InitWithFiles(true)
 	logger.Test("TestMain - Starting self-contained integration tests with mock data")
 
 	// Clean up any existing integration DefraDB data
@@ -71,6 +73,8 @@ func TestMain(m *testing.M) {
 			// defraURL should already be set by this point since defra starts before Ethereum connection
 			logger.Testf("Indexer failed as expected (no Ethereum connection): %v", err)
 		}
+
+		logger.Test("DefraDB node started successfully with schema applied")
 	}()
 
 	// Give the goroutine a moment to start
@@ -134,9 +138,7 @@ ready:
 
 	// Teardown
 	logger.Test("TestMain - Teardown")
-	if testChainIndexer != nil {
-		testChainIndexer.StopIndexing()
-	}
+	testChainIndexer.StopIndexing()
 
 	os.Exit(exitCode)
 }
@@ -690,4 +692,37 @@ func hasBlocks() bool {
 
 	blocks, ok := data["Block"].([]interface{})
 	return ok && len(blocks) > 0
+}
+
+// applySchema applies the GraphQL schema to DefraDB node
+func applySchema(ctx context.Context, defraNode *node.Node) error {
+	fmt.Println("Applying schema...")
+
+	// Try different possible paths for the schema file
+	possiblePaths := []string{
+		"schema/schema.graphql",       // From project root
+		"../schema/schema.graphql",    // From integration/ directory
+		"../../schema/schema.graphql", // From deeper directories
+	}
+
+	var schemaPath string
+	var err error
+	for _, path := range possiblePaths {
+		if _, err = os.Stat(path); err == nil {
+			schemaPath = path
+			break
+		}
+	}
+
+	if schemaPath == "" {
+		return fmt.Errorf("failed to find schema file in any of the expected locations: %v", possiblePaths)
+	}
+
+	schema, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read schema file: %v", err)
+	}
+
+	_, err = defraNode.DB.AddSchema(ctx, string(schema))
+	return err
 }

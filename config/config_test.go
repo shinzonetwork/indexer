@@ -10,7 +10,7 @@ import (
 func TestLoadConfig_ValidYAML(t *testing.T) {
 	// Create a temporary config file
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "test_config.yaml")
+	configPath := filepath.Join(tempDir, "config.yaml")
 
 	configContent := `
 defradb:
@@ -78,7 +78,7 @@ logger:
 func TestLoadConfig_EnvironmentOverrides(t *testing.T) {
 	// Create a temporary config file
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "test_config.yaml")
+	configPath := filepath.Join(tempDir, "config.yaml")
 
 	configContent := `
 defradb:
@@ -153,7 +153,7 @@ defradb:
 func TestLoadConfig_InvalidEnvironmentValues(t *testing.T) {
 	// Create a temporary config file
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "test_config.yaml")
+	configPath := filepath.Join(tempDir, "config.yaml")
 
 	configContent := `
 indexer:

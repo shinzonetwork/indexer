@@ -19,6 +19,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/rpc"
 	"github.com/shinzonetwork/indexer/pkg/types"
+	"github.com/sourcenetwork/defradb/node"
 )
 
 const (
@@ -35,15 +36,6 @@ const (
 var requiredPeers []string = []string{} // Here, we can consider adding any "big peers" we need - these requiredPeers can be used as a quick start point to speed up the peer discovery process
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
-
-// getGethNodeURL returns the Geth node URL from environment or fallback to public node
-func getGethNodeURL() string {
-	if gcpURL := os.Getenv("GCP_GETH_RPC_URL"); gcpURL != "" {
-		return gcpURL
-	}
-	// Fallback to public node for tests without GCP setup
-	return "https://ethereum-rpc.publicnode.com"
-}
 
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
@@ -79,12 +71,20 @@ var DefaultConfig *indexerconfig.Config = &indexerconfig.Config{
 	},
 }
 
+func getGethNodeURL() string {
+	if gcpURL := os.Getenv("GCP_GETH_RPC_URL"); gcpURL != "" {
+		return gcpURL
+	}
+	// Fallback to public node for tests without GCP setup
+	return "https://ethereum-rpc.publicnode.com"
+}
+
 type ChainIndexer struct {
 	cfg                       *indexerconfig.Config
 	shouldIndex               bool
 	isStarted                 bool
 	hasIndexedAtLeastOneBlock bool
-	defraURL                  string // Store the actual defra URL (may differ from config due to LAN IP)
+	defraNode                 *node.Node
 }
 
 func (i *ChainIndexer) IsStarted() bool {
@@ -97,7 +97,7 @@ func (i *ChainIndexer) HasIndexedAtLeastOneBlock() bool {
 
 // DefraURL returns the actual defra URL being used (may differ from config due to LAN IP replacement)
 func (i *ChainIndexer) DefraURL() string {
-	return i.defraURL
+	return i.defraNode.APIURL
 }
 
 func CreateIndexer(cfg *indexerconfig.Config) *ChainIndexer {
@@ -106,7 +106,6 @@ func CreateIndexer(cfg *indexerconfig.Config) *ChainIndexer {
 		shouldIndex:               false,
 		isStarted:                 false,
 		hasIndexedAtLeastOneBlock: false,
-		defraURL:                  "",
 	}
 }
 
@@ -139,11 +138,12 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to start defra instance: %v", err)
 		}
-		defer defraNode.Close(ctx)
+
+		// Store the defraNode reference for port access
+		i.defraNode = defraNode
 
 		// Wait for defra to be ready - use the actual API URL from the node
 		defraUrl = defraNode.APIURL
-		i.defraURL = defraUrl // Store the actual URL
 		err = defra.WaitForDefraDB(defraUrl)
 		if err != nil {
 			return err
@@ -151,7 +151,6 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	} else {
 		// Using external DefraDB - wait for it and apply schema via HTTP
 		defraUrl = cfg.DefraDB().Url
-		i.defraURL = defraUrl // Store the URL
 		err := defra.WaitForDefraDB(defraUrl)
 		if err != nil {
 			return err
@@ -159,10 +158,36 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 		err = applySchemaViaHTTP(defraUrl)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
-			return fmt.Errorf("Failed to apply schema to external DefraDB: %v", err)
+			return fmt.Errorf("failed to apply schema to external DefraDB: %v", err)
 		}
 	}
 
+	// Check if defra has any block - use actual DefraDB URL for embedded node
+	var defraURL string
+	if !defraStarted && i.defraNode != nil {
+		// Using embedded DefraDB - use the actual URL from the started node
+		defraURL = i.defraNode.APIURL
+	} else {
+		// Using external DefraDB - use the configured URL
+		defraURL = cfg.ShinzoAppConfig.DefraDB.Url
+	}
+
+	blockHandler, err := defra.NewBlockHandler(defraURL)
+	if err != nil {
+		return fmt.Errorf("failed to create block handler for block check: %v", err)
+	}
+
+	nBlock, err := blockHandler.GetHighestBlockNumber(ctx)
+	if err != nil {
+		// If no blocks exist, start from configured start height (error is expected)
+		logger.Sugar.Info("No existing blocks found, starting from configured height")
+	} else if nBlock > 0 {
+		// if yes increment by 1
+		cfg.Indexer.StartHeight = int(nBlock + 1)
+		logger.Sugar.Infof("Found existing blocks up to %d, starting from %d", nBlock, cfg.Indexer.StartHeight)
+	}
+
+	// create indexing bool
 	i.shouldIndex = true
 
 	// Connect to Ethereum client with WebSocket and HTTP support
@@ -174,7 +199,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	defer client.Close()
 
 	// Create DefraDB block handler - use the actual defra URL
-	blockHandler, err := defra.NewBlockHandler(defraUrl)
+	blockHandler, err = defra.NewBlockHandler(defraUrl)
 	if err != nil {
 		// Log with structured context
 		logCtx := errors.LogContext(err)
@@ -186,7 +211,6 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	// Get starting block number
 	nextBlockToProcess := int64(cfg.Indexer.StartHeight)
 
-	// Main indexing loop - always get latest block from Geth
 	for i.shouldIndex {
 		i.isStarted = true
 
@@ -238,19 +262,19 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	return nil
 }
 
-// getLastIndexedBlock gets the highest block number from DefraDB
-func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler) (int64, error) {
-	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
-	if err != nil {
-		// If no blocks exist, start from configured start height
-		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
-			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
-			return 23577000, nil
-		}
-		return 0, err
-	}
-	return latestBlockNum, nil
-}
+// // getLastIndexedBlock gets the highest block number from DefraDB
+// func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler, cfg *config.Config) (int64, error) {
+// 	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
+// 	if err != nil {
+// 		// If no blocks exist, start from configured start height
+// 		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
+// 			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
+// 			return int64(cfg.Indexer.StartHeight), nil
+// 		}
+// 		return 0, err
+// 	}
+// 	return latestBlockNum, nil
+// }
 
 // processBlock fetches and stores a single block with retry logic
 func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
@@ -437,6 +461,13 @@ func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
+
+	// Close embedded DefraDB node if it exists
+	if i.defraNode != nil {
+		ctx := context.Background()
+		i.defraNode.Close(ctx)
+		i.defraNode = nil
+	}
 }
 
 // findSchemaFile tries multiple paths to locate the schema file from different working directories
@@ -469,7 +500,6 @@ func applySchemaViaHTTP(defraUrl string) error {
 	if err != nil {
 		return fmt.Errorf("Failed to read schema file: %v", err)
 	}
-
 	// Apply schema via REST API endpoint
 	schemaURL := fmt.Sprintf("%s/api/v0/schema", defraUrl)
 	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer(schema))
@@ -477,7 +507,6 @@ func applySchemaViaHTTP(defraUrl string) error {
 		return fmt.Errorf("Failed to send schema: %v", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("Schema application failed with status %d: %s", resp.StatusCode, string(body))

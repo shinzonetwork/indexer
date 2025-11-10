@@ -13,9 +13,12 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/defra"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// TestIndexing_StartDefraFirst is now replaced by mock-based integration tests
+// See ./integration/ directory for comprehensive integration tests with mock data
 func TestIndexing_StartDefraFirst(t *testing.T) {
 	// Skip this test if we don't have a real Geth connection available
 	// This test requires actual blockchain connectivity
@@ -26,7 +29,7 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 	logger.InitConsoleOnly(true)
 
 	ctx := context.Background()
-	
+
 	// Use app-sdk to start defra instance for testing
 	appConfig := appdefra.DefaultConfig
 	schemaApplier := &appdefra.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"}
@@ -39,7 +42,7 @@ func TestIndexing_StartDefraFirst(t *testing.T) {
 
 	// Get the actual API URL from the defra node
 	defraUrl := indexerDefra.APIURL
-	
+
 	_, err = queryBlockNumberFromUrl(ctx, defraUrl)
 	require.Error(t, err)
 
@@ -113,15 +116,100 @@ func queryBlockNumberFromUrl(ctx context.Context, defraUrl string) (int, error) 
 }
 
 func TestIndexing(t *testing.T) {
-	// Skip this test if we don't have a real Geth connection available
-	if os.Getenv("SKIP_INTEGRATION_TESTS") != "" {
-		t.Skip("Skipping integration test - SKIP_INTEGRATION_TESTS is set")
+	t.Skip("This test has been replaced by mock-based integration tests in ./integration/ - run 'make test' for full test suite")
+}
+
+// TestCreateIndexer tests the indexer creation
+func TestCreateIndexer(t *testing.T) {
+	cfg := &config.Config{
+		ShinzoAppConfig: appdefra.DefaultConfig,
+		Indexer: config.IndexerConfig{
+			StartHeight: 100,
+		},
 	}
 
+	indexer := CreateIndexer(cfg)
+
+	assert.NotNil(t, indexer)
+	assert.Equal(t, cfg, indexer.cfg)
+	assert.False(t, indexer.shouldIndex)
+	assert.False(t, indexer.isStarted)
+	assert.False(t, indexer.hasIndexedAtLeastOneBlock)
+	assert.Nil(t, indexer.defraNode)
+}
+
+// TestIndexerStateManagement tests the state management methods
+func TestIndexerStateManagement(t *testing.T) {
+	cfg := &config.Config{
+		ShinzoAppConfig: appdefra.DefaultConfig,
+	}
+	indexer := CreateIndexer(cfg)
+
+	// Test initial state
+	assert.False(t, indexer.IsStarted())
+	assert.False(t, indexer.HasIndexedAtLeastOneBlock())
+
+	// Test state changes
+	indexer.shouldIndex = true
+	indexer.isStarted = true
+	indexer.hasIndexedAtLeastOneBlock = true
+
+	assert.True(t, indexer.IsStarted())
+	assert.True(t, indexer.HasIndexedAtLeastOneBlock())
+}
+
+// TestStopIndexing tests the stop indexing functionality
+func TestStopIndexing(t *testing.T) {
+	cfg := &config.Config{
+		ShinzoAppConfig: appdefra.DefaultConfig,
+	}
+	indexer := CreateIndexer(cfg)
+
+	// Set some state
+	indexer.shouldIndex = true
+	indexer.isStarted = true
+	indexer.hasIndexedAtLeastOneBlock = true
+
+	// Stop indexing
+	indexer.StopIndexing()
+
+	// Verify state is reset
+	assert.False(t, indexer.shouldIndex)
+	assert.False(t, indexer.isStarted)
+	// hasIndexedAtLeastOneBlock should remain true (historical fact)
+	assert.True(t, indexer.hasIndexedAtLeastOneBlock)
+}
+
+// TestGetEnvOrDefault tests the environment variable helper function
+func TestGetEnvOrDefault(t *testing.T) {
+	// Test with non-existent env var
+	result := getEnvOrDefault("NON_EXISTENT_VAR", "default_value")
+	assert.Equal(t, "default_value", result)
+
+	// Test with existing env var
+	os.Setenv("TEST_VAR", "test_value")
+	defer os.Unsetenv("TEST_VAR")
+
+	result = getEnvOrDefault("TEST_VAR", "default_value")
+	assert.Equal(t, "test_value", result)
+}
+
+// TestConstants tests the defined constants
+func TestConstants(t *testing.T) {
+	assert.Equal(t, 10, DefaultBlocksToIndexAtOnce)
+	assert.Equal(t, 3, DefaultRetryAttempts)
+	assert.Equal(t, 15*time.Second, DefaultSchemaWaitTimeout)
+	assert.Equal(t, 30*time.Second, DefaultDefraReadyTimeout)
+	assert.Equal(t, 3, DefaultBlockOffset)
+	assert.Equal(t, "/ip4/127.0.0.1/tcp/9171", defaultListenAddress)
+}
+
+// TestConvertGethBlockToDefraBlock tests block conversion
+func TestConvertGethBlockToDefraBlock(t *testing.T) {
 	logger.InitConsoleOnly(true)
 
 	ctx := context.Background()
-	
+
 	// Use app-sdk to start defra instance for testing
 	appConfig := appdefra.DefaultConfig
 	schemaApplier := &appdefra.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"}

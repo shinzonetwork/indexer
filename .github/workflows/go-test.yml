@@ -31,4 +31,11 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Run tests
+      env:
+        GCP_GETH_RPC_URL: ${{ secrets.GCP_GETH_RPC_URL }}
+        GCP_GETH_WS_URL: ${{ secrets.GCP_GETH_WS_URL }}
+        GCP_GETH_API_KEY: ${{ secrets.GCP_GETH_API_KEY }}
+        DEFRADB_URL: http://localhost:9181
+        DEFRADB_PLAYGROUND: true
+        LOGGER_DEBUG: false
       run: go test ./...

@@ -25,9 +25,9 @@ type IndexerConfig struct {
 
 // Config represents the main configuration structure
 type Config struct {
-	ShinzoAppConfig *config.Config  // Embedded app-sdk config for defra
-	Geth            GethConfig    `yaml:"geth"`
-	Indexer         IndexerConfig `yaml:"indexer"`
+	ShinzoAppConfig *config.Config // Embedded app-sdk config for defra
+	Geth            GethConfig     `yaml:"geth"`
+	Indexer         IndexerConfig  `yaml:"indexer"`
 }
 
 // DefraDBConfig provides backward compatibility access to defradb config

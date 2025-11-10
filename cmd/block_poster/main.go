@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config/test.yaml", "Path to configuration file")
+	configPath := flag.String("config", "config/config.yaml", "Path to configuration file")
 	flag.Parse()
 
 	// Load configuration
@@ -27,4 +27,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-

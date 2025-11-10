@@ -64,8 +64,7 @@ func Testf(template string, args ...interface{}) {
 
 // Init initializes logger with default behavior (files enabled unless NO_LOG_FILES env var is set)
 func Init(development bool) {
-	enableFiles := os.Getenv("NO_LOG_FILES") == ""
-	initLogger(development, enableFiles)
+	initLogger(development, true)
 }
 
 func initLogger(development bool, enableFiles bool) {
