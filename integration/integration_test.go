@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 	logger.Test("Starting embedded DefraDB for mock data testing...")
 	go func() {
 		ctx := context.Background()
-		
+
 		// Create DefraDB node directly without indexer
 		options := []node.Option{
 			node.WithDisableAPI(false),
@@ -51,24 +51,24 @@ func TestMain(m *testing.M) {
 			node.WithStorePath("./.defra/data"),
 			defrahttp.WithAddress("127.0.0.1:9181"),
 		}
-		
+
 		var err error
 		defraNode, err = node.New(ctx, options...)
 		if err != nil {
 			logger.Sugar.Fatalf("Failed to create DefraDB node: %v", err)
 		}
-		
+
 		err = defraNode.Start(ctx)
 		if err != nil {
 			logger.Sugar.Fatalf("Failed to start DefraDB node: %v", err)
 		}
-		
+
 		// Apply schema to DefraDB
 		err = applySchema(ctx, defraNode)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
 			logger.Sugar.Fatalf("Failed to apply schema: %v", err)
 		}
-		
+
 		logger.Test("DefraDB node started successfully with schema applied")
 	}()
 
@@ -207,12 +207,33 @@ func MakeQuery(t *testing.T, queryPath string, query string, args map[string]int
 }
 
 func testDefraDBConnection() bool {
-	resp, err := http.Get("http://localhost:9181/api/v0/schema")
+	// GraphQL query to check if the schema is ready (same as WaitForDefraDB)
+	query := `{"query":"{ Block { __typename } }"}`
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		graphqlURL,
+		strings.NewReader(query),
+	)
+	if err != nil {
+		return false
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make request
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == 200
+
+	return resp.StatusCode == http.StatusOK
 }
 
 func insertMockData() error {
