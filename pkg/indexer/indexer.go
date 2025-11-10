@@ -20,8 +20,9 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/server"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
-	defrahttp "github.com/sourcenetwork/defradb/http"
 	"github.com/sourcenetwork/defradb/node"
+	
+	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
 )
 
 const (
@@ -101,33 +102,22 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	}
 
 	if !defraStarted {
-		// Enable GraphQL playground based on config
-		defrahttp.PlaygroundEnabled = cfg.DefraDB.Playground
-
-		options := []node.Option{
-			node.WithDisableAPI(false),
-			node.WithDisableP2P(true), // Disable P2P for now
-			node.WithStorePath(cfg.DefraDB.Store.Path),
-			defrahttp.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
-		}
-
-		defraNode, err := node.New(ctx, options...)
+		// Use app-sdk to start DefraDB instance with persistent keys
+		// Convert indexer config to app-sdk config
+		appCfg := appsdk.DefaultConfig
+		appCfg.DefraDB.Store.Path = cfg.DefraDB.Store.Path
+		appCfg.DefraDB.Url = cfg.DefraDB.Url
+		appCfg.DefraDB.KeyringSecret = cfg.DefraDB.KeyringSecret
+		appCfg.DefraDB.P2P.BootstrapPeers = cfg.DefraDB.P2P.BootstrapPeers
+		
+		schemaApplier := &appsdk.SchemaApplierFromFile{}
+		defraNode, err := appsdk.StartDefraInstance(appCfg, schemaApplier)
 		if err != nil {
-			return fmt.Errorf("Failed to create defra node %v: ", err)
-		}
-
-		err = defraNode.Start(ctx)
-		if err != nil {
-			return fmt.Errorf("Failed to start defra node %v: ", err)
+			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
 		}
 
 		// Store the defraNode reference for port access
 		i.defraNode = defraNode
-
-		err = applySchema(ctx, defraNode)
-		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
-			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
-		}
 
 		// Use the actual DefraDB URL from the started node, not the config URL
 		actualDefraURL := defraNode.APIURL
