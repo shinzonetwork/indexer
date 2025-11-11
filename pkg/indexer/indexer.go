@@ -125,6 +125,10 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			appCfg.DefraDB.P2P.ListenAddr, appCfg.DefraDB.P2P.BootstrapPeers)
 		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t", 
 			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
+		err := defraNode.DB.AddP2PCollections(ctx, "Block", "Transaction", "AccessListEntry", "Log")
+		if err != nil {
+			return fmt.Errorf("failed to add P2P collections: %w", err)
+		}
 
 		defraNode, err := appsdk.StartDefraInstance(&appCfg,
 			&appsdk.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"},
@@ -142,6 +146,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		if err != nil {
 			return err
 		}
+
 	} else {
 		// Using external DefraDB - wait for it and apply schema via HTTP
 		err := defra.WaitForDefraDB(cfg.DefraDB.Url)
@@ -534,5 +539,25 @@ func applySchemaViaHTTP(defraUrl string) error {
 	}
 
 	fmt.Println("Schema applied successfully!")
+	return nil
+}
+
+// setupP2PReplication configures automatic P2P replication for all collections
+func (i *ChainIndexer) setupP2PReplication(defraNode *node.Node) error {
+	ctx := context.Background()
+	logger.Sugar.Info("Setting up P2P auto-replication for collections")
+	
+	// Add P2P collections for passive replication - this enables automatic publishing
+	// of new documents to connected peers via pubsub topics
+	collections := []string{"Block", "Transaction", "AccessListEntry", "Log"}
+	
+	err := defraNode.DB.AddP2PCollections(ctx, collections...)
+	if err != nil {
+		return fmt.Errorf("failed to add P2P collections: %w", err)
+	}
+	
+	logger.Sugar.Infof("✅ P2P collections configured: %v", collections)
+	logger.Sugar.Info("New documents will be automatically published to connected peers")
+	
 	return nil
 }
