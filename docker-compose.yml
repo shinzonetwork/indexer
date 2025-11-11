@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Shinzo Network Ethereum Indexer
+  # Shinzo Network Ethereum Indexer - VM Optimized
   indexer:
     build:
       context: .
@@ -12,8 +12,19 @@ services:
         VERSION: ${VERSION:-dev}
     container_name: shinzo-indexer
     restart: unless-stopped
+    
+    # Resource limits for VM deployment
+    deploy:
+      resources:
+        limits:
+          cpus: '${INDEXER_CPU_LIMIT:-2.0}'
+          memory: ${INDEXER_MEMORY_LIMIT:-4G}
+        reservations:
+          cpus: '${INDEXER_CPU_RESERVE:-1.0}'
+          memory: ${INDEXER_MEMORY_RESERVE:-2G}
+    
     environment:
-      # DefraDB Configuration (empty for embedded mode)
+      # DefraDB Configuration (embedded mode for VM)
       - DEFRADB_URL=
       - DEFRADB_KEYRING_SECRET=${DEFRADB_KEYRING_SECRET:-}
       
@@ -24,32 +35,48 @@ services:
       
       # Indexer Configuration
       - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-23000000}
+      - INDEXER_WORKERS=${INDEXER_WORKERS:-4}
+      - INDEXER_BATCH_SIZE=${INDEXER_BATCH_SIZE:-100}
       
-      - LOGGER_DEBUG=false
-      # Logging
+      # Logging Configuration
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOGGER_DEBUG=${LOGGER_DEBUG:-false}
+      
+      # VM-specific optimizations
+      - GOMAXPROCS=${GOMAXPROCS:-4}
+      - GOGC=${GOGC:-100}
+    
     volumes:
       # Persistent storage for DefraDB (embedded mode)
       - defradb_data:/app/.defra
-      # Logs
+      # Logs with rotation
       - ./logs:/app/logs
-      # Configuration (for development overrides)
+      # Configuration (read-only)
       - ./config:/app/config:ro
+      # Temporary files (tmpfs for performance)
+      - tmpfs:/tmp:noexec,nosuid,size=1G
+    
     ports:
-      - "8080:8080"  # Health check and metrics endpoint
-      - "9171:9171"  # DefraDB P2P port (if using embedded mode)
+      - "8080:8080"   # Health check and metrics endpoint
+      - "9171:9171"   # DefraDB P2P port
+      - "9181:9181"   # DefraDB GraphQL API endpoint
+    
     networks:
       - shinzo-network
+    
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.indexer.rule=Host(`indexer.localhost`)"
-      - "traefik.http.services.indexer.loadbalancer.server.port=8080"
+    
+    # VM-specific logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
 
   # Note: DefraDB runs in embedded mode within the indexer
   # Uncomment the section below if you want to run DefraDB as a separate service
@@ -75,59 +102,128 @@ services:
   #     retries: 3
   #     start_period: 30s
 
-  # Monitoring - Prometheus (Optional)
+  # Monitoring - Prometheus (VM Optimized)
   prometheus:
     image: prom/prometheus:latest
     container_name: shinzo-prometheus
     restart: unless-stopped
+    
+    # Resource limits for VM
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 512M
+    
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-168h}'  # 7 days default for VM
+      - '--storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-10GB}'
       - '--web.enable-lifecycle'
+      - '--web.external-url=http://${VM_EXTERNAL_IP:-localhost}:9090'
+    
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
+    
     ports:
       - "9090:9090"
+    
     networks:
       - shinzo-network
+    
     profiles:
       - monitoring
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
-  # Monitoring - Grafana (Optional)
+  # Monitoring - Grafana (VM Optimized)
   grafana:
     image: grafana/grafana:latest
     container_name: shinzo-grafana
     restart: unless-stopped
+    
+    # Resource limits for VM
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://${VM_EXTERNAL_IP:-localhost}:3000
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_USERS_DEFAULT_THEME=${GRAFANA_THEME:-dark}
+    
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    
     ports:
       - "3000:3000"
+    
     networks:
       - shinzo-network
+    
     profiles:
       - monitoring
+    
     depends_on:
       - prometheus
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
 volumes:
+  # VM-optimized volume configurations
   defradb_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DEFRADB_DATA_PATH:-./data/defradb}
+  
   prometheus_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PROMETHEUS_DATA_PATH:-./data/prometheus}
+  
   grafana_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${GRAFANA_DATA_PATH:-./data/grafana}
 
 networks:
+  # Simplified networking for VM deployment
   shinzo-network:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: shinzo-br0
     ipam:
+      driver: default
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1
