@@ -123,6 +123,10 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			&appDefra.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"},
 			"Block", "Transaction", "AccessListEntry", "Log")
 
+		if err != nil {
+			panic(err)
+		}
+
 		// Use the actual DefraDB URL from the started node, not the config URL
 		actualDefraURL := defraNode.APIURL
 		err = defra.WaitForDefraDB(actualDefraURL)
