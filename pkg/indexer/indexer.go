@@ -125,10 +125,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			appCfg.DefraDB.P2P.ListenAddr, appCfg.DefraDB.P2P.BootstrapPeers)
 		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t", 
 			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
-		err := defraNode.DB.AddP2PCollections(ctx, "Block", "Transaction", "AccessListEntry", "Log")
-		if err != nil {
-			return fmt.Errorf("failed to add P2P collections: %w", err)
-		}
+
 
 		defraNode, err := appsdk.StartDefraInstance(&appCfg,
 			&appsdk.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"},
@@ -136,7 +133,10 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		if err != nil {
 			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
 		}
-
+		err = defraNode.DB.AddP2PCollections(ctx, "Block", "Transaction", "AccessListEntry", "Log")
+		if err != nil {
+			return fmt.Errorf("failed to add P2P collections: %w", err)
+		}
 		// Store the defraNode reference for port access
 		i.defraNode = defraNode
 
