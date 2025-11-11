@@ -51,8 +51,13 @@ RUN set -ex && \
     mv "wasmtime-v15.0.1-${WASMTIME_ARCH}-linux/wasmtime" /usr/local/bin/ && \
     chmod +x /usr/local/bin/wasmtime && \
     rm -rf wasmtime* && \
-    # Install Wasmer
-    wget -O wasmer.tar.gz "https://github.com/wasmerio/wasmer/releases/download/v4.2.5/wasmer-linux-${WASMTIME_ARCH}.tar.gz" && \
+    # Install Wasmer (use correct URL format)
+    if [ "$WASMTIME_ARCH" = "x86_64" ]; then \
+        WASMER_URL="https://github.com/wasmerio/wasmer/releases/download/v4.2.5/wasmer-linux-amd64.tar.gz"; \
+    else \
+        WASMER_URL="https://github.com/wasmerio/wasmer/releases/download/v4.2.5/wasmer-linux-aarch64.tar.gz"; \
+    fi && \
+    wget -O wasmer.tar.gz "$WASMER_URL" && \
     tar -xf wasmer.tar.gz && \
     mv bin/wasmer /usr/local/bin/ && \
     mv lib/* /usr/local/lib/ && \
@@ -146,8 +151,8 @@ USER indexer
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Expose health check port
-EXPOSE 8080
+# Expose ports health, p2p, graphql
+EXPOSE 8080 9171 9181
 
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
