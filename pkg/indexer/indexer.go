@@ -23,6 +23,7 @@ import (
 	"github.com/sourcenetwork/defradb/node"
 	
 	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
+	appConfig "github.com/shinzonetwork/app-sdk/pkg/config"
 )
 
 const (
@@ -104,21 +105,30 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	if !defraStarted {
 		// Use app-sdk to start DefraDB instance with persistent keys
 		// Convert indexer config to app-sdk config
-		appCfg := appsdk.DefaultConfig
-		appCfg.DefraDB.Store.Path = cfg.DefraDB.Store.Path
-		appCfg.DefraDB.Url = cfg.DefraDB.Url
-		appCfg.DefraDB.KeyringSecret = cfg.DefraDB.KeyringSecret
-		appCfg.DefraDB.P2P.BootstrapPeers = cfg.DefraDB.P2P.BootstrapPeers
-		appCfg.DefraDB.P2P.ListenAddr = cfg.DefraDB.P2P.ListenAddr
+		appCfg := appConfig.Config{
+			DefraDB: appConfig.DefraDBConfig{
+				Url:           cfg.DefraDB.Url,
+				KeyringSecret: cfg.DefraDB.KeyringSecret,
+				P2P: appConfig.DefraP2PConfig{
+					BootstrapPeers: cfg.DefraDB.P2P.BootstrapPeers,
+					ListenAddr:     cfg.DefraDB.P2P.ListenAddr,
+				},
+				Store: appConfig.DefraStoreConfig{
+					Path: cfg.DefraDB.Store.Path,
+				},
+			},
+		}
 		// Note: app-sdk P2P config has no Enabled field - P2P should be enabled by ListenAddr
 		
 		// Debug: Log the P2P configuration being passed to app-sdk
-		logger.Sugar.Infof("P2P Config - ListenAddr: %s, BootstrapPeers: %v", 
+		logger.Sugar.Warnf("=== P2P DEBUG === ListenAddr: '%s', BootstrapPeers: %v", 
 			appCfg.DefraDB.P2P.ListenAddr, appCfg.DefraDB.P2P.BootstrapPeers)
-		schemaApplier := &appsdk.SchemaApplierFromFile{
-			DefaultPath: "schema/schema.graphql",
-		}
-		defraNode, err := appsdk.StartDefraInstance(appCfg, schemaApplier)
+		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t", 
+			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
+
+		defraNode, err := appsdk.StartDefraInstance(&appCfg,
+			&appsdk.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"},
+			"Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {
 			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
 		}
