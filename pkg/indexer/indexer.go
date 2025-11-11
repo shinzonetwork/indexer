@@ -109,8 +109,15 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		appCfg.DefraDB.Url = cfg.DefraDB.Url
 		appCfg.DefraDB.KeyringSecret = cfg.DefraDB.KeyringSecret
 		appCfg.DefraDB.P2P.BootstrapPeers = cfg.DefraDB.P2P.BootstrapPeers
+		appCfg.DefraDB.P2P.ListenAddr = cfg.DefraDB.P2P.ListenAddr
+		// Note: app-sdk P2P config has no Enabled field - P2P should be enabled by ListenAddr
 		
-		schemaApplier := &appsdk.SchemaApplierFromFile{}
+		// Debug: Log the P2P configuration being passed to app-sdk
+		logger.Sugar.Infof("P2P Config - ListenAddr: %s, BootstrapPeers: %v", 
+			appCfg.DefraDB.P2P.ListenAddr, appCfg.DefraDB.P2P.BootstrapPeers)
+		schemaApplier := &appsdk.SchemaApplierFromFile{
+			DefaultPath: "schema/schema.graphql",
+		}
 		defraNode, err := appsdk.StartDefraInstance(appCfg, schemaApplier)
 		if err != nil {
 			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
