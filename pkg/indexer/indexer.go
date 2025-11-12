@@ -3,6 +3,7 @@ package indexer
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math/big"
@@ -21,6 +22,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/types"
 
 	"github.com/sourcenetwork/defradb/node"
+	"github.com/libp2p/go-libp2p/core/peer"
 	
 	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
 	appConfig "github.com/shinzonetwork/app-sdk/pkg/config"
@@ -487,6 +489,63 @@ func (i *ChainIndexer) GetLastProcessedTime() time.Time {
 	i.mutex.RLock()
 	defer i.mutex.RUnlock()
 	return i.lastProcessedTime
+}
+
+// GetPeerInfo returns DefraDB P2P network information
+func (i *ChainIndexer) GetPeerInfo() *server.P2PInfo {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+	
+	// If no embedded DefraDB node, return nil
+	if i.defraNode == nil {
+		return nil
+	}
+	
+	// Get peer information from DefraDB
+	peerInfo := i.defraNode.DB.PeerInfo()
+	
+	// Convert addresses to string slice
+	addresses := make([]string, len(peerInfo.Addresses))
+	for idx, addr := range peerInfo.Addresses {
+		addresses[idx] = addr
+	}
+	
+	// Extract public key from PeerID (libp2p PeerID is derived from public key)
+	publicKey := extractPublicKeyFromPeerID(peerInfo.ID)
+	
+	return &server.P2PInfo{
+		PeerID:    peerInfo.ID,
+		PublicKey: publicKey,
+		Addresses: addresses,
+		Enabled:   len(peerInfo.Addresses) > 0, // P2P is enabled if we have addresses
+	}
+}
+
+// extractPublicKeyFromPeerID attempts to extract the public key from a libp2p PeerID
+func extractPublicKeyFromPeerID(peerID string) string {
+	// Parse the PeerID string into a libp2p peer.ID
+	id, err := peer.Decode(peerID)
+	if err != nil {
+		logger.Sugar.Warnf("Failed to decode PeerID %s: %v", peerID, err)
+		return ""
+	}
+	
+	// Extract the public key from the PeerID
+	pubKey, err := id.ExtractPublicKey()
+	if err != nil {
+		logger.Sugar.Warnf("Failed to extract public key from PeerID %s: %v", peerID, err)
+		return ""
+	}
+	
+	// Convert public key to bytes and then to hex string
+	pubKeyBytes, err := pubKey.Raw()
+	if err != nil {
+		logger.Sugar.Warnf("Failed to get raw bytes from public key: %v", err)
+		return ""
+	}
+	
+	// Return hex-encoded public key
+	return hex.EncodeToString(pubKeyBytes)
 }
 
 // updateBlockInfo updates the current block and last processed time

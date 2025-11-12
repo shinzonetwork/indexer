@@ -22,6 +22,15 @@ type HealthChecker interface {
 	IsHealthy() bool
 	GetCurrentBlock() int64
 	GetLastProcessedTime() time.Time
+	GetPeerInfo() *P2PInfo
+}
+
+// P2PInfo represents DefraDB P2P network information
+type P2PInfo struct {
+	PeerID    string   `json:"peer_id"`
+	PublicKey string   `json:"public_key,omitempty"`
+	Addresses []string `json:"addresses"`
+	Enabled   bool     `json:"enabled"`
 }
 
 // HealthResponse represents the health check response
@@ -32,6 +41,7 @@ type HealthResponse struct {
 	LastProcessed    time.Time `json:"last_processed,omitempty"`
 	DefraDBConnected bool      `json:"defradb_connected"`
 	Uptime           string    `json:"uptime"`
+	P2P              *P2PInfo  `json:"p2p,omitempty"`
 }
 
 // MetricsResponse represents basic metrics
@@ -97,6 +107,7 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	if hs.indexer != nil {
 		response.CurrentBlock = hs.indexer.GetCurrentBlock()
 		response.LastProcessed = hs.indexer.GetLastProcessedTime()
+		response.P2P = hs.indexer.GetPeerInfo()
 		
 		if !hs.indexer.IsHealthy() {
 			response.Status = "unhealthy"
@@ -139,6 +150,7 @@ func (hs *HealthServer) readinessHandler(w http.ResponseWriter, r *http.Request)
 	if hs.indexer != nil {
 		response.CurrentBlock = hs.indexer.GetCurrentBlock()
 		response.LastProcessed = hs.indexer.GetLastProcessedTime()
+		response.P2P = hs.indexer.GetPeerInfo()
 	}
 
 	if !ready {
