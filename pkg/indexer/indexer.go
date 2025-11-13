@@ -18,6 +18,7 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/errors"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/rpc"
+	"github.com/shinzonetwork/indexer/pkg/schema"
 	"github.com/shinzonetwork/indexer/pkg/server"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
@@ -582,18 +583,10 @@ func findSchemaFile() (string, error) {
 func applySchemaViaHTTP(defraUrl string) error {
 	fmt.Println("Applying schema via HTTP...")
 
-	schemaPath, err := findSchemaFile()
-	if err != nil {
-		return err
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("Failed to read schema file: %v", err)
-	}
+	schema := schema.GetSchema()
 	// Apply schema via REST API endpoint
 	schemaURL := fmt.Sprintf("%s/api/v0/schema", defraUrl)
-	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer(schema))
+	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer([]byte(schema)))
 	if err != nil {
 		return fmt.Errorf("Failed to send schema: %v", err)
 	}
