@@ -8,7 +8,6 @@ import (
 	"io"
 	"math/big"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -130,7 +129,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
 
 		defraNode, err := appsdk.StartDefraInstance(&appCfg,
-			&appsdk.SchemaApplierFromFile{DefaultPath: "pkg/schema/schema.graphql"},
+			appsdk.NewSchemaApplierFromProvidedSchema(schema.GetSchema()),
 			"Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {
 			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
@@ -410,38 +409,6 @@ func parseBlockNumber(hexStr string) (int64, error) {
 	return blockNum.Int64(), nil
 }
 
-func applySchema(ctx context.Context, defraNode *node.Node) error {
-	fmt.Println("Applying schema...")
-
-	// Try different possible paths for the schema file
-	possiblePaths := []string{
-		"pkg/schema/schema.graphql",       // From project root
-		"../pkg/schema/schema.graphql",    // From bin/ directory
-		"../../pkg/schema/schema.graphql", // From pkg/host/ directory - test context
-	}
-
-	var schemaPath string
-	var err error
-	for _, path := range possiblePaths {
-		if _, err = os.Stat(path); err == nil {
-			schemaPath = path
-			break
-		}
-	}
-
-	if schemaPath == "" {
-		return fmt.Errorf("Failed to find schema file in any of the expected locations: %v", possiblePaths)
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("Failed to read schema file: %v", err)
-	}
-
-	_, err = defraNode.DB.AddSchema(ctx, string(schema))
-	return err
-}
-
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
@@ -561,23 +528,6 @@ func (i *ChainIndexer) updateBlockInfo(blockNum int64) {
 	defer i.mutex.Unlock()
 	i.currentBlock = blockNum
 	i.lastProcessedTime = time.Now()
-}
-
-func findSchemaFile() (string, error) {
-	schemaPaths := []string{
-		"pkg/schema/schema.graphql",          // From project root
-		"../pkg/schema/schema.graphql",       // From subdirectory (like integration/)
-		"../../pkg/schema/schema.graphql",    // From deeper subdirectory (like integration/live/)
-		"../../../pkg/schema/schema.graphql", // From even deeper directories
-	}
-
-	for _, path := range schemaPaths {
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-	}
-
-	return "", fmt.Errorf("Failed to find schema file. Tried paths: %v", schemaPaths)
 }
 
 func applySchemaViaHTTP(defraUrl string) error {

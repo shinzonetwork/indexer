@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shinzonetwork/indexer/pkg/logger"
+	"github.com/shinzonetwork/indexer/pkg/schema"
 	defrahttp "github.com/sourcenetwork/defradb/http"
 	"github.com/sourcenetwork/defradb/node"
 )
@@ -677,31 +678,6 @@ func hasBlocks() bool {
 func applySchema(ctx context.Context, defraNode *node.Node) error {
 	fmt.Println("Applying schema...")
 
-	// Try different possible paths for the schema file
-	possiblePaths := []string{
-		"pkg/schema/schema.graphql",       // From project root
-		"../pkg/schema/schema.graphql",    // From integration/ directory
-		"../../pkg/schema/schema.graphql", // From deeper directories
-	}
-
-	var schemaPath string
-	var err error
-	for _, path := range possiblePaths {
-		if _, err = os.Stat(path); err == nil {
-			schemaPath = path
-			break
-		}
-	}
-
-	if schemaPath == "" {
-		return fmt.Errorf("failed to find schema file in any of the expected locations: %v", possiblePaths)
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("failed to read schema file: %v", err)
-	}
-
-	_, err = defraNode.DB.AddSchema(ctx, string(schema))
+	_, err := defraNode.DB.AddSchema(ctx, schema.GetSchema())
 	return err
 }
