@@ -491,33 +491,40 @@ func (i *ChainIndexer) GetLastProcessedTime() time.Time {
 }
 
 // GetPeerInfo returns DefraDB P2P network information
-func (i *ChainIndexer) GetPeerInfo() *server.P2PInfo {
+func (i *ChainIndexer) GetPeerInfo() (*server.P2PInfo, error) {
 	i.mutex.RLock()
 	defer i.mutex.RUnlock()
 
 	// If no embedded DefraDB node, return nil
 	if i.defraNode == nil {
-		return nil
+		return nil, nil
 	}
 
 	// Get peer information from DefraDB
-	peerInfo := i.defraNode.DB.PeerInfo()
+	peerInfoString, err := i.defraNode.DB.PeerInfo()
+	if err != nil {
+		return nil, fmt.Errorf("error fetching peer info: %w", err)
+	}
+	peerInfo, errors := appsdk.BootstrapIntoPeers(peerInfoString)
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("error turning bootstrap peer strings into peer info objects: %v", errors)
+	}
 
 	// Convert addresses to string slice
-	addresses := make([]string, len(peerInfo.Addresses))
-	for idx, addr := range peerInfo.Addresses {
-		addresses[idx] = addr
+	serverPeerInfo := make([]server.PeerInfo, len(peerInfo))
+	for idx, peer := range peerInfo {
+		publicKey := extractPublicKeyFromPeerID(peer.ID)
+		serverPeerInfo[idx] = server.PeerInfo{
+			ID:        peer.ID,
+			Addresses: peer.Addresses,
+			PublicKey: publicKey,
+		}
 	}
-
-	// Extract public key from PeerID (libp2p PeerID is derived from public key)
-	publicKey := extractPublicKeyFromPeerID(peerInfo.ID)
 
 	return &server.P2PInfo{
-		PeerID:    peerInfo.ID,
-		PublicKey: publicKey,
-		Addresses: addresses,
-		Enabled:   len(peerInfo.Addresses) > 0, // P2P is enabled if we have addresses
-	}
+		PeerInfo: serverPeerInfo,
+		Enabled:  len(peerInfo) > 0, // P2P is enabled if we have addresses
+	}, nil
 }
 
 // extractPublicKeyFromPeerID attempts to extract the public key from a libp2p PeerID
