@@ -21,11 +21,11 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/server"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
-	"github.com/sourcenetwork/defradb/node"
 	"github.com/libp2p/go-libp2p/core/peer"
-	
-	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
+	"github.com/sourcenetwork/defradb/node"
+
 	appConfig "github.com/shinzonetwork/app-sdk/pkg/config"
+	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
 )
 
 const (
@@ -121,16 +121,15 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			},
 		}
 		// Note: app-sdk P2P config has no Enabled field - P2P should be enabled by ListenAddr
-		
+
 		// Debug: Log the P2P configuration being passed to app-sdk
-		logger.Sugar.Warnf("=== P2P DEBUG === ListenAddr: '%s', BootstrapPeers: %v", 
+		logger.Sugar.Warnf("=== P2P DEBUG === ListenAddr: '%s', BootstrapPeers: %v",
 			appCfg.DefraDB.P2P.ListenAddr, appCfg.DefraDB.P2P.BootstrapPeers)
-		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t", 
+		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t",
 			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
 
-
 		defraNode, err := appsdk.StartDefraInstance(&appCfg,
-			&appsdk.SchemaApplierFromFile{DefaultPath: "schema/schema.graphql"},
+			&appsdk.SchemaApplierFromFile{DefaultPath: "pkg/schema/schema.graphql"},
 			"Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {
 			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
@@ -415,9 +414,9 @@ func applySchema(ctx context.Context, defraNode *node.Node) error {
 
 	// Try different possible paths for the schema file
 	possiblePaths := []string{
-		"schema/schema.graphql",       // From project root
-		"../schema/schema.graphql",    // From bin/ directory
-		"../../schema/schema.graphql", // From pkg/host/ directory - test context
+		"pkg/schema/schema.graphql",       // From project root
+		"../pkg/schema/schema.graphql",    // From bin/ directory
+		"../../pkg/schema/schema.graphql", // From pkg/host/ directory - test context
 	}
 
 	var schemaPath string
@@ -495,24 +494,24 @@ func (i *ChainIndexer) GetLastProcessedTime() time.Time {
 func (i *ChainIndexer) GetPeerInfo() *server.P2PInfo {
 	i.mutex.RLock()
 	defer i.mutex.RUnlock()
-	
+
 	// If no embedded DefraDB node, return nil
 	if i.defraNode == nil {
 		return nil
 	}
-	
+
 	// Get peer information from DefraDB
 	peerInfo := i.defraNode.DB.PeerInfo()
-	
+
 	// Convert addresses to string slice
 	addresses := make([]string, len(peerInfo.Addresses))
 	for idx, addr := range peerInfo.Addresses {
 		addresses[idx] = addr
 	}
-	
+
 	// Extract public key from PeerID (libp2p PeerID is derived from public key)
 	publicKey := extractPublicKeyFromPeerID(peerInfo.ID)
-	
+
 	return &server.P2PInfo{
 		PeerID:    peerInfo.ID,
 		PublicKey: publicKey,
@@ -529,21 +528,21 @@ func extractPublicKeyFromPeerID(peerID string) string {
 		logger.Sugar.Warnf("Failed to decode PeerID %s: %v", peerID, err)
 		return ""
 	}
-	
+
 	// Extract the public key from the PeerID
 	pubKey, err := id.ExtractPublicKey()
 	if err != nil {
 		logger.Sugar.Warnf("Failed to extract public key from PeerID %s: %v", peerID, err)
 		return ""
 	}
-	
+
 	// Convert public key to bytes and then to hex string
 	pubKeyBytes, err := pubKey.Raw()
 	if err != nil {
 		logger.Sugar.Warnf("Failed to get raw bytes from public key: %v", err)
 		return ""
 	}
-	
+
 	// Return hex-encoded public key
 	return hex.EncodeToString(pubKeyBytes)
 }
@@ -558,10 +557,10 @@ func (i *ChainIndexer) updateBlockInfo(blockNum int64) {
 
 func findSchemaFile() (string, error) {
 	schemaPaths := []string{
-		"schema/schema.graphql",          // From project root
-		"../schema/schema.graphql",       // From subdirectory (like integration/)
-		"../../schema/schema.graphql",    // From deeper subdirectory (like integration/live/)
-		"../../../schema/schema.graphql", // From even deeper directories
+		"pkg/schema/schema.graphql",          // From project root
+		"../pkg/schema/schema.graphql",       // From subdirectory (like integration/)
+		"../../pkg/schema/schema.graphql",    // From deeper subdirectory (like integration/live/)
+		"../../../pkg/schema/schema.graphql", // From even deeper directories
 	}
 
 	for _, path := range schemaPaths {
@@ -605,18 +604,18 @@ func applySchemaViaHTTP(defraUrl string) error {
 func (i *ChainIndexer) setupP2PReplication(defraNode *node.Node) error {
 	ctx := context.Background()
 	logger.Sugar.Info("Setting up P2P auto-replication for collections")
-	
+
 	// Add P2P collections for passive replication - this enables automatic publishing
 	// of new documents to connected peers via pubsub topics
 	collections := []string{"Block", "Transaction", "AccessListEntry", "Log"}
-	
+
 	err := defraNode.DB.AddP2PCollections(ctx, collections...)
 	if err != nil {
 		return fmt.Errorf("failed to add P2P collections: %w", err)
 	}
-	
+
 	logger.Sugar.Infof("✅ P2P collections configured: %v", collections)
 	logger.Sugar.Info("New documents will be automatically published to connected peers")
-	
+
 	return nil
 }
