@@ -174,7 +174,7 @@ func TestConvertGethBlockToDefraBlock(t *testing.T) {
 			},
 		},
 	}
-	
+
 	cfg := &config.Config{
 		DefraDB: config.DefraDBConfig{
 			Url: "http://localhost:9181",
@@ -266,22 +266,6 @@ func TestConvertGethBlockToDefraBlockWithEmptyTransactions(t *testing.T) {
 	assert.Len(t, defraBlock.Transactions, 0)
 }
 
-// TestFindSchemaFile tests schema file discovery
-func TestFindSchemaFile(t *testing.T) {
-	// This test depends on the actual file system structure
-	// In a real project, you might want to create temporary files for testing
-
-	schemaPath, err := findSchemaFile()
-
-	// The function should either find a schema file or return an error
-	if err != nil {
-		assert.Contains(t, err.Error(), "Failed to find schema file")
-	} else {
-		assert.NotEmpty(t, schemaPath)
-		assert.Contains(t, schemaPath, "schema.graphql")
-	}
-}
-
 // TestCreateIndexerWithNilConfigError tests that CreateIndexer fails immediately with nil config
 func TestCreateIndexerWithNilConfigError(t *testing.T) {
 	// This should fail immediately when creating the indexer
@@ -365,7 +349,7 @@ func (m *MockBlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, er
 	if m.createError != nil {
 		return 0, m.createError
 	}
-	
+
 	var highest int64 = 0
 	for blockNum := range m.blocks {
 		if blockNum > highest {

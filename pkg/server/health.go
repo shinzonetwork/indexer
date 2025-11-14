@@ -22,15 +22,19 @@ type HealthChecker interface {
 	IsHealthy() bool
 	GetCurrentBlock() int64
 	GetLastProcessedTime() time.Time
-	GetPeerInfo() *P2PInfo
+	GetPeerInfo() (*P2PInfo, error)
 }
 
 // P2PInfo represents DefraDB P2P network information
 type P2PInfo struct {
-	PeerID    string   `json:"peer_id"`
-	PublicKey string   `json:"public_key,omitempty"`
+	Enabled  bool       `json:"enabled"`
+	PeerInfo []PeerInfo `json:"peers"`
+}
+
+type PeerInfo struct {
+	ID        string   `json:"id"`
 	Addresses []string `json:"addresses"`
-	Enabled   bool     `json:"enabled"`
+	PublicKey string   `json:"public_key,omitempty"`
 }
 
 // HealthResponse represents the health check response
@@ -57,7 +61,7 @@ var startTime = time.Now()
 // NewHealthServer creates a new health server
 func NewHealthServer(port int, indexer HealthChecker, defraURL string) *HealthServer {
 	mux := http.NewServeMux()
-	
+
 	hs := &HealthServer{
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", port),
@@ -107,8 +111,14 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	if hs.indexer != nil {
 		response.CurrentBlock = hs.indexer.GetCurrentBlock()
 		response.LastProcessed = hs.indexer.GetLastProcessedTime()
-		response.P2P = hs.indexer.GetPeerInfo()
-		
+		p2p, err := hs.indexer.GetPeerInfo()
+		response.P2P = p2p
+		if err != nil {
+			response.Status = "unhealthy"
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+
 		if !hs.indexer.IsHealthy() {
 			response.Status = "unhealthy"
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -150,7 +160,13 @@ func (hs *HealthServer) readinessHandler(w http.ResponseWriter, r *http.Request)
 	if hs.indexer != nil {
 		response.CurrentBlock = hs.indexer.GetCurrentBlock()
 		response.LastProcessed = hs.indexer.GetLastProcessedTime()
-		response.P2P = hs.indexer.GetPeerInfo()
+		p2p, err := hs.indexer.GetPeerInfo()
+		response.P2P = p2p
+		if err != nil {
+			response.Status = "unhealthy"
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 	}
 
 	if !ready {
@@ -197,7 +213,7 @@ func (hs *HealthServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 		"timestamp": time.Now(),
 		"endpoints": []string{
 			"/health - Liveness probe",
-			"/ready - Readiness probe", 
+			"/ready - Readiness probe",
 			"/metrics - Basic metrics",
 		},
 	}
@@ -218,6 +234,6 @@ func (hs *HealthServer) checkDefraDB() bool {
 		return false
 	}
 	defer resp.Body.Close()
-	
+
 	return resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusBadRequest // GraphQL endpoint returns 400 for GET
 }
