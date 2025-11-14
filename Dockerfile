@@ -135,7 +135,7 @@ COPY --from=builder /app/bin/block_poster /app/block_poster
 
 # Copy configuration files
 COPY --from=builder /app/config/ /app/config/
-COPY --from=builder /app/schema/ /app/schema/
+COPY --from=builder /app/pkg/schema/ /app/pkg/schema/
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/.defra /app/logs /tmp && \
