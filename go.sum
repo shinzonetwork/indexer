@@ -2309,8 +2309,8 @@ github.com/segmentio/asm v1.2.0/go.mod h1:BqMnlJP91P8d+4ibuonYZw9mfnzI9HfxselHZr
 github.com/sergi/go-diff v1.0.0/go.mod h1:0CfEIISq7TuYL3j771MWULgwwjU+GofnZX9QAmXWZgo=
 github.com/sergi/go-diff v1.1.0/go.mod h1:STckp+ISIX8hZLjrqAeVduY0gWCT9IjLuqbuNXdaHfM=
 github.com/shazow/go-diff v0.0.0-20160112020656-b6b7b6733b8c/go.mod h1:/PevMnwAxekIXwN8qQyfc5gl2NlkB3CQlkizAbOkeBs=
-github.com/shinzonetwork/app-sdk v0.0.0-20251113172529-6040934f2d2c h1:SS61uOFFEnW0inv5aPO2P7VYCjMQxUcVbgyuuuhrUPM=
-github.com/shinzonetwork/app-sdk v0.0.0-20251113172529-6040934f2d2c/go.mod h1:esInsGw95VtR0Gs9jpRgUwrxjFy5n9iXFpmjIFGnrvE=
+github.com/shinzonetwork/app-sdk v0.0.0-20251114205912-74a90bdb58b5 h1:JaCfqsbkUiNbxX+6mRFDJ9d0jy5YOpBt2VcE4cBhVzw=
+github.com/shinzonetwork/app-sdk v0.0.0-20251114205912-74a90bdb58b5/go.mod h1:C/Z3natCUpjLY0SX96qHBDSgK+rhYX4eqm7a3/srM14=
 github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible h1:Bn1aCHHRnjv4Bl16T8rcaFjYSrGrIZvpiGO6P3Q4GpU=
 github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMTu2PcXUg8+E1lC7eC3UO/RA=
 github.com/shirou/gopsutil/v3 v3.22.6/go.mod h1:EdIubSnZhbAvBS1yJ7Xi+AShB/hxwLHOMz4MCYz7yMs=

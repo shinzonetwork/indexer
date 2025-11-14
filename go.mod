@@ -6,7 +6,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/joho/godotenv v1.5.1
 	github.com/libp2p/go-libp2p v0.43.0
-	github.com/shinzonetwork/app-sdk v0.0.0-20251113172529-6040934f2d2c
+	github.com/shinzonetwork/app-sdk v0.0.0-20251114205912-74a90bdb58b5
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )
