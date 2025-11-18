@@ -549,23 +549,3 @@ func applySchemaViaHTTP(defraUrl string) error {
 	fmt.Println("Schema applied successfully!")
 	return nil
 }
-
-// setupP2PReplication configures automatic P2P replication for all collections
-func (i *ChainIndexer) setupP2PReplication(defraNode *node.Node) error {
-	ctx := context.Background()
-	logger.Sugar.Info("Setting up P2P auto-replication for collections")
-
-	// Add P2P collections for passive replication - this enables automatic publishing
-	// of new documents to connected peers via pubsub topics
-	collections := []string{"Block", "Transaction", "AccessListEntry", "Log"}
-
-	err := defraNode.DB.AddP2PCollections(ctx, collections...)
-	if err != nil {
-		return fmt.Errorf("failed to add P2P collections: %w", err)
-	}
-
-	logger.Sugar.Infof("✅ P2P collections configured: %v", collections)
-	logger.Sugar.Info("New documents will be automatically published to connected peers")
-
-	return nil
-}
