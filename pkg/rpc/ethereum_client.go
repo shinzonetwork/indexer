@@ -84,7 +84,7 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 				wsClient, err = ethclient.Dial(wsURL)
 				if err != nil {
 					logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
-					return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL, 
+					return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL,
 						fmt.Errorf("WebSocket connection failed with both API key and standard methods: %w", err))
 				} else {
 					logger.Sugar.Info("WebSocket fallback connection successful")
@@ -117,7 +117,7 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 
 	// Ensure at least one client is available
 	if client.httpClient == nil && client.wsClient == nil {
-		return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", "all endpoints", 
+		return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", "all endpoints",
 			fmt.Errorf("no valid connections established - both HTTP (%s) and WebSocket (%s) failed", httpNodeURL, wsURL))
 	}
 
@@ -455,7 +455,7 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 // Helper functions for transaction conversion
 func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 	chainId := tx.ChainId()
-	
+
 	// Handle pre-EIP-155 transactions (before block 2,675,000)
 	if chainId == nil || chainId.Sign() <= 0 {
 		// Use HomesteadSigner for pre-EIP-155 transactions
@@ -463,13 +463,13 @@ func GetFromAddress(tx *ethtypes.Transaction) (*common.Address, error) {
 		if from, err := ethtypes.Sender(homesteadSigner, tx); err == nil {
 			return &from, nil
 		}
-		
+
 		// Fallback to FrontierSigner for even older transactions
 		frontierSigner := ethtypes.FrontierSigner{}
 		if from, err := ethtypes.Sender(frontierSigner, tx); err == nil {
 			return &from, nil
 		}
-		
+
 		return nil, fmt.Errorf("unable to recover sender from pre-EIP-155 transaction")
 	}
 

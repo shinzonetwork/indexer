@@ -12,7 +12,7 @@ import (
 // It will retry until the endpoint responds with a valid schema or until max attempts are reached
 func WaitForDefraDB(url string) error {
 	fmt.Println("Waiting for defra...")
-	maxAttempts := 15  // Reduced to prevent excessive waiting in tests
+	maxAttempts := 15 // Reduced to prevent excessive waiting in tests
 
 	// Construct the GraphQL endpoint URL
 	graphqlURL := strings.TrimSuffix(url, "/") + "/api/v0/graphql"

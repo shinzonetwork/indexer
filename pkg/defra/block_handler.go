@@ -392,7 +392,7 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 
 	// Debug: Print the mutation
 	logger.Sugar.Debug("Sending mutation: ", req.Query, "\n")
-	
+
 	// Create request
 	httpReq, err := http.NewRequestWithContext(ctx, req.Type, h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {

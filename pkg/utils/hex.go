@@ -24,4 +24,3 @@ func HexToInt(s string) (int64, error) {
 	}
 	return result, nil
 }
-
