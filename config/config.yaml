@@ -16,7 +16,7 @@ geth:
   api_key: "${GCP_GETH_API_KEY}"
 
 indexer:
-  start_height: 23000000
+  start_height: 23500000
 logger:
   development: true
 
