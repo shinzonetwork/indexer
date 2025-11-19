@@ -1,7 +1,4 @@
-//go:build live
-// +build live
-
-package live
+package integration
 
 import (
 	"bytes"
