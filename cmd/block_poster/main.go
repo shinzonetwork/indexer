@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/shinzonetwork/indexer/config"
 	"github.com/shinzonetwork/indexer/pkg/indexer"
@@ -26,8 +29,32 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to create indexer: %v\n", err)
 		os.Exit(1)
 	}
-	if err := chainIndexer.StartIndexing(cfg.DefraDB.Url != ""); err != nil {
+
+	// Set up graceful shutdown
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Channel to listen for interrupt signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Start indexer in a goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		if err := chainIndexer.StartIndexing(cfg.DefraDB.Url != ""); err != nil {
+			errChan <- err
+		}
+	}()
+
+	// Wait for either an error or shutdown signal
+	select {
+	case err := <-errChan:
 		fmt.Fprintf(os.Stderr, "Failed to start indexing: %v\n", err)
 		os.Exit(1)
+	case sig := <-sigChan:
+		fmt.Printf("\nReceived signal %v, shutting down gracefully...\n", sig)
+		chainIndexer.StopIndexing()
+		cancel()
+		fmt.Println("Shutdown complete")
 	}
 }
