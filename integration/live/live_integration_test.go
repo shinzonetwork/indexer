@@ -40,13 +40,13 @@ func TestMain(m *testing.M) {
 
 	// Check required environment variables
 	if !checkRequiredEnvVars() {
-		logger.Sugar.Error("Required environment variables not set. Set GCP_GETH_RPC_URL, GCP_GETH_WS_URL, and GCP_GETH_API_KEY")
+		logger.Sugar.Error("Required environment variables not set. Set GETH_RPC_URL, GETH_WS_URL, and GETH_API_KEY")
 		os.Exit(0) // treat as skipped instead of failed
 	}
 
 	// Clean up any existing live integration DefraDB data
 	logger.Test("Cleaning up existing live integration DefraDB data...")
-	if err := os.RemoveAll("./integration/.defra"); err != nil {
+	if err := os.RemoveAll("./.defra"); err != nil {
 		logger.Sugar.Warnf("Failed to clean existing live data: %v", err)
 	}
 
@@ -62,12 +62,12 @@ func TestMain(m *testing.M) {
 		}
 
 		// Override DefraDB store path for live testing
-		cfg.DefraDB.Store.Path = "../.defra"
+		cfg.DefraDB.Store.Path = "./.defra"
 
 		// Override Geth config with environment variables for live testing
-		cfg.Geth.NodeURL = os.Getenv("GCP_GETH_RPC_URL")
-		cfg.Geth.WsURL = os.Getenv("GCP_GETH_WS_URL")
-		cfg.Geth.APIKey = os.Getenv("GCP_GETH_API_KEY")
+		cfg.Geth.NodeURL = os.Getenv("GETH_RPC_URL")
+		cfg.Geth.WsURL = os.Getenv("GETH_WS_URL")
+		cfg.Geth.APIKey = os.Getenv("GETH_API_KEY")
 
 		// Start indexer with real connections - should succeed if env vars are set
 		liveChainIndexer, err = indexer.CreateIndexer(cfg)
@@ -93,7 +93,7 @@ func TestMain(m *testing.M) {
 			logger.Sugar.Error("No blocks were indexed - test failed")
 			os.Exit(1)
 		}
-		
+
 		logger.Test("✅ Live integration test passed - blocks are being indexed!")
 		indexerStarted = true
 	}()
@@ -109,14 +109,14 @@ func TestMain(m *testing.M) {
 
 	// Clean up test data
 	time.Sleep(2 * time.Second) // Give time for cleanup
-	os.RemoveAll("../.defra")
+	os.RemoveAll("./.defra")
 
 	os.Exit(result)
 }
 
 // checkRequiredEnvVars checks if all required environment variables are set for live testing
 func checkRequiredEnvVars() bool {
-	requiredVars := []string{"GCP_GETH_RPC_URL", "GCP_GETH_WS_URL", "GCP_GETH_API_KEY"}
+	requiredVars := []string{"GETH_RPC_URL", "GETH_WS_URL", "GETH_API_KEY"}
 
 	for _, envVar := range requiredVars {
 		if os.Getenv(envVar) == "" {
@@ -132,11 +132,11 @@ func checkRequiredEnvVars() bool {
 // waitForAnyBlock waits for at least one block to be indexed
 func waitForAnyBlock(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
-	
+
 	for time.Now().Before(deadline) {
 		// Try multiple approaches to find DefraDB
 		var testURLs []string
-		
+
 		// Try to get the port directly from the indexer's embedded DefraDB
 		if liveChainIndexer != nil {
 			port := liveChainIndexer.GetDefraDBPort()
@@ -144,18 +144,18 @@ func waitForAnyBlock(timeout time.Duration) bool {
 				testURLs = append(testURLs, fmt.Sprintf("http://localhost:%d", port))
 			}
 		}
-		
+
 		// Try common DefraDB ports
 		commonPorts := []int{9181, 9180, 9182}
 		for _, port := range commonPorts {
 			testURLs = append(testURLs, fmt.Sprintf("http://localhost:%d", port))
 		}
-		
+
 		// Test each URL for blocks
 		for _, testURL := range testURLs {
 			query := `{"query":"{ Block { _count } }"}`
 			client := &http.Client{Timeout: 2 * time.Second}
-			
+
 			req, err := http.NewRequest("POST", testURL+"/api/v0/graphql", strings.NewReader(query))
 			if err == nil {
 				req.Header.Set("Content-Type", "application/json")
@@ -184,7 +184,7 @@ func waitForAnyBlock(timeout time.Duration) bool {
 				}
 			}
 		}
-		
+
 		time.Sleep(2 * time.Second)
 	}
 	return false
@@ -431,7 +431,7 @@ func TestLiveIndexerPerformance(t *testing.T) {
 	logger.Testf("Initial block count: %d", initialCount)
 
 	// Wait for more blocks to be indexed
-	time.Sleep(30 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	finalCount := getLiveBlockCount()
 	logger.Testf("Final block count: %d", finalCount)

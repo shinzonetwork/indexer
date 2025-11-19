@@ -32,9 +32,9 @@ jobs:
 
     - name: Run tests
       env:
-        GCP_GETH_RPC_URL: ${{ secrets.GCP_GETH_RPC_URL }}
-        GCP_GETH_WS_URL: ${{ secrets.GCP_GETH_WS_URL }}
-        GCP_GETH_API_KEY: ${{ secrets.GCP_GETH_API_KEY }}
+        GETH_RPC_URL: ${{ secrets.GETH_RPC_URL }}
+        GETH_WS_URL: ${{ secrets.GETH_WS_URL }}
+        GETH_API_KEY: ${{ secrets.GETH_API_KEY }}
         DEFRADB_URL: http://localhost:9181
         DEFRADB_PLAYGROUND: true
         LOGGER_DEBUG: false

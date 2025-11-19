@@ -1,114 +1,40 @@
 .PHONY: deps env build start clean defradb gitpush test testrpc coverage bootstrap playground stop integration-test docker-build docker-up docker-down deploy
 
-DEFRA_PATH ?=
-GCP_GETH_RPC_URL ?=
-GCP_GETH_WS_URL ?=
-GCP_GETH_API_KEY ?=
+# Load environment variables from .env file if it exists
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
 
-deps:
-	go mod download
-
-env:
-	export $(cat .env)
+GETH_RPC_URL ?=
+GETH_WS_URL ?=
+GETH_API_KEY ?=
 
 build:
 	go build -o bin/block_poster cmd/block_poster/main.go
 
-build-catch-up:
-	go build -o bin/catch_up cmd/catch_up/main.go
-
 start:
 	./bin/block_poster
-
-defradb:
-	sh scripts/apply_schema.sh
 
 clean:
 	rm -rf bin/ && rm -r logs/logfile && touch logs/logfile
 
-gitpush: 
-	git add . && git commit -m "${COMMIT_MESSAGE}" && git push origin ${BRANCH_NAME}
-
 geth-status:
-	@echo "🔍 Checking Geth status..."
-	@echo "📍 Target: http://xx.xx.xx.xx:port"
-	@if [ -z "$(GCP_GETH_RPC_URL)" ]; then \
-		echo "❌ GCP_GETH_RPC_URL not set. Please export it first:"; \
-		echo "   export GCP_GETH_RPC_URL=http://xx.xx.xx.xx:port"; \
+	@if [ -z "$(GETH_RPC_URL)" ]; then \
+		echo "❌ GETH_RPC_URL not set"; \
 		exit 1; \
 	fi
-	@echo "🌐 Testing basic connectivity..."
-	@if curl -s --connect-timeout 5 --max-time 10 $(GCP_GETH_RPC_URL) >/dev/null 2>&1; then \
-		echo "✅ HTTP connection successful"; \
-	else \
-		echo "❌ HTTP connection failed"; \
-		exit 1; \
-	fi
-	@echo "🔗 Testing JSON-RPC endpoint..."
-	@RESPONSE=$$(curl -s --connect-timeout 5 --max-time 10 -X POST -H "Content-Type: application/json" \
-		--data '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}' \
-		$(GCP_GETH_RPC_URL) 2>/dev/null); \
-	if echo "$$RESPONSE" | jq -e '.result' >/dev/null 2>&1; then \
-		echo "✅ JSON-RPC responding"; \
-		echo "📋 Client: $$(echo "$$RESPONSE" | jq -r '.result')"; \
-	else \
-		echo "❌ JSON-RPC not responding properly"; \
-		echo "📄 Response: $$RESPONSE"; \
-	fi
-	@echo "🔄 Checking sync status..."
-	@SYNC_RESPONSE=$$(curl -s --connect-timeout 5 --max-time 10 -X POST -H "Content-Type: application/json" \
-		--data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
-		$(GCP_GETH_RPC_URL) 2>/dev/null); \
-	if echo "$$SYNC_RESPONSE" | jq '.result' >/dev/null 2>&1; then \
-		SYNC_STATUS=$$(echo "$$SYNC_RESPONSE" | jq -r '.result'); \
-		if [ "$$SYNC_STATUS" = "false" ]; then \
-			echo "✅ Node fully synced"; \
-		else \
-			echo "🔄 Node syncing..."; \
-			echo "📊 Sync info: $$SYNC_STATUS"; \
-		fi; \
-	else \
-		echo "❌ Could not get sync status"; \
-		echo "📄 Response: $$SYNC_RESPONSE"; \
-	fi
-	@echo "📊 Getting latest block..."
-	@BLOCK_RESPONSE=$$(curl -s --connect-timeout 5 --max-time 10 -X POST -H "Content-Type: application/json" \
+	@BLOCK_RESPONSE=$$(curl -s -X POST -H "Content-Type: application/json" \
+		-H "X-goog-api-key: $(GETH_API_KEY)" \
 		--data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-		$(GCP_GETH_RPC_URL) 2>/dev/null); \
+		$(GETH_RPC_URL) 2>/dev/null); \
 	if echo "$$BLOCK_RESPONSE" | jq -e '.result' >/dev/null 2>&1; then \
 		BLOCK_HEX=$$(echo "$$BLOCK_RESPONSE" | jq -r '.result'); \
 		BLOCK_NUM=$$(printf "%d" $$BLOCK_HEX 2>/dev/null || echo "unknown"); \
-		echo "✅ Latest block: $$BLOCK_NUM"; \
+		echo "✅ Block: $$BLOCK_NUM"; \
 	else \
-		echo "❌ Could not get latest block"; \
+		echo "❌ Failed: $$BLOCK_RESPONSE"; \
 	fi
-	@echo "👥 Checking peer count..."
-	@PEER_RESPONSE=$$(curl -s --connect-timeout 5 --max-time 10 -X POST -H "Content-Type: application/json" \
-		--data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' \
-		$(GCP_GETH_RPC_URL) 2>/dev/null); \
-	if echo "$$PEER_RESPONSE" | jq -e '.result' >/dev/null 2>&1; then \
-		PEER_HEX=$$(echo "$$PEER_RESPONSE" | jq -r '.result'); \
-		PEER_COUNT=$$(printf "%d" $$PEER_HEX 2>/dev/null || echo "unknown"); \
-		echo "✅ Connected peers: $$PEER_COUNT"; \
-	else \
-		echo "❌ Could not get peer count"; \
-	fi
-	@if [ -n "$(GCP_GETH_API_KEY)" ]; then \
-		echo "🔑 Testing API key authentication..."; \
-		AUTH_RESPONSE=$$(curl -s --connect-timeout 5 --max-time 10 -X POST \
-			-H "Content-Type: application/json" \
-			-H "X-API-Key: xxx..." \
-			--data '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}' \
-			$(GCP_GETH_RPC_URL) 2>/dev/null); \
-		if echo "$$AUTH_RESPONSE" | jq -e '.result' >/dev/null 2>&1; then \
-			echo "✅ API key authentication working"; \
-		else \
-			echo "❌ API key authentication failed"; \
-		fi; \
-	else \
-		echo "⚠️  No API key set (GCP_GETH_API_KEY)"; \
-	fi
-	@echo "✨ Geth status check complete!"
 
 test:
 	@echo "🧪 Running all tests with summary output..."
@@ -138,25 +64,26 @@ test:
 	exit $$exit_code
 
 test-local:
-	@echo "🧪 Running local indexer test with GCP endpoint..."
-	@if [ -z "$(GCP_GETH_RPC_URL)" ]; then \
-		echo "❌ GCP_GETH_RPC_URL not set. Please export it first:"; \
-		echo "   export GCP_GETH_RPC_URL=http://your.gcp.ip:8545"; \
+	@echo "🧪 Running local indexer test with Geth endpoint..."
+	@if [ -z "$(GETH_RPC_URL)" ]; then \
+		echo "❌ GETH_RPC_URL not set. Please export it first:"; \
+		echo "   export GETH_RPC_URL=<your-geth-url>"; \
 		exit 1; \
 	fi
-	@echo "✅ Using Geth endpoint: $(GCP_GETH_RPC_URL)"
+	@echo "✅ Using Geth endpoint: $(GETH_RPC_URL)"
 	@go test ./pkg/indexer -v -run TestIndexing
 
 integration-test:
-	@if [ -z "$(DEFRA_PATH)" ]; then \
-		echo "ERROR: You must pass DEFRA_PATH. Usage:"; \
-		echo "  make integration-test DEFRA_PATH=../path/to/defradb"; \
-		exit 1; \
+	@echo "🧪 Running integration tests..."
+	@echo "📦 Mock tests (fast):"
+	@go test -v ./integration/
+	@echo ""
+	@echo "🌐 Live tests (requires environment variables):"
+	@if [ -n "$(GETH_RPC_URL)" ]; then \
+		go test -tags live -v ./integration/live/ -timeout=20s; \
+	else \
+		echo "⚠️  Skipping live tests - GETH_RPC_URL not set"; \
 	fi
-	@scripts/test_integration.sh "$(DEFRA_PATH)"
-
-testrpc:
-	go test ./pkg/rpc -v
 
 coverage:
 	go test ./... -coverprofile=coverage.out
@@ -220,11 +147,11 @@ help:
 	@echo "  stop               - Stop all services"
 	@echo ""
 	@echo "🔧 Environment Variables for geth-status:"
-	@echo "  GCP_GETH_RPC_URL   - HTTP RPC endpoint (required)"
-	@echo "  GCP_GETH_API_KEY   - API key for authentication (optional)"
-	@echo "  GCP_GETH_WS_URL    - WebSocket endpoint (optional)"
+	@echo "  GETH_RPC_URL   - HTTP RPC endpoint (required)"
+	@echo "  GETH_API_KEY   - API key for authentication (optional)"
+	@echo "  GETH_WS_URL    - WebSocket endpoint (optional)"
 	@echo ""
 	@echo "💡 Example Usage:"
-	@echo "  export GCP_GETH_RPC_URL=http://xx.xx.xx.xx:port"
-	@echo "  export GCP_GETH_API_KEY=your-api-key-here"
+	@echo "  export GETH_RPC_URL=http://xx.xx.xx.xx:port"
+	@echo "  export GETH_API_KEY=your-api-key-here"
 	@echo "  make geth-status"

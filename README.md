@@ -40,23 +40,14 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 ## Prerequisites
 
-- Go 1.20+
-- [DefraDB](https://github.com/sourcenetwork/defradb) (for local development)
--  Managed Blockchain Node (Ethereum) with API access
-- Node.js v23.10.0 (for DefraDB playground)
+- Go 1.24+
+- Ethereum node with JSON-RPC and WebSocket access (GCP Managed Blockchain Node recommended)
 
-## Prerequisite Setup
+## Setup
 
-1. **Install DefraDB** (for local development):
-   ```bash
-   git clone https://github.com/sourcenetwork/defradb
-   cd defradb
-   echo "v23.10.0" > .nvmrc
-   ```
-
-2. **Set up  Managed Blockchain Node**:
-   - Create an Ethereum node in Google Cloud Blockchain Node Engine
-   - Note the JSON-RPC and WebSocket endpoints
+1. **Set up Ethereum Node Access**:
+   - Use a local or deployed Geth Ethereum Node
+   - Note the JSON-RPC and WebSocket endpoints  
    - Configure API key authentication if required
 
 
@@ -73,16 +64,16 @@ A high-performance blockchain indexing solution built with Source Network, Defra
    go mod download
    ```
 
-3. Create environment variables in `.env`:
+3. Create environment variables:
    ```bash
-   #  Managed Blockchain Node Configuration
-   GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
-   GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
-   GETH_API_KEY=your-x-goog-api-key-header-value
+   cat >> .env << EOF
+   GETH_RPC_URL=<your-geth-node-url>
+   GETH_WS_URL=<your-geth-ws-url>
+   GETH_API_KEY=<your-geth-api-key>
    
    # DefraDB Configuration
-   DEFRADB_URL=http://localhost:9181
-   DEFRADB_KEYRING_SECRET=your-keyring-secret
+   DEFRADB_URL=http://localhost:9181 || empty for embedded defradb
+   DEFRADB_KEYRING_SECRET=<your-defradb-keyring-secret>
    DEFRADB_PLAYGROUND=true
    DEFRADB_P2P_ENABLED=true
    DEFRADB_P2P_BOOTSTRAP_PEERS=[]
@@ -93,16 +84,12 @@ A high-performance blockchain indexing solution built with Source Network, Defra
    
    # Logger Configuration
    LOGGER_DEBUG=true
+   EOF
    ```
 
 ## Configuration
 
-1. Configure DefraDB schema:
-   - GraphQL schema files are located in `schema/`
-   - Main schema defines relationships between blocks, transactions, logs, and events
-   - Each entity has its own schema file in `schema/types/blockchain/`
-
-2. The configuration uses `config/config.yaml` with environment variable overrides:
+1. The configuration uses `config/config.yaml` with environment variable overrides:
    ```yaml
    # Default configuration - environment variables will override these
    defradb:
@@ -112,17 +99,17 @@ A high-performance blockchain indexing solution built with Source Network, Defra
      p2p:
        enabled: true
        bootstrap_peers: []
-       listen_addr: "/ip4/127.0.0.1/tcp/9171"
+       listen_addr: "/ip4/0.0.0.0/tcp/9171"
      store:
        path: "./.defra"
    
    geth:
-     node_url: "<your-geth-node-url>"  #  managed blockchain node
+     node_url: "<your-geth-node-url>"  #  blockchain node
      ws_url: "<your-geth-ws-url>"
      api_key: "<your-geth-api-key>"    # Recommend using a .env file
    
    indexer:
-     start_height: 23000000
+     start_height: 23500000
    logger:
      development: true
    ```
@@ -141,15 +128,10 @@ make start
 go run cmd/block_poster/main.go
 ```
 
-### Using DefraDB Playground 
-TODO: update to be config var
+### Using Docker (Alternative)
 ```bash
-# Start with playground (requires DefraDB repo path)
-make playground DEFRA_PATH=/path/to/defradb
-
-# Set DEFRA_PATH as environment variable to avoid passing it each time
-export DEFRA_PATH=/path/to/defradb
-make playground
+# Build and run with Docker Compose
+docker-compose up --build
 ```
 ### Manual Build
 ```bash
@@ -162,11 +144,15 @@ go build -o bin/block_poster cmd/block_poster/main.go
 
 ### Available Makefile Targets
 - `make build` - Build the indexer binary
-- `make test` - Run all tests with summary
-- `make geth-status` - Check  Geth node connectivity
 - `make start` - Start the indexer
+- `make test` - Run all tests with summary
+- `make integration-test` - Run integration tests (mock + live)
+- `make test-local` - Run local indexer tests with Geth endpoint
+- `make geth-status` - Check Geth node connectivity and block number
+- `make coverage` - Generate test coverage report
+- `make clean` - Clean build artifacts
 - `make stop` - Stop all services
-- `make help` - Show all available targets
+- `make help` - Show all available targets with descriptions
 
 ## Testing
 
@@ -174,41 +160,36 @@ go build -o bin/block_poster cmd/block_poster/main.go
 To run unit tests, you can run `make test` or simply `go test ./...` per standard go.
 
 ### Integration Tests
-To run the integration tests, you'll want to run
-`make integration-test`
-This runs `make bootstrap` under the hood, so you'll want to provide `DEFRA_PATH=/path/to/defradb` as an argument or set it as an environment variable (as above). After the `make integration-test` script bootstraps the infra in your local environment, it will run the integration test suite, and then finally teardown the infra.
+```bash
+make integration-test
+```
+This runs both mock tests (fast) and live tests (if environment variables are set). No external dependencies required - uses embedded DefraDB.
 
 ### Live Integration Tests with  Endpoint
 To run live integration tests with your  managed blockchain node:
 
 1. **Set up environment variables**:
    ```bash
-   export GETH_RPC_URL=https://json-rpc.*.blockchainnodeengine.com
-   export GETH_WS_URL=wss://ws.*.blockchainnodeengine.com
-   export GETH_API_KEY=your-x-goog-api-key-header-value
+   export GETH_RPC_URL=<your-geth-node-url>
+   export GETH_WS_URL=<your-geth-ws-url>
+   export GETH_API_KEY=<your-geth-api-key>
 ```
 
-   b: **Use a .env file for environment variables**
+2. **Or use a .env file**:
    ```bash
-   touch .env
-
-
-# Geth node
-GETH_API_KEY=your-x-goog-api-key-header-value
-GETH_RPC_URL=http://your.ip:port
-GETH_WS_URL=ws://your.ip:port
-
-LOGGER_DEBUG=false
-DEFRADB_PLAYGROUND=true
-DEFRADB_URL=http://localhost:9181 | empty for embedded defradb
-DEFRADB_KEYRING_SECRET=<your-defradb-keyring-secret>
-DEFRADB_P2P_ENABLED=true
-DEFRADB_P2P_BOOTSRAP_PEERS=[]
-DEFRADB_P2P_LISTEN_ADDR=""
-DEFRADB_STORE_PATH=<your-defradb-store-path>
-DEFRA_PATH=<your-defradb-path>
-
-START_HEIGHT=<your-start-height-number>
+   # Create .env file
+   cat > .env << EOF
+   # Ethereum Node Configuration
+   GETH_RPC_URL=<your-geth-node-url>
+   GETH_WS_URL=<your-geth-ws-url>
+   GETH_API_KEY=<your-geth-api-key>
+   
+   # DefraDB Configuration (optional - uses embedded by default)
+   DEFRADB_KEYRING_SECRET=<your-defradb-keyring-secret>
+   
+   # Indexer Configuration
+   INDEXER_START_HEIGHT=23500000
+   EOF
    ```
 
 2. **Test  node connectivity**:
@@ -383,7 +364,7 @@ Example query:
 - Follow structured logging patterns with context
 - Include retry logic based on error types
 - Write tests that work with the global logger
-- Update ERROR_HANDLING_AUDIT.md for significant changes
+- Document significant error handling changes in commit messages
 
 ## License
 

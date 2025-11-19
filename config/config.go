@@ -136,16 +136,16 @@ func applyEnvOverrides(cfg *Config) {
 	}
 
 	// Geth configuration
-	if gcpGethRpcUrl := os.Getenv("GCP_GETH_RPC_URL"); gcpGethRpcUrl != "" {
-		cfg.Geth.NodeURL = gcpGethRpcUrl
+	if gethRpcUrl := os.Getenv("GETH_RPC_URL"); gethRpcUrl != "" {
+		cfg.Geth.NodeURL = gethRpcUrl
 	}
 
-	if gcpGethWsUrl := os.Getenv("GCP_GETH_WS_URL"); gcpGethWsUrl != "" {
-		cfg.Geth.WsURL = gcpGethWsUrl
+	if gethWsUrl := os.Getenv("GETH_WS_URL"); gethWsUrl != "" {
+		cfg.Geth.WsURL = gethWsUrl
 	}
 
-	if gcpGethApiKey := os.Getenv("GCP_GETH_API_KEY"); gcpGethApiKey != "" {
-		cfg.Geth.APIKey = gcpGethApiKey
+	if gethApiKey := os.Getenv("GETH_API_KEY"); gethApiKey != "" {
+		cfg.Geth.APIKey = gethApiKey
 	}
 
 	// Indexer configuration

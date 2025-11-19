@@ -29,8 +29,8 @@ jobs:
 
       - name: Run live integration tests
         env:
-          GCP_GETH_RPC_URL: ${{ secrets.GCP_GETH_RPC_URL }}
-          GCP_GETH_WS_URL:  ${{ secrets.GCP_GETH_WS_URL }}
-          GCP_GETH_API_KEY: ${{ secrets.GCP_GETH_API_KEY }}
+          GETH_RPC_URL: ${{ secrets.GETH_RPC_URL }}
+          GETH_WS_URL:  ${{ secrets.GETH_WS_URL }}
+          GETH_API_KEY: ${{ secrets.GETH_API_KEY }}
         run: |
           go test -tags live ./integration/live -v
