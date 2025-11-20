@@ -6,17 +6,17 @@ defradb:
   p2p:
     enabled: true
     bootstrap_peers: []
-    listen_addr: "/ip4/127.0.0.1/tcp/9171"
+    listen_addr: "/ip4/0.0.0.0/tcp/9171"
   store:
     path: "./.defra"
 
 geth:
-  node_url: "${GCP_GETH_RPC_URL}"  # Fallback
-  ws_url: "${GCP_GETH_WS_URL}"
-  api_key: "${GCP_GETH_API_KEY}"
+  node_url: "${GETH_RPC_URL}"  # Fallback
+  ws_url: "${GETH_WS_URL}"
+  api_key: "${GETH_API_KEY}"
 
 indexer:
-  start_height: 23000000
+  start_height: 23500000
 logger:
   development: true
 

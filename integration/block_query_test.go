@@ -16,45 +16,45 @@ func init() {
 // Helper to get the latest block number
 func getLatestBlockNumber(t *testing.T) int {
 	result := MakeQuery(t, blockQueryPath, "GetHighestBlockNumber", nil)
-	
+
 	// Check if result is nil
 	if result == nil {
 		t.Fatalf("GraphQL query returned nil result")
 	}
-	
+
 	// Check if data field exists
 	data, ok := result["data"]
 	if !ok {
 		t.Fatalf("No 'data' field in GraphQL response: %v", result)
 	}
-	
+
 	// Check if data is nil
 	if data == nil {
 		t.Fatalf("GraphQL 'data' field is nil: %v", result)
 	}
-	
+
 	// Cast data to map
 	dataMap, ok := data.(map[string]interface{})
 	if !ok {
 		t.Fatalf("GraphQL 'data' field is not a map: %v", data)
 	}
-	
+
 	// Check if Block field exists
 	blockField, ok := dataMap["Block"]
 	if !ok {
 		t.Fatalf("No 'Block' field in GraphQL data: %v", dataMap)
 	}
-	
+
 	// Cast Block to array
 	blockList, ok := blockField.([]interface{})
 	if !ok {
 		t.Fatalf("Block field is not an array: %v", blockField)
 	}
-	
+
 	if len(blockList) == 0 {
 		t.Fatalf("No blocks returned from DefraDB - database may be empty")
 	}
-	
+
 	num, ok := blockList[0].(map[string]interface{})["number"]
 	if !ok {
 		t.Fatalf("Block missing number field: %v", blockList[0])

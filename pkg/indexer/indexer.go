@@ -3,12 +3,13 @@ package indexer
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math/big"
 	"net/http"
-	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shinzonetwork/indexer/config"
@@ -16,10 +17,15 @@ import (
 	"github.com/shinzonetwork/indexer/pkg/errors"
 	"github.com/shinzonetwork/indexer/pkg/logger"
 	"github.com/shinzonetwork/indexer/pkg/rpc"
+	"github.com/shinzonetwork/indexer/pkg/schema"
+	"github.com/shinzonetwork/indexer/pkg/server"
 	"github.com/shinzonetwork/indexer/pkg/types"
 
-	defrahttp "github.com/sourcenetwork/defradb/http"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/sourcenetwork/defradb/node"
+
+	appConfig "github.com/shinzonetwork/app-sdk/pkg/config"
+	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
 )
 
 const (
@@ -37,46 +43,16 @@ var requiredPeers []string = []string{} // Here, we can consider adding any "big
 
 const defaultListenAddress string = "/ip4/127.0.0.1/tcp/9171"
 
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-var DefaultConfig *config.Config = &config.Config{
-	DefraDB: config.DefraDBConfig{
-		Url:           getEnvOrDefault("DEFRADB_URL", "http://localhost:9181"),
-		KeyringSecret: os.Getenv("DEFRA_KEYRING_SECRET"),
-		Playground:    os.Getenv("DEFRADB_PLAYGROUND") == "true",
-		P2P: config.DefraDBP2PConfig{
-			BootstrapPeers: requiredPeers,
-			ListenAddr:     defaultListenAddress,
-			Enabled:        os.Getenv("DEFRADB_P2P_ENABLED") == "true",
-		},
-		Store: config.DefraDBStoreConfig{
-			Path: getEnvOrDefault("DEFRADB_STORE_PATH", "./.defra"),
-		},
-	},
-	Geth: config.GethConfig{
-		NodeURL: os.Getenv("GCP_GETH_RPC_URL"),
-		WsURL:   os.Getenv("GCP_GETH_WS_URL"),
-		APIKey:  os.Getenv("GCP_GETH_API_KEY"),
-	},
-	Indexer: config.IndexerConfig{
-		StartHeight: 23000000, // Default for tests, will be overridden by config file or env vars
-	},
-	Logger: config.LoggerConfig{
-		Development: true,
-	},
-}
-
 type ChainIndexer struct {
 	cfg                       *config.Config
 	shouldIndex               bool
 	isStarted                 bool
 	hasIndexedAtLeastOneBlock bool
 	defraNode                 *node.Node // Embedded DefraDB node (nil if using external)
+	healthServer              *server.HealthServer
+	currentBlock              int64
+	lastProcessedTime         time.Time
+	mutex                     sync.RWMutex
 }
 
 func (i *ChainIndexer) IsStarted() bool {
@@ -119,7 +95,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	cfg := i.cfg
 
 	if cfg == nil {
-		cfg = DefaultConfig
+		return fmt.Errorf("configuration is required - use config.LoadConfig() to load configuration")
 	}
 	cfg.DefraDB.P2P.BootstrapPeers = append(cfg.DefraDB.P2P.BootstrapPeers, requiredPeers...)
 
@@ -129,33 +105,41 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	}
 
 	if !defraStarted {
-		// Enable GraphQL playground based on config
-		defrahttp.PlaygroundEnabled = cfg.DefraDB.Playground
-
-		options := []node.Option{
-			node.WithDisableAPI(false),
-			node.WithDisableP2P(true), // Disable P2P for now
-			node.WithStorePath(cfg.DefraDB.Store.Path),
-			defrahttp.WithAddress(strings.Replace(cfg.DefraDB.Url, "http://localhost", "127.0.0.1", 1)),
+		// Use app-sdk to start DefraDB instance with persistent keys
+		// Convert indexer config to app-sdk config
+		appCfg := appConfig.Config{
+			DefraDB: appConfig.DefraDBConfig{
+				Url:           cfg.DefraDB.Url,
+				KeyringSecret: cfg.DefraDB.KeyringSecret,
+				P2P: appConfig.DefraP2PConfig{
+					BootstrapPeers: cfg.DefraDB.P2P.BootstrapPeers,
+					ListenAddr:     cfg.DefraDB.P2P.ListenAddr,
+				},
+				Store: appConfig.DefraStoreConfig{
+					Path: cfg.DefraDB.Store.Path,
+				},
+			},
 		}
+		// Note: app-sdk P2P config has no Enabled field - P2P should be enabled by ListenAddr
 
-		defraNode, err := node.New(ctx, options...)
+		// Debug: Log the P2P configuration being passed to app-sdk
+		logger.Sugar.Warnf("=== P2P DEBUG === ListenAddr: '%s', BootstrapPeers: %v",
+			appCfg.DefraDB.P2P.ListenAddr, appCfg.DefraDB.P2P.BootstrapPeers)
+		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t",
+			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
+
+		defraNode, err := appsdk.StartDefraInstance(&appCfg,
+			appsdk.NewSchemaApplierFromProvidedSchema(schema.GetSchema()),
+			"Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {
-			return fmt.Errorf("Failed to create defra node %v: ", err)
+			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
 		}
-
-		err = defraNode.Start(ctx)
+		err = defraNode.DB.AddP2PCollections(ctx, "Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {
-			return fmt.Errorf("Failed to start defra node %v: ", err)
+			return fmt.Errorf("failed to add P2P collections: %w", err)
 		}
-
 		// Store the defraNode reference for port access
 		i.defraNode = defraNode
-
-		err = applySchema(ctx, defraNode)
-		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
-			return fmt.Errorf("Failed to apply schema to defra node: %v", err)
-		}
 
 		// Use the actual DefraDB URL from the started node, not the config URL
 		actualDefraURL := defraNode.APIURL
@@ -163,6 +147,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		if err != nil {
 			return err
 		}
+
 	} else {
 		// Using external DefraDB - wait for it and apply schema via HTTP
 		err := defra.WaitForDefraDB(cfg.DefraDB.Url)
@@ -191,14 +176,21 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		return fmt.Errorf("failed to create block handler for block check: %v", err)
 	}
 
+	startHeight := int64(cfg.Indexer.StartHeight)
+
 	nBlock, err := blockHandler.GetHighestBlockNumber(ctx)
 	if err != nil {
+		// if error.
 		// If no blocks exist, start from configured start height (error is expected)
 		logger.Sugar.Info("No existing blocks found, starting from configured height")
-	} else if nBlock > 0 {
+	} else if nBlock > 0 && nBlock > startHeight {
+		// if nBlock is greater than startHeight; use block from defra
 		// if yes increment by 1
 		cfg.Indexer.StartHeight = int(nBlock + 1)
 		logger.Sugar.Infof("Found existing blocks up to %d, starting from %d", nBlock, cfg.Indexer.StartHeight)
+	} else {
+		// if nBlock is less than startHeight
+		logger.Sugar.Infof("No existing blocks found, starting from configured height")
 	}
 
 	// create indexing bool
@@ -220,6 +212,22 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	// Get starting block number
 	nextBlockToProcess := int64(cfg.Indexer.StartHeight)
 
+	// Start health server
+	var healthDefraURL string
+	if cfg.DefraDB.Url != "" {
+		healthDefraURL = cfg.DefraDB.Url
+	} else if i.defraNode != nil {
+		healthDefraURL = fmt.Sprintf("http://localhost:%d", defra.GetPort(i.defraNode))
+	}
+	i.healthServer = server.NewHealthServer(8080, i, healthDefraURL)
+
+	// Start health server in background
+	go func() {
+		if err := i.healthServer.Start(); err != nil {
+			logger.Sugar.Errorf("Health server failed: %v", err)
+		}
+	}()
+
 	for i.shouldIndex {
 		i.isStarted = true
 
@@ -231,7 +239,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			// Step 2: Process the specific block we want (nextBlockToProcess)
 			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
 
-			err := processBlock(ctx, client, blockHandler, nextBlockToProcess)
+			err := i.processBlock(ctx, client, blockHandler, nextBlockToProcess)
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
 					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
@@ -271,22 +279,8 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	return nil
 }
 
-// // getLastIndexedBlock gets the highest block number from DefraDB
-// func getLastIndexedBlock(ctx context.Context, blockHandler *defra.BlockHandler, cfg *config.Config) (int64, error) {
-// 	latestBlockNum, err := blockHandler.GetHighestBlockNumber(ctx)
-// 	if err != nil {
-// 		// If no blocks exist, start from configured start height
-// 		if strings.Contains(err.Error(), "blockArray is empty") || strings.Contains(err.Error(), "not found") {
-// 			logger.Sugar.Info("No blocks found in DefraDB, starting from beginning")
-// 			return int64(cfg.Indexer.StartHeight), nil
-// 		}
-// 		return 0, err
-// 	}
-// 	return latestBlockNum, nil
-// }
-
 // processBlock fetches and stores a single block with retry logic
-func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
+func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, blockNum int64) error {
 	var block *types.Block
 	var err error
 
@@ -398,6 +392,7 @@ func processBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandl
 	}
 
 	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
+	i.updateBlockInfo(blockNum)
 	return nil
 }
 
@@ -414,136 +409,134 @@ func parseBlockNumber(hexStr string) (int64, error) {
 	return blockNum.Int64(), nil
 }
 
-func applySchema(ctx context.Context, defraNode *node.Node) error {
-	fmt.Println("Applying schema...")
-
-	// Try different possible paths for the schema file
-	possiblePaths := []string{
-		"schema/schema.graphql",       // From project root
-		"../schema/schema.graphql",    // From bin/ directory
-		"../../schema/schema.graphql", // From pkg/host/ directory - test context
-	}
-
-	var schemaPath string
-	var err error
-	for _, path := range possiblePaths {
-		if _, err = os.Stat(path); err == nil {
-			schemaPath = path
-			break
-		}
-	}
-
-	if schemaPath == "" {
-		return fmt.Errorf("Failed to find schema file in any of the expected locations: %v", possiblePaths)
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("Failed to read schema file: %v", err)
-	}
-
-	_, err = defraNode.DB.AddSchema(ctx, string(schema))
-	return err
-}
-
-// processAccessListEntries handles the processing of access list entries for a transaction
-func processAccessListEntries(blockHandler *defra.BlockHandler, accessList []types.AccessListEntry, txDocId string) {
-	for _, accessListEntry := range accessList {
-		ALEDocId, err := blockHandler.CreateAccessListEntry(context.Background(), &accessListEntry, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create access list entry in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created access list entry with DocID: ", ALEDocId)
-	}
-}
-
-// processTransactionLogs handles the processing of logs for a transaction
-func processTransactionLogs(blockHandler *defra.BlockHandler, logs []types.Log, blockDocId, txDocId string) {
-	for _, log := range logs {
-		// Create log in DefraDB (includes block and transaction relationships)
-		logDocId, err := blockHandler.CreateLog(context.Background(), &log, blockDocId, txDocId)
-		if err != nil {
-			// Log with structured context
-			logCtx := errors.LogContext(err)
-			logger.Sugar.With(logCtx).Error("Failed to create log in DefraDB: ", err)
-			continue
-		}
-		logger.Sugar.Info("Created log with DocID: ", logDocId)
-	}
-}
-
-// buildBlock creates a new block with the same data from gethBlock
-func buildBlock(gethBlock *types.Block, transactions []types.Transaction) *types.Block {
-	return &types.Block{
-		Number:           gethBlock.Number,
-		Hash:             gethBlock.Hash,
-		ParentHash:       gethBlock.ParentHash,
-		Nonce:            gethBlock.Nonce,
-		Sha3Uncles:       gethBlock.Sha3Uncles,
-		LogsBloom:        gethBlock.LogsBloom,
-		TransactionsRoot: gethBlock.TransactionsRoot,
-		StateRoot:        gethBlock.StateRoot,
-		ReceiptsRoot:     gethBlock.ReceiptsRoot,
-		Miner:            gethBlock.Miner,
-		Difficulty:       gethBlock.Difficulty,
-		TotalDifficulty:  gethBlock.TotalDifficulty,
-		ExtraData:        gethBlock.ExtraData,
-		Size:             gethBlock.Size,
-		GasLimit:         gethBlock.GasLimit,
-		GasUsed:          gethBlock.GasUsed,
-		Timestamp:        gethBlock.Timestamp,
-		Transactions:     transactions,
-	}
-}
-
 func (i *ChainIndexer) StopIndexing() {
 	i.shouldIndex = false
 	i.isStarted = false
 
+	// Stop health server
+	if i.healthServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		i.healthServer.Stop(ctx)
+	}
+
 	// Close embedded DefraDB node if it exists
 	if i.defraNode != nil {
-		ctx := context.Background()
-		i.defraNode.Close(ctx)
+		i.defraNode.Close(context.Background())
 		i.defraNode = nil
 	}
 }
 
-// findSchemaFile tries multiple paths to locate the schema file from different working directories
-func findSchemaFile() (string, error) {
-	schemaPaths := []string{
-		"schema/schema.graphql",          // From project root
-		"../schema/schema.graphql",       // From subdirectory (like integration/)
-		"../../schema/schema.graphql",    // From deeper subdirectory (like integration/live/)
-		"../../../schema/schema.graphql", // From even deeper directories
+// Health checker interface implementation
+func (i *ChainIndexer) IsHealthy() bool {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+
+	// Consider healthy if started and processed at least one block recently
+	if !i.isStarted {
+		return false
 	}
 
-	for _, path := range schemaPaths {
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
+	// If we've never processed a block, we're still healthy (starting up)
+	if i.lastProcessedTime.IsZero() {
+		return true
+	}
+
+	// Consider unhealthy if no blocks processed in last 10 minutes
+	return time.Since(i.lastProcessedTime) < 10*time.Minute
+}
+
+func (i *ChainIndexer) GetCurrentBlock() int64 {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+	return i.currentBlock
+}
+
+func (i *ChainIndexer) GetLastProcessedTime() time.Time {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+	return i.lastProcessedTime
+}
+
+// GetPeerInfo returns DefraDB P2P network information
+func (i *ChainIndexer) GetPeerInfo() (*server.P2PInfo, error) {
+	i.mutex.RLock()
+	defer i.mutex.RUnlock()
+
+	// If no embedded DefraDB node, return nil
+	if i.defraNode == nil {
+		return nil, nil
+	}
+
+	// Get peer information from DefraDB
+	peerInfoString, err := i.defraNode.DB.PeerInfo()
+	if err != nil {
+		return nil, fmt.Errorf("error fetching peer info: %w", err)
+	}
+	peerInfo, errors := appsdk.BootstrapIntoPeers(peerInfoString)
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("error turning bootstrap peer strings into peer info objects: %v", errors)
+	}
+
+	// Convert addresses to string slice
+	serverPeerInfo := make([]server.PeerInfo, len(peerInfo))
+	for idx, peer := range peerInfo {
+		publicKey := extractPublicKeyFromPeerID(peer.ID)
+		serverPeerInfo[idx] = server.PeerInfo{
+			ID:        peer.ID,
+			Addresses: peer.Addresses,
+			PublicKey: publicKey,
 		}
 	}
 
-	return "", fmt.Errorf("Failed to find schema file. Tried paths: %v", schemaPaths)
+	return &server.P2PInfo{
+		PeerInfo: serverPeerInfo,
+		Enabled:  len(peerInfo) > 0, // P2P is enabled if we have addresses
+	}, nil
+}
+
+// extractPublicKeyFromPeerID attempts to extract the public key from a libp2p PeerID
+func extractPublicKeyFromPeerID(peerID string) string {
+	// Parse the PeerID string into a libp2p peer.ID
+	id, err := peer.Decode(peerID)
+	if err != nil {
+		logger.Sugar.Warnf("Failed to decode PeerID %s: %v", peerID, err)
+		return ""
+	}
+
+	// Extract the public key from the PeerID
+	pubKey, err := id.ExtractPublicKey()
+	if err != nil {
+		logger.Sugar.Warnf("Failed to extract public key from PeerID %s: %v", peerID, err)
+		return ""
+	}
+
+	// Convert public key to bytes and then to hex string
+	pubKeyBytes, err := pubKey.Raw()
+	if err != nil {
+		logger.Sugar.Warnf("Failed to get raw bytes from public key: %v", err)
+		return ""
+	}
+
+	// Return hex-encoded public key
+	return hex.EncodeToString(pubKeyBytes)
+}
+
+// updateBlockInfo updates the current block and last processed time
+func (i *ChainIndexer) updateBlockInfo(blockNum int64) {
+	i.mutex.Lock()
+	defer i.mutex.Unlock()
+	i.currentBlock = blockNum
+	i.lastProcessedTime = time.Now()
 }
 
 func applySchemaViaHTTP(defraUrl string) error {
 	fmt.Println("Applying schema via HTTP...")
 
-	schemaPath, err := findSchemaFile()
-	if err != nil {
-		return err
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("Failed to read schema file: %v", err)
-	}
+	schema := schema.GetSchema()
 	// Apply schema via REST API endpoint
 	schemaURL := fmt.Sprintf("%s/api/v0/schema", defraUrl)
-	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer(schema))
+	resp, err := http.Post(schemaURL, "application/schema", bytes.NewBuffer([]byte(schema)))
 	if err != nil {
 		return fmt.Errorf("Failed to send schema: %v", err)
 	}

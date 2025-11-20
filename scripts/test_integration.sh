@@ -13,7 +13,7 @@ echo "===> Building block_poster"
 go build -o bin/block_poster cmd/block_poster/main.go
 echo "===> Running block_poster in real-time mode"
 # Set a recent block height to start from when database is empty
-export INDEXER_START_HEIGHT=21000000
+export INDEXER_START_HEIGHT=23500000
 ./bin/block_poster --mode=realtime --defra-store-path="$ROOTDIR/.defra" > "$BLOCK_POSTER_LOG_PATH" 2>&1 &
 POSTER_PID=$!
 echo "$POSTER_PID" > "$ROOTDIR/block_poster.pid"

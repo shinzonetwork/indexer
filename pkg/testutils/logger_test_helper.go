@@ -80,18 +80,18 @@ func (tls *TestLoggerSetup) AssertLogLevel(level string) {
 // This parses the JSON log entries and checks for the field in any format
 func (tls *TestLoggerSetup) AssertLogField(fieldName, expectedValue string) {
 	tls.t.Helper()
-	
+
 	// Parse all log entries as JSON
 	entries := tls.GetLogEntries()
-	
+
 	// Check each log entry for the field
 	for _, entry := range entries {
 		if tls.hasFieldWithValue(entry, fieldName, expectedValue) {
 			return // Found it!
 		}
 	}
-	
-	tls.t.Errorf("Expected log to contain field '%s' with value '%s', but got:\n%s", 
+
+	tls.t.Errorf("Expected log to contain field '%s' with value '%s', but got:\n%s",
 		fieldName, expectedValue, tls.GetLogOutput())
 }
 
@@ -102,7 +102,7 @@ func (tls *TestLoggerSetup) hasFieldWithValue(entry map[string]interface{}, fiel
 	if tls.checkFieldInObject(entry, fieldName, expectedValue) {
 		return true
 	}
-	
+
 	// Check nested objects (like "ignored" from zap structured logging)
 	for _, value := range entry {
 		if nestedObj, ok := value.(map[string]interface{}); ok {
@@ -111,7 +111,7 @@ func (tls *TestLoggerSetup) hasFieldWithValue(entry map[string]interface{}, fiel
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -123,7 +123,7 @@ func (tls *TestLoggerSetup) checkFieldInObject(obj map[string]interface{}, field
 			return true
 		}
 	}
-	
+
 	// Try snake_case version
 	snakeCase := tls.camelToSnake(fieldName)
 	if value, exists := obj[snakeCase]; exists {
@@ -131,7 +131,7 @@ func (tls *TestLoggerSetup) checkFieldInObject(obj map[string]interface{}, field
 			return true
 		}
 	}
-	
+
 	return false
 }
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shinzonetwork/indexer/pkg/logger"
+	"github.com/shinzonetwork/indexer/pkg/schema"
 	defrahttp "github.com/sourcenetwork/defradb/http"
 	"github.com/sourcenetwork/defradb/node"
 )
@@ -43,7 +44,7 @@ func TestMain(m *testing.M) {
 	logger.Test("Starting embedded DefraDB for mock data testing...")
 	go func() {
 		ctx := context.Background()
-		
+
 		// Create DefraDB node directly without indexer
 		options := []node.Option{
 			node.WithDisableAPI(false),
@@ -51,24 +52,24 @@ func TestMain(m *testing.M) {
 			node.WithStorePath("./.defra/data"),
 			defrahttp.WithAddress("127.0.0.1:9181"),
 		}
-		
+
 		var err error
 		defraNode, err = node.New(ctx, options...)
 		if err != nil {
 			logger.Sugar.Fatalf("Failed to create DefraDB node: %v", err)
 		}
-		
+
 		err = defraNode.Start(ctx)
 		if err != nil {
 			logger.Sugar.Fatalf("Failed to start DefraDB node: %v", err)
 		}
-		
+
 		// Apply schema to DefraDB
 		err = applySchema(ctx, defraNode)
 		if err != nil && !strings.Contains(err.Error(), "collection already exists") {
 			logger.Sugar.Fatalf("Failed to apply schema: %v", err)
 		}
-		
+
 		logger.Test("DefraDB node started successfully with schema applied")
 	}()
 
@@ -207,11 +208,25 @@ func MakeQuery(t *testing.T, queryPath string, query string, args map[string]int
 }
 
 func testDefraDBConnection() bool {
-	resp, err := http.Get("http://localhost:9181/api/v0/schema")
+	// Use the same introspection query as waitForDefra.go
+	query := `{"query":"{ __schema { types { name } } }"}`
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	req, err := http.NewRequest("POST", "http://localhost:9181/api/v0/graphql", strings.NewReader(query))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
+
 	return resp.StatusCode == 200
 }
 
@@ -663,31 +678,6 @@ func hasBlocks() bool {
 func applySchema(ctx context.Context, defraNode *node.Node) error {
 	fmt.Println("Applying schema...")
 
-	// Try different possible paths for the schema file
-	possiblePaths := []string{
-		"schema/schema.graphql",       // From project root
-		"../schema/schema.graphql",    // From integration/ directory
-		"../../schema/schema.graphql", // From deeper directories
-	}
-
-	var schemaPath string
-	var err error
-	for _, path := range possiblePaths {
-		if _, err = os.Stat(path); err == nil {
-			schemaPath = path
-			break
-		}
-	}
-
-	if schemaPath == "" {
-		return fmt.Errorf("failed to find schema file in any of the expected locations: %v", possiblePaths)
-	}
-
-	schema, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("failed to read schema file: %v", err)
-	}
-
-	_, err = defraNode.DB.AddSchema(ctx, string(schema))
+	_, err := defraNode.DB.AddSchema(ctx, schema.GetSchema())
 	return err
 }

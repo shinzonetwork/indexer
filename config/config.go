@@ -135,32 +135,17 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.DefraDB.Store.Path = storePath
 	}
 
-	// Geth configuration - prioritize GCP Geth node over managed node
-	// If GCP_GETH_RPC_URL is empty, fall back to your GCP node IP
-	if gcpGethRpcUrl := os.Getenv("GCP_GETH_RPC_URL"); gcpGethRpcUrl != "" {
-		cfg.Geth.NodeURL = gcpGethRpcUrl
-	} else if gcpRpcUrl := os.Getenv("GCP_RPC_URL"); gcpRpcUrl != "" {
-		cfg.Geth.NodeURL = gcpRpcUrl
-	}
-	// If GCP_GETH_RPC_URL is empty, use your GCP node IP from config
-	if cfg.Geth.NodeURL == "" && os.Getenv("GCP_GETH_RPC_URL") == "" {
-		cfg.Geth.NodeURL = "http://34.68.131.15:8545"
+	// Geth configuration
+	if gethRpcUrl := os.Getenv("GETH_RPC_URL"); gethRpcUrl != "" {
+		cfg.Geth.NodeURL = gethRpcUrl
 	}
 
-	if gcpGethWsUrl := os.Getenv("GCP_GETH_WS_URL"); gcpGethWsUrl != "" {
-		cfg.Geth.WsURL = gcpGethWsUrl
-	} else if gcpWsUrl := os.Getenv("GCP_WS_URL"); gcpWsUrl != "" {
-		cfg.Geth.WsURL = gcpWsUrl
-	}
-	// If GCP_GETH_WS_URL is empty, use your GCP node IP from config
-	if cfg.Geth.WsURL == "" && os.Getenv("GCP_GETH_WS_URL") == "" {
-		cfg.Geth.WsURL = "ws://34.68.131.15:8546"
+	if gethWsUrl := os.Getenv("GETH_WS_URL"); gethWsUrl != "" {
+		cfg.Geth.WsURL = gethWsUrl
 	}
 
-	if gcpGethApiKey := os.Getenv("GCP_GETH_API_KEY"); gcpGethApiKey != "" {
-		cfg.Geth.APIKey = gcpGethApiKey
-	} else if gcpApiKey := os.Getenv("GCP_API_KEY"); gcpApiKey != "" {
-		cfg.Geth.APIKey = gcpApiKey
+	if gethApiKey := os.Getenv("GETH_API_KEY"); gethApiKey != "" {
+		cfg.Geth.APIKey = gethApiKey
 	}
 
 	// Indexer configuration

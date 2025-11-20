@@ -22,7 +22,6 @@ type BlockHandler struct {
 	client   *http.Client
 }
 
-
 func NewBlockHandler(url string) (*BlockHandler, error) {
 	if url == "" {
 		return nil, errors.NewConfigurationError("defra", "NewBlockHandler",
@@ -88,7 +87,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		return "", errors.NewInvalidInputFormat("defra", "CreateTransaction", "tx", nil)
 	}
 
-	blockInt, err := utils.StringToInt(tx.BlockNumber)
+	blockInt, err := strconv.ParseInt(tx.BlockNumber, 10, 64)
 	if err != nil {
 		return "", errors.NewParsingFailed("defra", "CreateTransaction", "block number", err)
 	}
@@ -393,16 +392,16 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 
 	// Debug: Print the mutation
 	logger.Sugar.Debug("Sending mutation: ", req.Query, "\n")
-	
+
 	// Create request
 	httpReq, err := http.NewRequestWithContext(ctx, req.Type, h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		logger.Sugar.Errorf("failed to create request: ", err)
 		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
 	}
-	
+
 	httpReq.Header.Set("Content-Type", "application/json")
-	
+
 	// Send request
 	resp, err := h.client.Do(httpReq)
 	if err != nil {
@@ -412,7 +411,7 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 		}
 		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
 	}
-	
+
 	defer resp.Body.Close()
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Local Test Setup for Shinzo Network Indexer
-# This script sets up environment variables and runs tests locally with your GCP endpoint
+# This script sets up environment variables and runs tests locally with your endpoint
 
 echo "🔧 Setting up local test environment..."
 
@@ -11,22 +11,22 @@ if [ -f .env ]; then
     source .env
 fi
 
-# Ensure GCP_GETH_RPC_URL is set
-if [ -z "$GCP_GETH_RPC_URL" ]; then
-    echo "❌ GCP_GETH_RPC_URL not set. Please export it first:"
-    echo "   export GCP_GETH_RPC_URL=http://your.gcp.ip:8545"
+# Ensure GETH_RPC_URL is set
+if [ -z "$GETH_RPC_URL" ]; then
+    echo "❌ GETH_RPC_URL not set. Please export it first:"
+    echo "   export GETH_RPC_URL=<your-geth-url>"
     exit 1
 fi
 
-echo "✅ Using Geth endpoint: $GCP_GETH_RPC_URL"
+echo "✅ Using Geth endpoint: $GETH_RPC_URL"
 
 # Optional: Set WebSocket URL if available
-if [ -n "$GCP_GETH_WS_URL" ]; then
-    echo "✅ Using WebSocket endpoint: $GCP_GETH_WS_URL"
+if [ -n "$GETH_WS_URL" ]; then
+    echo "✅ Using WebSocket endpoint: $GETH_WS_URL"
 fi
 
 # Optional: Set API key if available
-if [ -n "$GCP_GETH_API_KEY" ]; then
+if [ -n "$GETH_API_KEY" ]; then
     echo "✅ Using API key authentication"
 fi
 

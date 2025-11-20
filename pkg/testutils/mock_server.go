@@ -97,7 +97,7 @@ func CreateRPCNodeResponse(result interface{}) string {
 		// Fallback to "null" if marshaling fails
 		resultJSON = []byte("null")
 	}
-	
+
 	return `{
 		"jsonrpc": "2.0",
 		"id": 1,

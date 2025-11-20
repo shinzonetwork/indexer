@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"context"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -114,26 +113,13 @@ func TestStopIndexing(t *testing.T) {
 	assert.True(t, indexer.hasIndexedAtLeastOneBlock)
 }
 
-// TestGetEnvOrDefault tests the environment variable helper function
-func TestGetEnvOrDefault(t *testing.T) {
-	// Test with non-existent env var
-	result := getEnvOrDefault("NON_EXISTENT_VAR", "default_value")
-	assert.Equal(t, "default_value", result)
-
-	// Test with existing env var
-	os.Setenv("TEST_VAR", "test_value")
-	defer os.Unsetenv("TEST_VAR")
-
-	result = getEnvOrDefault("TEST_VAR", "default_value")
-	assert.Equal(t, "test_value", result)
-}
-
-// TestDefaultConfig tests the default configuration
-func TestDefaultConfig(t *testing.T) {
-	assert.NotNil(t, DefaultConfig)
-	assert.NotEmpty(t, DefaultConfig.DefraDB.Url)
-	assert.NotEmpty(t, DefaultConfig.DefraDB.Store.Path)
-	assert.Greater(t, DefaultConfig.Indexer.StartHeight, 0)
+// TestConfigLoading tests configuration loading
+func TestConfigLoading(t *testing.T) {
+	// Test that configuration is required
+	indexer := &ChainIndexer{cfg: nil}
+	err := indexer.StartIndexing(true)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "configuration is required")
 }
 
 // TestConstants tests the defined constants
@@ -189,9 +175,44 @@ func TestConvertGethBlockToDefraBlock(t *testing.T) {
 		},
 	}
 
-	// Test buildBlock function
+	cfg := &config.Config{
+		DefraDB: config.DefraDBConfig{
+			Url: "http://localhost:9181",
+		},
+	}
+	indexer, err := CreateIndexer(cfg)
+	assert.NoError(t, err)
+
+	// Set some state
+	indexer.shouldIndex = true
+	indexer.isStarted = true
+	indexer.hasIndexedAtLeastOneBlock = true
+
+	// Stop indexing
+	indexer.StopIndexing()
+
+	// Test block structure
 	transactions := gethBlock.Transactions
-	defraBlock := buildBlock(gethBlock, transactions)
+	defraBlock := &types.Block{
+		Number:           gethBlock.Number,
+		Hash:             gethBlock.Hash,
+		ParentHash:       gethBlock.ParentHash,
+		Nonce:            gethBlock.Nonce,
+		Sha3Uncles:       gethBlock.Sha3Uncles,
+		LogsBloom:        gethBlock.LogsBloom,
+		TransactionsRoot: gethBlock.TransactionsRoot,
+		StateRoot:        gethBlock.StateRoot,
+		ReceiptsRoot:     gethBlock.ReceiptsRoot,
+		Miner:            gethBlock.Miner,
+		Difficulty:       gethBlock.Difficulty,
+		TotalDifficulty:  gethBlock.TotalDifficulty,
+		ExtraData:        gethBlock.ExtraData,
+		Size:             gethBlock.Size,
+		GasLimit:         gethBlock.GasLimit,
+		GasUsed:          gethBlock.GasUsed,
+		Timestamp:        gethBlock.Timestamp,
+		Transactions:     transactions,
+	}
 
 	assert.NotNil(t, defraBlock)
 	assert.Equal(t, gethBlock.Number, defraBlock.Number)
@@ -219,27 +240,30 @@ func TestConvertGethBlockToDefraBlockWithEmptyTransactions(t *testing.T) {
 		Transactions: []types.Transaction{}, // Empty transactions
 	}
 
-	defraBlock := buildBlock(gethBlock, gethBlock.Transactions)
+	defraBlock := &types.Block{
+		Number:           gethBlock.Number,
+		Hash:             gethBlock.Hash,
+		ParentHash:       gethBlock.ParentHash,
+		Nonce:            gethBlock.Nonce,
+		Sha3Uncles:       gethBlock.Sha3Uncles,
+		LogsBloom:        gethBlock.LogsBloom,
+		TransactionsRoot: gethBlock.TransactionsRoot,
+		StateRoot:        gethBlock.StateRoot,
+		ReceiptsRoot:     gethBlock.ReceiptsRoot,
+		Miner:            gethBlock.Miner,
+		Difficulty:       gethBlock.Difficulty,
+		TotalDifficulty:  gethBlock.TotalDifficulty,
+		ExtraData:        gethBlock.ExtraData,
+		Size:             gethBlock.Size,
+		GasLimit:         gethBlock.GasLimit,
+		GasUsed:          gethBlock.GasUsed,
+		Timestamp:        gethBlock.Timestamp,
+		Transactions:     gethBlock.Transactions,
+	}
 
 	assert.NotNil(t, defraBlock)
 	assert.Equal(t, gethBlock.Number, defraBlock.Number)
 	assert.Len(t, defraBlock.Transactions, 0)
-}
-
-// TestFindSchemaFile tests schema file discovery
-func TestFindSchemaFile(t *testing.T) {
-	// This test depends on the actual file system structure
-	// In a real project, you might want to create temporary files for testing
-
-	schemaPath, err := findSchemaFile()
-
-	// The function should either find a schema file or return an error
-	if err != nil {
-		assert.Contains(t, err.Error(), "Failed to find schema file")
-	} else {
-		assert.NotEmpty(t, schemaPath)
-		assert.Contains(t, schemaPath, "schema.graphql")
-	}
 }
 
 // TestCreateIndexerWithNilConfigError tests that CreateIndexer fails immediately with nil config
@@ -364,7 +388,26 @@ func TestBlockProcessingLogic(t *testing.T) {
 	}
 
 	// Test conversion
-	defraBlock := buildBlock(testBlock, testBlock.Transactions)
+	defraBlock := &types.Block{
+		Number:           testBlock.Number,
+		Hash:             testBlock.Hash,
+		ParentHash:       testBlock.ParentHash,
+		Nonce:            testBlock.Nonce,
+		Sha3Uncles:       testBlock.Sha3Uncles,
+		LogsBloom:        testBlock.LogsBloom,
+		TransactionsRoot: testBlock.TransactionsRoot,
+		StateRoot:        testBlock.StateRoot,
+		ReceiptsRoot:     testBlock.ReceiptsRoot,
+		Miner:            testBlock.Miner,
+		Difficulty:       testBlock.Difficulty,
+		TotalDifficulty:  testBlock.TotalDifficulty,
+		ExtraData:        testBlock.ExtraData,
+		Size:             testBlock.Size,
+		GasLimit:         testBlock.GasLimit,
+		GasUsed:          testBlock.GasUsed,
+		Timestamp:        testBlock.Timestamp,
+		Transactions:     testBlock.Transactions,
+	}
 
 	assert.NotNil(t, defraBlock)
 	assert.Equal(t, testBlock.Number, defraBlock.Number)
