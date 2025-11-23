@@ -18,5 +18,5 @@ geth:
 indexer:
   start_height: 23500000
 logger:
-  development: true
+  development: false
 
