@@ -1,5 +1,6 @@
 services:
   indexer:
+    image: shinzo-indexer:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -15,18 +16,24 @@ services:
       
       # DefraDB Configuration (embedded)
       - DEFRADB_KEYRING_SECRET=${DEFRADB_KEYRING_SECRET:-}
-      
+      - DEFRADB_URL=http://0.0.0.0:9181
+
       # Indexer Configuration
       - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-23500000}
     
     volumes:
       # DefraDB data
-      - ./data/.defra:/app/.defra
+      # - ./data/.defra:/app/.defra # test1: embedded
+      # - ./data/.defra2:/app/.defra # test2: external
       # Logs
-      - ./logs:/app/logs
+      # - ./logs:/app/logs # test1: embedded
+      - ./logs2:/app/logs # test2: external
       # Config (read-only)
       - ./config:/app/config:ro
-    
+
+    ports:
+      - "8080:8080" 
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
