@@ -23,11 +23,9 @@ services:
     
     volumes:
       # DefraDB data
-      # - ./data/.defra:/app/.defra # test1: embedded
-      # - ./data/.defra2:/app/.defra # test2: external
+      - ./data/.defra:/app/.defra
       # Logs
-      # - ./logs:/app/logs # test1: embedded
-      - ./logs2:/app/logs # test2: external
+      - ./logs:/app/logs
       # Config (read-only)
       - ./config:/app/config:ro
 
