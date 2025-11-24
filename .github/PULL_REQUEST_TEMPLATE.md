@@ -20,6 +20,8 @@
 - [ ] Tests added / updated
 - [ ] Documentation updated if needed
 - [ ] PR is self-contained and focused
+- [ ] Code does not break any existing features
+- [ ] Code passes personal internal testing
 
 ## Notes
 <!-- Any additional context for reviewers -->
