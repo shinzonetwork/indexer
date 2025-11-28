@@ -23,6 +23,7 @@ type HealthChecker interface {
 	GetCurrentBlock() int64
 	GetLastProcessedTime() time.Time
 	GetPeerInfo() (*P2PInfo, error)
+	SignMessages(message string) (DefraPKRegistration, PeerIDRegistration, error)
 }
 
 // P2PInfo represents DefraDB P2P network information
@@ -37,15 +38,33 @@ type PeerInfo struct {
 	PublicKey string   `json:"public_key,omitempty"`
 }
 
+type DisplayRegistration struct {
+	Enabled             bool                `json:"enabled"`
+	Message             string              `json:"message"`
+	DefraPKRegistration DefraPKRegistration `json:"defra_pk_registration,omitempty"`
+	PeerIDRegistration  PeerIDRegistration  `json:"peer_id_registration,omitempty"`
+}
+
+type DefraPKRegistration struct {
+	PublicKey   string `json:"public_key,omitempty"`
+	SignedPKMsg string `json:"signed_pk_message,omitempty"`
+}
+
+type PeerIDRegistration struct {
+	PeerID        string `json:"peer_id,omitempty"`
+	SignedPeerMsg string `json:"signed_peer_message,omitempty"`
+}
+
 // HealthResponse represents the health check response
 type HealthResponse struct {
-	Status           string    `json:"status"`
-	Timestamp        time.Time `json:"timestamp"`
-	CurrentBlock     int64     `json:"current_block,omitempty"`
-	LastProcessed    time.Time `json:"last_processed,omitempty"`
-	DefraDBConnected bool      `json:"defradb_connected"`
-	Uptime           string    `json:"uptime"`
-	P2P              *P2PInfo  `json:"p2p,omitempty"`
+	Status           string               `json:"status"`
+	Timestamp        time.Time            `json:"timestamp"`
+	CurrentBlock     int64                `json:"current_block,omitempty"`
+	LastProcessed    time.Time            `json:"last_processed,omitempty"`
+	DefraDBConnected bool                 `json:"defradb_connected"`
+	Uptime           string               `json:"uptime"`
+	P2P              *P2PInfo             `json:"p2p,omitempty"`
+	Registration     *DisplayRegistration `json:"registration,omitempty"`
 }
 
 // MetricsResponse represents basic metrics
@@ -75,7 +94,7 @@ func NewHealthServer(port int, indexer HealthChecker, defraURL string) *HealthSe
 
 	// Register routes
 	mux.HandleFunc("/health", hs.healthHandler)
-	mux.HandleFunc("/ready", hs.readinessHandler)
+	mux.HandleFunc("/registration", hs.registrationHandler)
 	mux.HandleFunc("/metrics", hs.metricsHandler)
 	mux.HandleFunc("/", hs.rootHandler)
 
@@ -119,6 +138,20 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Attempt to include signed registration information in the health response.
+		// This is informational only and does not affect overall health status.
+		const registrationMessage = "Shinzo Network Indexer registration"
+		defraReg, peerReg, signErr := hs.indexer.SignMessages(registrationMessage)
+		registration := &DisplayRegistration{
+			Enabled: signErr == nil,
+			Message: registrationMessage,
+		}
+		if signErr == nil {
+			registration.DefraPKRegistration = defraReg
+			registration.PeerIDRegistration = peerReg
+		}
+		response.Registration = registration
+
 		if !hs.indexer.IsHealthy() {
 			response.Status = "unhealthy"
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -129,8 +162,8 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// readinessHandler handles readiness probe requests
-func (hs *HealthServer) readinessHandler(w http.ResponseWriter, r *http.Request) {
+// registrationHandler handles readiness probe requests
+func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
