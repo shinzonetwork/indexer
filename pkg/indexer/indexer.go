@@ -581,10 +581,10 @@ func (i *ChainIndexer) SignMessages(message string) (server.DefraPKRegistration,
 	peerID := p2p.PeerInfo[0].ID
 
 	return server.DefraPKRegistration{
-			PublicKey:   pubKey,
+			PublicKey:   hex.EncodeToString([]byte(pubKey)),
 			SignedPKMsg: signedMsg,
 		}, server.PeerIDRegistration{
-			PeerID:        peerID,
+			PeerID:        hex.EncodeToString([]byte(peerID)),
 			SignedPeerMsg: peerSignedMsg,
 		}, nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shinzonetwork/indexer/pkg/logger"
@@ -195,6 +196,11 @@ func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Reque
 			Message: registrationMessage,
 		}
 		if signErr == nil {
+			// Normalize signed fields to 0x-prefixed hex strings for API consumers.
+			defraReg.PublicKey = normalizeHex(defraReg.PublicKey)
+			peerReg.PeerID = normalizeHex(peerReg.PeerID)
+			defraReg.SignedPKMsg = normalizeHex(defraReg.SignedPKMsg)
+			peerReg.SignedPeerMsg = normalizeHex(peerReg.SignedPeerMsg)
 			registration.DefraPKRegistration = defraReg
 			registration.PeerIDRegistration = peerReg
 		}
@@ -268,4 +274,17 @@ func (hs *HealthServer) checkDefraDB() bool {
 	defer resp.Body.Close()
 
 	return resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusBadRequest // GraphQL endpoint returns 400 for GET
+}
+
+// normalizeHex ensures a string is represented as a 0x-prefixed hex string.
+// If the string is empty, it is returned unchanged.
+func normalizeHex(s string) string {
+	if s == "" {
+		return s
+	}
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		// Normalize any 0X to 0x for consistency.
+		return "0x" + s[2:]
+	}
+	return "0x" + s
 }
