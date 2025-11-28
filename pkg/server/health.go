@@ -138,20 +138,6 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Attempt to include signed registration information in the health response.
-		// This is informational only and does not affect overall health status.
-		const registrationMessage = "Shinzo Network Indexer registration"
-		defraReg, peerReg, signErr := hs.indexer.SignMessages(registrationMessage)
-		registration := &DisplayRegistration{
-			Enabled: signErr == nil,
-			Message: registrationMessage,
-		}
-		if signErr == nil {
-			registration.DefraPKRegistration = defraReg
-			registration.PeerIDRegistration = peerReg
-		}
-		response.Registration = registration
-
 		if !hs.indexer.IsHealthy() {
 			response.Status = "unhealthy"
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -200,6 +186,19 @@ func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Reque
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
+
+		// Include signed registration information on the registration endpoint.
+		const registrationMessage = "Shinzo Network Indexer registration"
+		defraReg, peerReg, signErr := hs.indexer.SignMessages(registrationMessage)
+		registration := &DisplayRegistration{
+			Enabled: signErr == nil,
+			Message: registrationMessage,
+		}
+		if signErr == nil {
+			registration.DefraPKRegistration = defraReg
+			registration.PeerIDRegistration = peerReg
+		}
+		response.Registration = registration
 	}
 
 	if !ready {
@@ -245,9 +244,9 @@ func (hs *HealthServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 		"status":    "running",
 		"timestamp": time.Now(),
 		"endpoints": []string{
-			"/health - Liveness probe",
-			"/ready - Readiness probe",
-			"/metrics - Basic metrics",
+			"/health 	   - Health probe",
+			"/registration - Registration information",
+			"/metrics 	   - Basic metrics",
 		},
 	}
 
