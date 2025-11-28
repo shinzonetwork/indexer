@@ -43,12 +43,12 @@ func TestHealthHandler_IncludesRegistrationOnSuccess(t *testing.T) {
 			PeerInfo: []PeerInfo{{ID: "peer1"}},
 		},
 		defraReg: DefraPKRegistration{
-			PublicKey:   "pubkey",
-			SignedPKMsg: "signed-pk",
+			PublicKey:   "0xpubkey",
+			SignedPKMsg: "0xsigned-pk",
 		},
 		peerReg: PeerIDRegistration{
-			PeerID:        "peer1",
-			SignedPeerMsg: "signed-peer",
+			PeerID:        "0xpeer1",
+			SignedPeerMsg: "0xsigned-peer",
 		},
 	}
 
@@ -66,9 +66,9 @@ func TestHealthHandler_IncludesRegistrationOnSuccess(t *testing.T) {
 	require.NotNil(t, resp.Registration)
 	require.True(t, resp.Registration.Enabled)
 	require.Equal(t, "Shinzo Network Indexer registration", resp.Registration.Message)
-	require.Equal(t, "pubkey", resp.Registration.DefraPKRegistration.PublicKey)
+	require.Equal(t, "0xpubkey", resp.Registration.DefraPKRegistration.PublicKey)
 	require.Equal(t, "0xsigned-pk", resp.Registration.DefraPKRegistration.SignedPKMsg)
-	require.Equal(t, "peer1", resp.Registration.PeerIDRegistration.PeerID)
+	require.Equal(t, "0xpeer1", resp.Registration.PeerIDRegistration.PeerID)
 	require.Equal(t, "0xsigned-peer", resp.Registration.PeerIDRegistration.SignedPeerMsg)
 }
 
@@ -86,9 +86,9 @@ func TestHealthHandler_RegistrationDisabledOnSignError(t *testing.T) {
 
 	hs := NewHealthServer(0, mock, "")
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/registration", nil)
 
-	hs.healthHandler(rec, req)
+	hs.registrationHandler(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
