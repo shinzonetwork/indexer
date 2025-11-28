@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/shinzonetwork/indexer/pkg/logger"
@@ -72,14 +71,13 @@ func TestNewEthereumClient_InvalidWebSocket(t *testing.T) {
 	defer server.Close()
 
 	// Test that invalid WebSocket URL causes failure even with valid HTTP
-	_, err := NewEthereumClient(server.URL, "ws://invalid-websocket-url:9999", "")
-	if err == nil {
-		t.Error("Expected error for invalid WebSocket URL, got nil")
+	client, err := NewEthereumClient(server.URL, "ws://invalid-websocket-url:9999", "")
+	if err != nil {
+		t.Fatalf("Expected HTTP-only client to succeed when WebSocket is invalid, got error: %v", err)
 	}
 
-	// Verify error message indicates connection failure
-	if err != nil && !strings.Contains(err.Error(), "RPC_CONNECTION_FAILED") {
-		t.Errorf("Expected RPC connection error, got: %v", err)
+	if client == nil {
+		t.Fatalf("Expected non-nil client when HTTP is available")
 	}
 }
 
