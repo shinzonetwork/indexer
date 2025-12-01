@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -193,7 +194,7 @@ func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Reque
 		defraReg, peerReg, signErr := hs.indexer.SignMessages(registrationMessage)
 		registration := &DisplayRegistration{
 			Enabled: signErr == nil,
-			Message: registrationMessage,
+			Message: normalizeHex(hex.EncodeToString([]byte(registrationMessage))),
 		}
 		if signErr == nil {
 			// Normalize signed fields to 0x-prefixed hex strings for API consumers.

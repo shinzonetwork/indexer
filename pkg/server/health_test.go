@@ -65,7 +65,8 @@ func TestHealthHandler_IncludesRegistrationOnSuccess(t *testing.T) {
 
 	require.NotNil(t, resp.Registration)
 	require.True(t, resp.Registration.Enabled)
-	require.Equal(t, "Shinzo Network Indexer registration", resp.Registration.Message)
+	// 0x5368696e7a6f204e6574776f726b20496e646578657220726567697374726174696f6e is the hex encoding of "Shinzo Network Indexer registration"
+	require.Equal(t, "0x5368696e7a6f204e6574776f726b20496e646578657220726567697374726174696f6e", resp.Registration.Message)
 	require.Equal(t, "0xpubkey", resp.Registration.DefraPKRegistration.PublicKey)
 	require.Equal(t, "0xsigned-pk", resp.Registration.DefraPKRegistration.SignedPKMsg)
 	require.Equal(t, "0xpeer1", resp.Registration.PeerIDRegistration.PeerID)
