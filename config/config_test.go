@@ -221,6 +221,16 @@ func TestDefraDBEmbeddedUrlMatrix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Ensure .env / environment does NOT inject a Defra URL
+			os.Setenv("DEFRADB_URL", "")
+			os.Setenv("DEFRADB_HOST", "")
+			os.Setenv("DEFRADB_PORT", "")
+			defer func() {
+				os.Unsetenv("DEFRADB_URL")
+				os.Unsetenv("DEFRADB_HOST")
+				os.Unsetenv("DEFRADB_PORT")
+			}()
+
 			// Create a temporary config file
 			tempDir := t.TempDir()
 			configPath := filepath.Join(tempDir, "config.yaml")
