@@ -26,6 +26,7 @@ import (
 
 	appConfig "github.com/shinzonetwork/app-sdk/pkg/config"
 	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
+	"github.com/shinzonetwork/app-sdk/pkg/signer"
 )
 
 const (
@@ -90,6 +91,26 @@ func CreateIndexer(cfg *config.Config) (*ChainIndexer, error) {
 	}, nil
 }
 
+func toAppConfig(cfg *config.Config) *appConfig.Config {
+	if cfg == nil {
+		return nil
+	}
+
+	return &appConfig.Config{
+		DefraDB: appConfig.DefraDBConfig{
+			Url:           cfg.DefraDB.Url,
+			KeyringSecret: cfg.DefraDB.KeyringSecret,
+			P2P: appConfig.DefraP2PConfig{
+				BootstrapPeers: cfg.DefraDB.P2P.BootstrapPeers,
+				ListenAddr:     cfg.DefraDB.P2P.ListenAddr,
+			},
+			Store: appConfig.DefraStoreConfig{
+				Path: cfg.DefraDB.Store.Path,
+			},
+		},
+	}
+}
+
 func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	ctx := context.Background()
 	cfg := i.cfg
@@ -107,19 +128,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	if !defraStarted {
 		// Use app-sdk to start DefraDB instance with persistent keys
 		// Convert indexer config to app-sdk config
-		appCfg := appConfig.Config{
-			DefraDB: appConfig.DefraDBConfig{
-				Url:           cfg.DefraDB.Url,
-				KeyringSecret: cfg.DefraDB.KeyringSecret,
-				P2P: appConfig.DefraP2PConfig{
-					BootstrapPeers: cfg.DefraDB.P2P.BootstrapPeers,
-					ListenAddr:     cfg.DefraDB.P2P.ListenAddr,
-				},
-				Store: appConfig.DefraStoreConfig{
-					Path: cfg.DefraDB.Store.Path,
-				},
-			},
-		}
+		appCfg := toAppConfig(cfg)
 		// Note: app-sdk P2P config has no Enabled field - P2P should be enabled by ListenAddr
 
 		// Debug: Log the P2P configuration being passed to app-sdk
@@ -128,7 +137,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t",
 			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
 
-		defraNode, err := appsdk.StartDefraInstance(&appCfg,
+		defraNode, err := appsdk.StartDefraInstance(appCfg,
 			appsdk.NewSchemaApplierFromProvidedSchema(schema.GetSchema()),
 			"Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {
@@ -548,4 +557,44 @@ func applySchemaViaHTTP(defraUrl string) error {
 
 	fmt.Println("Schema applied successfully!")
 	return nil
+}
+
+func (i *ChainIndexer) SignMessages(message string) (server.DefraPKRegistration, server.PeerIDRegistration, error) {
+	signedMsg, err := signer.SignWithDefraKeys(message, i.defraNode, toAppConfig(i.cfg))
+	if err != nil {
+		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, err
+	}
+
+	// Sign with peer ID
+	peerSignedMsg, err := signer.SignWithP2PKeys(message, i.defraNode, toAppConfig(i.cfg))
+	if err != nil {
+		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, err
+	}
+
+	// Get node and peer public keys from signer helpers
+	nodePubKey, err := i.GetNodePublicKey()
+	if err != nil {
+		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, fmt.Errorf("failed to get node public key: %w", err)
+	}
+
+	peerPubKey, err := i.GetPeerPublicKey()
+	if err != nil {
+		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, fmt.Errorf("failed to get peer public key: %w", err)
+	}
+
+	return server.DefraPKRegistration{
+			PublicKey:   nodePubKey,
+			SignedPKMsg: signedMsg,
+		}, server.PeerIDRegistration{
+			PeerID:        peerPubKey,
+			SignedPeerMsg: peerSignedMsg,
+		}, nil
+}
+
+func (i *ChainIndexer) GetNodePublicKey() (string, error) {
+	return signer.GetDefraPublicKey(i.defraNode, toAppConfig(i.cfg))
+}
+
+func (i *ChainIndexer) GetPeerPublicKey() (string, error) {
+	return signer.GetP2PPublicKey(i.defraNode, toAppConfig(i.cfg))
 }
