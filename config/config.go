@@ -27,7 +27,7 @@ type DefraDBStoreConfig struct {
 type DefraDBConfig struct {
 	Url           string             `yaml:"url"`
 	KeyringSecret string             `yaml:"keyring_secret"`
-	Playground    bool               `yaml:"playground"`
+	Embedded      bool               `yaml:"embedded"`
 	P2P           DefraDBP2PConfig   `yaml:"p2p"`
 	Store         DefraDBStoreConfig `yaml:"store"`
 }
@@ -112,13 +112,6 @@ func applyEnvOverrides(cfg *Config) {
 
 	if keyringSecret := os.Getenv("DEFRADB_KEYRING_SECRET"); keyringSecret != "" {
 		cfg.DefraDB.KeyringSecret = keyringSecret
-	}
-
-	if playground := os.Getenv("DEFRADB_PLAYGROUND"); playground != "" {
-		if parsed, err := strconv.ParseBool(playground); err == nil {
-			cfg.DefraDB.Playground = parsed
-		}
-		// If parsing fails, keep the YAML default value
 	}
 
 	if p2pEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); p2pEnabled != "" {
