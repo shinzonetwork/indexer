@@ -1,6 +1,6 @@
 # Default configuration - environment variables will override these
 defradb:
-  url: "localhost:9181"  # Empty = embedded DefraDB
+  url: "http://localhost:9181"  # Empty = embedded DefraDB
   keyring_secret: "" # over written by env var
   embedded: true
   p2p:
