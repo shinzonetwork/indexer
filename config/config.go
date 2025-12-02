@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
@@ -93,6 +94,12 @@ func LoadConfig(path string) (*Config, error) {
 func validateConfig(cfg *Config) error {
 	if cfg.Indexer.StartHeight < 0 {
 		return fmt.Errorf("start_height must be >= 0")
+	}
+
+	// When using an external DefraDB instance (embedded=false), a URL is required.
+	// Embedded DefraDB can run on a random port when Url is empty.
+	if !cfg.DefraDB.Embedded && strings.TrimSpace(cfg.DefraDB.Url) == "" {
+		return fmt.Errorf("external DefraDB requires a non-empty url")
 	}
 	return nil
 }
