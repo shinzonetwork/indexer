@@ -571,20 +571,30 @@ func (i *ChainIndexer) SignMessages(message string) (server.DefraPKRegistration,
 		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, err
 	}
 
-	// Reuse peer info to get a public key
-	p2p, err := i.GetPeerInfo()
-	if err != nil || p2p == nil || len(p2p.PeerInfo) == 0 {
-		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, fmt.Errorf("no peer info available to extract public key")
+	// Get node and peer public keys from signer helpers
+	nodePubKey, err := i.GetNodePublicKey()
+	if err != nil {
+		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, fmt.Errorf("failed to get node public key: %w", err)
 	}
 
-	pubKey := p2p.PeerInfo[0].PublicKey
-	peerID := p2p.PeerInfo[0].ID
+	peerPubKey, err := i.GetPeerPublicKey()
+	if err != nil {
+		return server.DefraPKRegistration{}, server.PeerIDRegistration{}, fmt.Errorf("failed to get peer public key: %w", err)
+	}
 
 	return server.DefraPKRegistration{
-			PublicKey:   hex.EncodeToString([]byte(pubKey)),
+			PublicKey:   nodePubKey,
 			SignedPKMsg: signedMsg,
 		}, server.PeerIDRegistration{
-			PeerID:        hex.EncodeToString([]byte(peerID)),
+			PeerID:        peerPubKey,
 			SignedPeerMsg: peerSignedMsg,
 		}, nil
+}
+
+func (i *ChainIndexer) GetNodePublicKey() (string, error) {
+	return signer.GetDefraPublicKey(i.defraNode, toAppConfig(i.cfg))
+}
+
+func (i *ChainIndexer) GetPeerPublicKey() (string, error) {
+	return signer.GetP2PPublicKey(i.defraNode, toAppConfig(i.cfg))
 }
