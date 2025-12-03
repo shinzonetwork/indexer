@@ -1,82 +1,116 @@
 # Deployment Configuration
 
-This document describes the CI/CD setup requirements for the auto-deploy workflow.
+This document describes the CI/CD setup for auto-deploying the indexer.
+
+## Architecture
+
+```
+Push to main → GitHub Actions (test + build) → Push to GHCR → Watchtower pulls → Container restarts
+```
+
+**Watchtower** runs on the VM and automatically pulls new `:latest` images every 5 minutes.
 
 ## Required GitHub Secrets
 
-The following secrets must be configured in **Repository Settings → Secrets and variables → Actions**:
-
 | Secret | Required | Description |
 |--------|----------|-------------|
-| `GCE_SSH_PRIVATE_KEY` | Yes | SSH private key for VM access (ed25519 recommended) |
 | `GETH_RPC_URL` | Yes | Ethereum JSON-RPC endpoint URL |
 | `GETH_WS_URL` | Yes | Ethereum WebSocket endpoint URL |
 | `GETH_API_KEY` | Yes | API key for Ethereum node authentication |
 
-## GitHub Environment (Optional)
-
-For additional protection, create a `production` environment:
-
-1. Go to **Repository Settings → Environments → New environment**
-2. Name: `production`
-3. Optional protections:
-   - Required reviewers
-   - Wait timer
-   - Deployment branches (restrict to `main`)
-
-## SSH Key Setup
-
-Generate a dedicated deploy key:
-
-```bash
-ssh-keygen -t ed25519 -C "github-deploy" -f github_deploy_key -N ""
-```
-
-- Add the **private key** contents to `GCE_SSH_PRIVATE_KEY` secret
-- Add the **public key** to the VM's `~/.ssh/authorized_keys`
-
 ## Workflow Behavior
 
 ### Triggers
-- **Push to `main`**: Automatically builds, pushes, and deploys
-- **Manual dispatch**: Deploy any image tag via Actions UI
+- **Push to `main`**: Runs tests, builds image, pushes to GHCR
+- **Manual dispatch**: Trigger build via Actions UI
 
 ### Deploy Process
-1. Build Docker image with SHA tag
-2. Push to GitHub Container Registry (GHCR)
-3. Run tests in parallel
-4. SSH to VM and pull new image
-5. Stop old container, start new one
-6. Health check with 2-minute retry window
-7. Auto-rollback on failure
+1. Run tests
+2. Build Docker image with SHA tag
+3. Push to GHCR with `:latest` and `:sha-<commit>` tags
+4. Watchtower detects new image within ~5 minutes
+5. Watchtower stops old container, pulls new image, starts new container
 
 ### Image Tags
-- `ghcr.io/<org>/<repo>:latest` - Most recent main build
-- `ghcr.io/<org>/<repo>:sha-<7chars>` - Specific commit
+- `ghcr.io/shinzonetwork/indexer:latest` - Most recent main build (Watchtower watches this)
+- `ghcr.io/shinzonetwork/indexer:sha-<7chars>` - Specific commit for rollback
 
-## VM Requirements
+## VM Setup
 
-The target VM must have:
-- Docker installed with compose plugin
-- SSH access for the deploy user
+### Prerequisites
+- Docker installed
+- GHCR authentication configured (`docker login ghcr.io`)
 - `.env` file with runtime configuration
-- Sufficient disk space for images
-- Network access to GHCR (`ghcr.io`)
-- Health endpoint responding on port 8080
+
+### Watchtower Setup
+
+```bash
+# Login to GHCR (one-time, credentials saved to ~/.docker/config.json)
+echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_USERNAME --password-stdin
+
+# Start Watchtower
+docker run -d \
+  --name watchtower \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v ~/.docker/config.json:/config.json:ro \
+  -e WATCHTOWER_POLL_INTERVAL=300 \
+  -e WATCHTOWER_CLEANUP=true \
+  -e WATCHTOWER_LABEL_ENABLE=true \
+  containrrr/watchtower
+```
+
+### Indexer Container
+
+```bash
+docker run -d \
+  --label com.centurylinklabs.watchtower.enable=true \
+  --name shinzo-indexer \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -p 9171:9171 \
+  -v /mnt/defradb-data:/app/.defra \
+  -v /mnt/defradb-data/logs:/app/logs \
+  --env-file .env \
+  --health-cmd="curl -f http://localhost:8080/health || exit 1" \
+  --health-interval=30s \
+  --health-timeout=10s \
+  --health-retries=3 \
+  --health-start-period=60s \
+  ghcr.io/shinzonetwork/indexer:latest
+```
 
 ## Troubleshooting
 
-### Deploy fails at SSH step
-- Verify `GCE_SSH_PRIVATE_KEY` secret is set correctly
-- Check VM firewall allows SSH from GitHub Actions IPs
-- Ensure public key is in VM's authorized_keys
+### Check Watchtower logs
+```bash
+docker logs watchtower --tail 50
+```
 
-### Health check fails
-- Container may need longer startup time (DefraDB initialization)
-- Check container logs: `docker logs shinzo-indexer`
-- Verify `.env` file has correct configuration
+### Check if Watchtower can pull images
+```bash
+docker pull ghcr.io/shinzonetwork/indexer:latest
+```
 
-### Rollback triggered
-- Previous image is restored automatically
-- Check workflow logs for failure reason
-- `.last_known_good_image` file on VM tracks rollback target
+### Force immediate update
+```bash
+docker exec watchtower /watchtower --run-once
+```
+
+### Manual rollback
+```bash
+# Stop current container
+docker stop shinzo-indexer && docker rm shinzo-indexer
+
+# Start with specific SHA tag
+docker run -d \
+  --label com.centurylinklabs.watchtower.enable=true \
+  --name shinzo-indexer \
+  ... \
+  ghcr.io/shinzonetwork/indexer:sha-abc1234
+```
+
+### Container not updating
+- Verify the container has the Watchtower label: `docker inspect shinzo-indexer | grep watchtower`
+- Check GHCR credentials: `cat ~/.docker/config.json`
+- Verify Watchtower is running: `docker ps | grep watchtower`

@@ -1,36 +1,41 @@
-name: Deploy to GCE
+name: Build and Push
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: 'Image tag to deploy (default: latest commit SHA)'
-        required: false
-        type: string
 
 concurrency:
-  group: deploy-production
+  group: build-production
   cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: shinzonetwork/indexer
-  VM_HOST: 34.30.60.55
-  VM_USER: duncanbrown
-  DEPLOY_PATH: /home/duncanbrown/indexer
 
 jobs:
-  # Job 1: Build and push image
+  # Job 1: Run tests
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Run tests
+        run: go test ./...
+        env:
+          GETH_RPC_URL: ${{ secrets.GETH_RPC_URL }}
+          GETH_WS_URL: ${{ secrets.GETH_WS_URL }}
+          GETH_API_KEY: ${{ secrets.GETH_API_KEY }}
+
+  # Job 2: Build and push image (Watchtower auto-deploys on :latest)
   build-and-push:
-    if: github.event_name == 'push' || github.event.inputs.image_tag == ''
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: sha-${{ steps.short_sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,211 +64,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Job 2: Run tests before deploy
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - name: Run tests
-        run: go test ./...
+      - name: Build summary
         env:
-          GETH_RPC_URL: ${{ secrets.GETH_RPC_URL }}
-          GETH_WS_URL: ${{ secrets.GETH_WS_URL }}
-          GETH_API_KEY: ${{ secrets.GETH_API_KEY }}
-
-  # Job 3: Deploy to GCE
-  deploy:
-    needs: [build-and-push, test]
-    if: always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') && needs.test.result == 'success'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Determine image tag
-        id: tag
-        env:
-          INPUT_TAG: ${{ github.event.inputs.image_tag }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          if [ -n "$INPUT_TAG" ]; then
-            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tag=sha-$(echo $COMMIT_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Setup SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Pre-deploy health check
-        id: pre_health
-        continue-on-error: true
-        run: |
-          HEALTH=$(ssh -i ~/.ssh/deploy_key -o ConnectTimeout=10 \
-            ${{ env.VM_USER }}@${{ env.VM_HOST }} \
-            "curl -sf http://localhost:8080/health || echo 'unhealthy'")
-          echo "pre_deploy_status=$HEALTH" >> $GITHUB_OUTPUT
-
-      - name: Deploy to GCE
-        env:
-          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USER: ${{ github.actor }}
-        run: |
-          ssh -i ~/.ssh/deploy_key ${{ env.VM_USER }}@${{ env.VM_HOST }} << DEPLOY_SCRIPT
-            set -euo pipefail
-
-            cd /home/duncanbrown/indexer
-
-            echo "=== Deployment started at \$(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
-            echo "=== Deploying image tag: $IMAGE_TAG ==="
-
-            # Backup current state for rollback
-            CURRENT_IMAGE=\$(docker inspect --format='{{.Config.Image}}' shinzo-indexer 2>/dev/null || echo "none")
-            echo "Current image: \$CURRENT_IMAGE"
-            echo "\$CURRENT_IMAGE" > .last_known_good_image
-
-            # Login to GHCR
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-
-            # Pull new image
-            echo "=== Pulling new image ==="
-            docker pull ghcr.io/shinzonetwork/indexer:$IMAGE_TAG
-
-            # Stop existing container gracefully
-            echo "=== Stopping existing container ==="
-            docker stop shinzo-indexer || true
-            docker rm shinzo-indexer || true
-
-            # Start new container with same configuration
-            echo "=== Starting new container ==="
-            docker run -d \\
-              --name shinzo-indexer \\
-              --restart unless-stopped \\
-              -p 8080:8080 \\
-              -p 9171:9171 \\
-              -v /mnt/defradb-data:/app/.defra \\
-              -v /mnt/defradb-data/logs:/app/logs \\
-              --env-file .env \\
-              --health-cmd="curl -f http://localhost:8080/health || exit 1" \\
-              --health-interval=30s \\
-              --health-timeout=10s \\
-              --health-retries=3 \\
-              --health-start-period=60s \\
-              ghcr.io/shinzonetwork/indexer:$IMAGE_TAG
-
-            # Wait for container to be running
-            echo "=== Waiting for container startup ==="
-            sleep 5
-
-            # Verify container is running
-            if ! docker ps --format '{{.Names}}' | grep -q shinzo-indexer; then
-              echo "ERROR: Container failed to start"
-              docker logs shinzo-indexer --tail 50
-              exit 1
-            fi
-
-            echo "=== Container started successfully ==="
-          DEPLOY_SCRIPT
-
-      - name: Health check with retry
-        id: health_check
-        run: |
-          MAX_RETRIES=12
-          RETRY_INTERVAL=10
-
-          for i in $(seq 1 $MAX_RETRIES); do
-            echo "Health check attempt $i/$MAX_RETRIES..."
-
-            HEALTH=$(ssh -i ~/.ssh/deploy_key ${{ env.VM_USER }}@${{ env.VM_HOST }} \
-              "curl -sf http://localhost:8080/health" 2>/dev/null || echo "failed")
-
-            if [ "$HEALTH" != "failed" ]; then
-              echo "Health check passed!"
-              echo "status=healthy" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-
-            if [ $i -lt $MAX_RETRIES ]; then
-              echo "Health check failed, retrying in ${RETRY_INTERVAL}s..."
-              sleep $RETRY_INTERVAL
-            fi
-          done
-
-          echo "status=unhealthy" >> $GITHUB_OUTPUT
-          exit 1
-
-      - name: Rollback on failure
-        if: failure() && steps.health_check.outputs.status == 'unhealthy'
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USER: ${{ github.actor }}
-        run: |
-          echo "=== INITIATING ROLLBACK ==="
-          ssh -i ~/.ssh/deploy_key ${{ env.VM_USER }}@${{ env.VM_HOST }} << ROLLBACK_SCRIPT
-            set -euo pipefail
-            cd /home/duncanbrown/indexer
-
-            LAST_GOOD=\$(cat .last_known_good_image 2>/dev/null || echo "")
-            if [ -z "\$LAST_GOOD" ] || [ "\$LAST_GOOD" = "none" ]; then
-              echo "No previous image to rollback to!"
-              exit 1
-            fi
-
-            echo "Rolling back to: \$LAST_GOOD"
-
-            docker stop shinzo-indexer || true
-            docker rm shinzo-indexer || true
-
-            docker run -d \\
-              --name shinzo-indexer \\
-              --restart unless-stopped \\
-              -p 8080:8080 \\
-              -p 9171:9171 \\
-              -v /mnt/defradb-data:/app/.defra \\
-              -v /mnt/defradb-data/logs:/app/logs \\
-              --env-file .env \\
-              --health-cmd="curl -f http://localhost:8080/health || exit 1" \\
-              --health-interval=30s \\
-              --health-timeout=10s \\
-              --health-retries=3 \\
-              --health-start-period=60s \\
-              "\$LAST_GOOD"
-
-            echo "Rollback complete"
-          ROLLBACK_SCRIPT
-
-      - name: Cleanup old images
-        if: success()
-        continue-on-error: true
-        run: |
-          ssh -i ~/.ssh/deploy_key ${{ env.VM_USER }}@${{ env.VM_HOST }} << 'CLEANUP'
-            # Remove dangling images
-            docker image prune -f
-            # Keep last 5 indexer images
-            docker images ghcr.io/shinzonetwork/indexer --format '{{.ID}} {{.CreatedAt}}' | \
-              sort -k2 -r | tail -n +6 | awk '{print $1}' | \
-              xargs -r docker rmi 2>/dev/null || true
-          CLEANUP
-
-      - name: Deployment summary
-        if: always()
-        env:
-          DEPLOYED_TAG: ${{ steps.tag.outputs.tag }}
-          HEALTH_STATUS: ${{ steps.health_check.outputs.status }}
+          SHORT_SHA: ${{ steps.short_sha.outputs.sha }}
           COMMIT: ${{ github.sha }}
         run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Image Tag | \`$DEPLOYED_TAG\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| VM | ${{ env.VM_HOST }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Health Status | ${HEALTH_STATUS:-unknown} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$SHORT_SHA\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`$COMMIT\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔄 **Watchtower** will auto-deploy within ~5 minutes" >> $GITHUB_STEP_SUMMARY
