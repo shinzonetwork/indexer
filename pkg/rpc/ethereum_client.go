@@ -84,8 +84,12 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 				wsClient, err = ethclient.Dial(wsURL)
 				if err != nil {
 					logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
-					return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL,
-						fmt.Errorf("WebSocket connection failed with both API key and standard methods: %w", err))
+					// Only return error if HTTP client is also unavailable
+					if client.httpClient == nil {
+						return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL,
+							fmt.Errorf("WebSocket connection failed with both API key and standard methods: %w", err))
+					}
+					logger.Sugar.Warn("WebSocket unavailable, will use HTTP-only mode (may have reduced performance)")
 				} else {
 					logger.Sugar.Info("WebSocket fallback connection successful")
 					client.wsClient = wsClient
@@ -101,7 +105,11 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 			wsClient, err = ethclient.Dial(wsURL)
 			if err != nil {
 				logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
-				return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL, err)
+				// Only return error if HTTP client is also unavailable
+				if client.httpClient == nil {
+					return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL, err)
+				}
+				logger.Sugar.Warn("WebSocket unavailable, will use HTTP-only mode (may have reduced performance)")
 			} else {
 				logger.Sugar.Info("Standard WebSocket connection successful")
 				client.wsClient = wsClient
