@@ -41,7 +41,11 @@ func main() {
 	// Start indexer in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
-		if err := chainIndexer.StartIndexing(cfg.DefraDB.Url != ""); err != nil {
+		// Determine whether we're using an external DefraDB instance or embedded
+		// External DefraDB is used when a URL is configured and Embedded is false
+		useExternalDefra := !cfg.DefraDB.Embedded
+
+		if err := chainIndexer.StartIndexing(useExternalDefra); err != nil {
 			errChan <- err
 		}
 	}()

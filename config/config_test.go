@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -154,6 +155,9 @@ func TestLoadConfig_InvalidEnvironmentValues(t *testing.T) {
 	configPath := filepath.Join(tempDir, "config.yaml")
 
 	configContent := `
+defradb:
+  embedded: true
+
 indexer:
   start_height: 1000
 `
@@ -179,5 +183,78 @@ indexer:
 	// Should keep original values when env vars are invalid
 	if cfg.Indexer.StartHeight != 1000 {
 		t.Errorf("Expected start_height 1000 (original), got %d", cfg.Indexer.StartHeight)
+	}
+}
+
+func TestDefraDBEmbeddedUrlMatrix(t *testing.T) {
+	tests := []struct {
+		name        string
+		embedded    bool
+		url         string
+		shouldError bool
+	}{
+		{
+			name:        "embedded true with url",
+			embedded:    true,
+			url:         "http://localhost:9181",
+			shouldError: false,
+		},
+		{
+			name:        "embedded false with url",
+			embedded:    false,
+			url:         "http://localhost:9181",
+			shouldError: false,
+		},
+		{
+			name:        "embedded false with empty url should error",
+			embedded:    false,
+			url:         "",
+			shouldError: true,
+		},
+		{
+			name:        "embedded true with empty url",
+			embedded:    true,
+			url:         "",
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Ensure .env / environment does NOT inject a Defra URL
+			os.Setenv("DEFRADB_URL", "")
+			os.Setenv("DEFRADB_HOST", "")
+			os.Setenv("DEFRADB_PORT", "")
+			defer func() {
+				os.Unsetenv("DEFRADB_URL")
+				os.Unsetenv("DEFRADB_HOST")
+				os.Unsetenv("DEFRADB_PORT")
+			}()
+
+			// Create a temporary config file
+			tempDir := t.TempDir()
+			configPath := filepath.Join(tempDir, "config.yaml")
+
+			configContent := "defradb:\n" +
+				"  url: \"" + tt.url + "\"\n" +
+				"  embedded: " + strconv.FormatBool(tt.embedded) + "\n" +
+				"indexer:\n" +
+				"  start_height: 0\n"
+
+			if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+				t.Fatalf("Failed to write test config file: %v", err)
+			}
+
+			_, err := LoadConfig(configPath)
+			if tt.shouldError {
+				if err == nil {
+					t.Fatalf("expected error for combination embedded=%v url='%s', got nil", tt.embedded, tt.url)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("did not expect error for combination embedded=%v url='%s', got %v", tt.embedded, tt.url, err)
+				}
+			}
+		})
 	}
 }

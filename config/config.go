@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
@@ -27,7 +28,7 @@ type DefraDBStoreConfig struct {
 type DefraDBConfig struct {
 	Url           string             `yaml:"url"`
 	KeyringSecret string             `yaml:"keyring_secret"`
-	Playground    bool               `yaml:"playground"`
+	Embedded      bool               `yaml:"embedded"`
 	P2P           DefraDBP2PConfig   `yaml:"p2p"`
 	Store         DefraDBStoreConfig `yaml:"store"`
 }
@@ -94,6 +95,12 @@ func validateConfig(cfg *Config) error {
 	if cfg.Indexer.StartHeight < 0 {
 		return fmt.Errorf("start_height must be >= 0")
 	}
+
+	// When using an external DefraDB instance (embedded=false), a URL is required.
+	// Embedded DefraDB can run on a random port when Url is empty.
+	if !cfg.DefraDB.Embedded && strings.TrimSpace(cfg.DefraDB.Url) == "" {
+		return fmt.Errorf("external DefraDB requires a non-empty url")
+	}
 	return nil
 }
 
@@ -112,13 +119,6 @@ func applyEnvOverrides(cfg *Config) {
 
 	if keyringSecret := os.Getenv("DEFRADB_KEYRING_SECRET"); keyringSecret != "" {
 		cfg.DefraDB.KeyringSecret = keyringSecret
-	}
-
-	if playground := os.Getenv("DEFRADB_PLAYGROUND"); playground != "" {
-		if parsed, err := strconv.ParseBool(playground); err == nil {
-			cfg.DefraDB.Playground = parsed
-		}
-		// If parsing fails, keep the YAML default value
 	}
 
 	if p2pEnabled := os.Getenv("DEFRADB_P2P_ENABLED"); p2pEnabled != "" {
