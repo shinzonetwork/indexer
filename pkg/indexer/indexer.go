@@ -139,11 +139,11 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 		defraNode, err := appsdk.StartDefraInstance(appCfg,
 			appsdk.NewSchemaApplierFromProvidedSchema(schema.GetSchema()),
-			"Block", "Transaction", "AccessListEntry", "Log")
+			"Block", "Transaction", "Log")
 		if err != nil {
 			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
 		}
-		err = defraNode.DB.AddP2PCollections(ctx, "Block", "Transaction", "AccessListEntry", "Log")
+		err = defraNode.DB.AddP2PCollections(ctx, "Block", "Transaction", "Log")
 		if err != nil {
 			return fmt.Errorf("failed to add P2P collections: %w", err)
 		}
@@ -358,7 +358,8 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 			continue
 		}
 
-		// Retry logic for fetching transaction receipt
+		// Retry logic for fetching transaction receipt (if not already merged)
+		// Note: The RPC client now merges receipt data into transactions automatically
 		var receipt *types.TransactionReceipt
 		for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
 			receipt, err = ethClient.GetTransactionReceipt(ctx, tx.Hash)
@@ -378,14 +379,7 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 			continue
 		}
 
-		// Store access list entries for EIP-2930/EIP-1559 transactions
-		for _, accessListEntry := range tx.AccessList {
-			_, err := blockHandler.CreateAccessListEntry(ctx, &accessListEntry, txId)
-			if err != nil {
-				logger.Sugar.Errorf("Failed to create access list entry for tx %s: %v", tx.Hash, err)
-				continue
-			}
-		}
+		// AccessList not supported in Arbitrum - removed
 
 		// Store transaction logs from receipt
 		for _, log := range receipt.Logs {
@@ -397,7 +391,7 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 			// Note: Relationships are already established in CreateLog, no need to update separately
 		}
 
-		logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
+		logger.Sugar.Debugf("Processed transaction %s with %d logs", tx.Hash, len(receipt.Logs))
 	}
 
 	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
