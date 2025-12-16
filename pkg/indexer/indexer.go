@@ -379,16 +379,7 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 			continue
 		}
 
-		// Store access list entries only if they exist (for EIP-2930/EIP-1559 transactions)
-		if len(tx.AccessList) > 0 {
-			for _, accessListEntry := range tx.AccessList {
-				_, err := blockHandler.CreateAccessListEntry(ctx, &accessListEntry, txId)
-				if err != nil {
-					logger.Sugar.Errorf("Failed to create access list entry for tx %s: %v", tx.Hash, err)
-					continue
-				}
-			}
-		}
+		// AccessList not supported in Arbitrum - removed
 
 		// Store transaction logs from receipt
 		for _, log := range receipt.Logs {
@@ -400,7 +391,7 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 			// Note: Relationships are already established in CreateLog, no need to update separately
 		}
 
-		logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
+		logger.Sugar.Debugf("Processed transaction %s with %d logs", tx.Hash, len(receipt.Logs))
 	}
 
 	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))

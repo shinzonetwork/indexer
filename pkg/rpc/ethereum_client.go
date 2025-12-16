@@ -38,91 +38,22 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 		apiKey:  apiKey,
 	}
 
-	// Establish HTTP client with API key authentication
+	// Setup HTTP client
 	if httpNodeURL != "" {
-		var httpClient *ethclient.Client
-		var err error
-
-		if apiKey != "" {
-			logger.Sugar.Infof("Creating HTTP client with API key authentication for %s", httpNodeURL)
-			// Create RPC client with custom headers for API key authentication using modern approach
-			rpcClient, err := ethrpc.DialOptions(context.Background(), httpNodeURL, ethrpc.WithHTTPClient(&http.Client{
-				Transport: &apiKeyTransport{
-					apiKey: apiKey,
-					base:   http.DefaultTransport,
-				},
-			}))
-			if err != nil {
-				logger.Sugar.Errorf("Failed to create HTTP client with API key: %v", err)
-				return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", httpNodeURL, err)
-			}
-			httpClient = ethclient.NewClient(rpcClient)
-			logger.Sugar.Info("HTTP client with API key created successfully")
-		} else {
-			logger.Sugar.Info("Creating HTTP client without API key")
-			// Standard connection without API key
-			httpClient, err = ethclient.Dial(httpNodeURL)
-			if err != nil {
-				return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", httpNodeURL, err)
-			}
+		httpClient, err := client.createHTTPClient(httpNodeURL, apiKey)
+		if err != nil {
+			return nil, err
 		}
 		client.httpClient = httpClient
 	}
 
-	// Establish WebSocket client with API key authentication if provided
+	// Setup WebSocket client (non-fatal if it fails)
 	if wsURL != "" {
-		logger.Sugar.Infof("Attempting WebSocket connection to %s", wsURL)
-		var wsClient *ethclient.Client
-		var err error
-		var wsConnected bool
-
-		if apiKey != "" {
-			// Create WebSocket connection with custom headers for GCP authentication
-			logger.Sugar.Info("Creating WebSocket connection with X-goog-api-key header")
-			wsClient, err = createWebSocketWithHeaders(wsURL, apiKey)
-			if err != nil {
-				logger.Sugar.Warnf("Failed to establish WebSocket connection with API key header: %v", err)
-				// Try fallback without API key
-				logger.Sugar.Info("Trying standard WebSocket connection as fallback")
-				wsClient, err = ethclient.Dial(wsURL)
-				if err != nil {
-					logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
-					// Only return error if HTTP client is also unavailable
-					if client.httpClient == nil {
-						return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL,
-							fmt.Errorf("WebSocket connection failed with both API key and standard methods: %w", err))
-					}
-					logger.Sugar.Warn("WebSocket unavailable, will use HTTP-only mode (may have reduced performance)")
-				} else {
-					logger.Sugar.Info("WebSocket fallback connection successful")
-					client.wsClient = wsClient
-					wsConnected = true
-				}
-			} else {
-				logger.Sugar.Info("WebSocket connection with API key header successful")
-				client.wsClient = wsClient
-				wsConnected = true
-			}
-		} else {
-			// Standard WebSocket connection without API key
-			wsClient, err = ethclient.Dial(wsURL)
-			if err != nil {
-				logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
-				// Only return error if HTTP client is also unavailable
-				if client.httpClient == nil {
-					return nil, errors.NewRPCConnectionFailed("rpc", "NewEthereumClient", wsURL, err)
-				}
-				logger.Sugar.Warn("WebSocket unavailable, will use HTTP-only mode (may have reduced performance)")
-			} else {
-				logger.Sugar.Info("Standard WebSocket connection successful")
-				client.wsClient = wsClient
-				wsConnected = true
-			}
-		}
-
-		// Log performance implications if WebSocket failed but HTTP succeeded
-		if !wsConnected && client.httpClient != nil {
+		wsClient, err := client.createWebSocketClient(wsURL, apiKey)
+		if err != nil {
 			logger.Sugar.Warn("WebSocket connection failed but HTTP is available - indexer performance may be reduced")
+		} else {
+			client.wsClient = wsClient
 		}
 	}
 
@@ -133,6 +64,67 @@ func NewEthereumClient(httpNodeURL, wsURL, apiKey string) (*EthereumClient, erro
 	}
 
 	return client, nil
+}
+
+// createHTTPClient creates an HTTP client with optional API key authentication
+func (c *EthereumClient) createHTTPClient(httpNodeURL, apiKey string) (*ethclient.Client, error) {
+	if apiKey != "" {
+		logger.Sugar.Infof("Creating HTTP client with API key authentication for %s", httpNodeURL)
+		rpcClient, err := ethrpc.DialOptions(context.Background(), httpNodeURL, ethrpc.WithHTTPClient(&http.Client{
+			Transport: &apiKeyTransport{
+				apiKey: apiKey,
+				base:   http.DefaultTransport,
+			},
+		}))
+		if err != nil {
+			logger.Sugar.Errorf("Failed to create HTTP client with API key: %v", err)
+			return nil, errors.NewRPCConnectionFailed("rpc", "createHTTPClient", httpNodeURL, err)
+		}
+		logger.Sugar.Info("HTTP client with API key created successfully")
+		return ethclient.NewClient(rpcClient), nil
+	}
+
+	logger.Sugar.Info("Creating HTTP client without API key")
+	httpClient, err := ethclient.Dial(httpNodeURL)
+	if err != nil {
+		return nil, errors.NewRPCConnectionFailed("rpc", "createHTTPClient", httpNodeURL, err)
+	}
+	return httpClient, nil
+}
+
+// createWebSocketClient creates a WebSocket client with optional API key authentication
+func (c *EthereumClient) createWebSocketClient(wsURL, apiKey string) (*ethclient.Client, error) {
+	logger.Sugar.Infof("Attempting WebSocket connection to %s", wsURL)
+
+	if apiKey != "" {
+		logger.Sugar.Info("Creating WebSocket connection with X-goog-api-key header")
+		wsClient, err := createWebSocketWithHeaders(wsURL, apiKey)
+		if err != nil {
+			logger.Sugar.Warnf("Failed to establish WebSocket connection with API key header: %v", err)
+			// Try fallback without API key
+			logger.Sugar.Info("Trying standard WebSocket connection as fallback")
+			wsClient, err = ethclient.Dial(wsURL)
+			if err != nil {
+				logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
+				logger.Sugar.Warn("WebSocket unavailable, will use HTTP-only mode (may have reduced performance)")
+				return nil, err
+			}
+			logger.Sugar.Info("WebSocket fallback connection successful")
+			return wsClient, nil
+		}
+		logger.Sugar.Info("WebSocket connection with API key header successful")
+		return wsClient, nil
+	}
+
+	// Standard WebSocket connection without API key
+	wsClient, err := ethclient.Dial(wsURL)
+	if err != nil {
+		logger.Sugar.Errorf("Failed to establish WebSocket connection: %v", err)
+		logger.Sugar.Warn("WebSocket unavailable, will use HTTP-only mode (may have reduced performance)")
+		return nil, err
+	}
+	logger.Sugar.Info("Standard WebSocket connection successful")
+	return wsClient, nil
 }
 
 // apiKeyTransport adds API key header to HTTP requests
@@ -349,8 +341,7 @@ func (c *EthereumClient) convertRawTransaction(raw *rawTransaction, block *rawBl
 		V:                raw.V,
 		R:                raw.R,
 		S:                raw.S,
-		// Initialize other fields with defaults
-		AccessList: []types.AccessListEntry{},
+		// AccessList removed - not supported in Arbitrum
 	}, nil
 }
 
@@ -516,78 +507,16 @@ func (c *EthereumClient) convertGethBlock(gethBlock *ethtypes.Block) *types.Bloc
 
 // convertTransaction safely converts a single transaction
 func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock *ethtypes.Block, index int) (*types.Transaction, error) {
-	// Get transaction details with error handling
-	fromAddr, err := GetFromAddress(tx)
-	var fromAddrStr string
-	if err != nil {
-		// For unsigned transactions or other errors, use zero address
-		logger.Sugar.Warnf("Warning: Failed to convert transaction %s: %v", tx.Hash().Hex(), err)
-		fromAddrStr = "0x0000000000000000000000000000000000000000"
-	} else if fromAddr != nil {
-		fromAddrStr = fromAddr.Hex()
-	} else {
-		fromAddrStr = "0x0000000000000000000000000000000000000000"
-	}
+	fromAddr := c.extractFromAddress(tx)
 	toAddr := getToAddress(tx)
-
-	// Handle different transaction types
-	var gasPrice *big.Int
-	switch tx.Type() {
-	case ethtypes.LegacyTxType, ethtypes.AccessListTxType:
-		gasPrice = tx.GasPrice()
-	case ethtypes.DynamicFeeTxType:
-		// For EIP-1559 transactions, use effective gas price if available
-		// Fall back to gas fee cap if not
-		gasPrice = tx.GasFeeCap()
-	case 0x6a: // Arbitrum internal transaction type
-		// Arbitrum internal transactions may have zero gas price
-		gasPrice = tx.GasPrice()
-		if gasPrice == nil {
-			gasPrice = big.NewInt(0)
-		}
-	default:
-		// For unknown transaction types, try to get gas price
-		// If it fails, we'll catch it in the calling function
-		gasPrice = tx.GasPrice()
-		if gasPrice == nil {
-			gasPrice = big.NewInt(0)
-		}
-	}
-
-	// Extract signature components with error handling for Arbitrum transactions
-	v, r, s := tx.RawSignatureValues()
-
-	// Handle cases where signature components might be nil (e.g., Arbitrum internal transactions)
-	if v == nil {
-		v = big.NewInt(0)
-	}
-	if r == nil {
-		r = big.NewInt(0)
-	}
-	if s == nil {
-		s = big.NewInt(0)
-	}
-
-	// Get access list for EIP-2930/EIP-1559 transactions
-	accessList := make([]types.AccessListEntry, 0)
-	if tx.AccessList() != nil {
-		for _, entry := range tx.AccessList() {
-			storageKeys := make([]string, len(entry.StorageKeys))
-			for i, key := range entry.StorageKeys {
-				storageKeys[i] = key.Hex()
-			}
-			accessList = append(accessList, types.AccessListEntry{
-				Address:     entry.Address.Hex(),
-				StorageKeys: storageKeys,
-			})
-		}
-	}
+	gasPrice := c.extractGasPrice(tx)
+	v, r, s := c.extractSignatureComponents(tx)
 
 	localTx := types.Transaction{
 		// Transaction fields
 		BlockHash:        gethBlock.Hash().Hex(),
 		BlockNumber:      int(gethBlock.NumberU64()),
-		From:             fromAddrStr,
+		From:             fromAddr,
 		Gas:              fmt.Sprintf("%d", tx.Gas()),
 		GasPrice:         gasPrice.String(),
 		Hash:             tx.Hash().Hex(),
@@ -615,6 +544,58 @@ func (c *EthereumClient) convertTransaction(tx *ethtypes.Transaction, gethBlock 
 	}
 
 	return &localTx, nil
+}
+
+// extractFromAddress safely extracts the from address with error handling
+func (c *EthereumClient) extractFromAddress(tx *ethtypes.Transaction) string {
+	fromAddr, err := GetFromAddress(tx)
+	if err != nil {
+		logger.Sugar.Warnf("Warning: Failed to get from address for transaction %s: %v", tx.Hash().Hex(), err)
+		return "0x0000000000000000000000000000000000000000"
+	}
+	if fromAddr != nil {
+		return fromAddr.Hex()
+	}
+	return "0x0000000000000000000000000000000000000000"
+}
+
+// extractGasPrice handles different transaction types for gas price extraction
+func (c *EthereumClient) extractGasPrice(tx *ethtypes.Transaction) *big.Int {
+	switch tx.Type() {
+	case ethtypes.LegacyTxType:
+		return tx.GasPrice()
+	case ethtypes.DynamicFeeTxType:
+		return tx.GasFeeCap()
+	case 0x6a: // Arbitrum internal transaction type
+		gasPrice := tx.GasPrice()
+		if gasPrice == nil {
+			return big.NewInt(0)
+		}
+		return gasPrice
+	default:
+		gasPrice := tx.GasPrice()
+		if gasPrice == nil {
+			return big.NewInt(0)
+		}
+		return gasPrice
+	}
+}
+
+// extractSignatureComponents safely extracts signature components with nil handling
+func (c *EthereumClient) extractSignatureComponents(tx *ethtypes.Transaction) (*big.Int, *big.Int, *big.Int) {
+	v, r, s := tx.RawSignatureValues()
+
+	if v == nil {
+		v = big.NewInt(0)
+	}
+	if r == nil {
+		r = big.NewInt(0)
+	}
+	if s == nil {
+		s = big.NewInt(0)
+	}
+
+	return v, r, s
 }
 
 // Helper functions for transaction conversion
