@@ -138,29 +138,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 	return docID, nil
 }
 
-func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntry *types.AccessListEntry, tx_Id string) (string, error) {
-	if accessListEntry == nil {
-		logger.Sugar.Error("CreateAccessListEntry: AccessListEntry is nil")
-		return "", errors.NewInvalidInputFormat("defra", "CreateAccessListEntry", constants.CollectionAccessListEntry, nil)
-	}
-	if tx_Id == "" {
-		logger.Sugar.Error("CreateAccessListEntry: tx_Id is empty")
-		return "", errors.NewInvalidInputFormat("defra", "CreateAccessListEntry", "tx_Id", nil)
-	}
-	ALEData := map[string]interface{}{
-		"address":        accessListEntry.Address,
-		"storageKeys":    accessListEntry.StorageKeys,
-		"transaction_id": tx_Id,
-	}
-	logger.Sugar.Debug("Creating access list entry: ", ALEData)
-	// Database operation
-	docID, err := h.PostToCollection(ctx, constants.CollectionAccessListEntry, ALEData)
-	if err != nil {
-		return "", errors.NewQueryFailed("defra", "CreateAccessListEntry", fmt.Sprintf("%v", ALEData), err)
-	}
-
-	return docID, nil
-}
+// CreateAccessListEntry removed - AccessList not supported in Arbitrum
 
 func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, tx_Id string) (string, error) {
 	if log == nil {

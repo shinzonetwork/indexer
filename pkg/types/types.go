@@ -1,10 +1,6 @@
 package types
 
-// AccessListEntry represents an access list entry for EIP-2930 transactions
-type AccessListEntry struct {
-	Address     string   `json:"address"`
-	StorageKeys []string `json:"storageKeys"`
-}
+// AccessListEntry removed - not supported in Arbitrum
 
 // TransactionReceipt represents an Ethereum transaction receipt
 type TransactionReceipt struct {
@@ -46,23 +42,22 @@ type Block struct {
 
 type Transaction struct {
 	// Transaction fields
-	BlockHash        string            `json:"blockHash"`
-	BlockNumber      int               `json:"blockNumber"`
-	From             string            `json:"from"`
-	Gas              string            `json:"gas"`
-	GasPrice         string            `json:"gasPrice"`
-	Hash             string            `json:"hash"`
-	Input            string            `json:"input"`
-	Nonce            string            `json:"nonce"`
-	To               string            `json:"to"`
-	TransactionIndex int               `json:"transactionIndex"`
-	Value            string            `json:"value"`
-	Type             string            `json:"type"`
-	ChainId          string            `json:"chainId"`
-	V                string            `json:"v"`
-	R                string            `json:"r"`
-	S                string            `json:"s"`
-	AccessList       []AccessListEntry `json:"accessList,omitempty"`
+	BlockHash        string `json:"blockHash"`
+	BlockNumber      int    `json:"blockNumber"`
+	From             string `json:"from"`
+	Gas              string `json:"gas"`
+	GasPrice         string `json:"gasPrice"`
+	Hash             string `json:"hash"`
+	Input            string `json:"input"`
+	Nonce            string `json:"nonce"`
+	To               string `json:"to"`
+	TransactionIndex int    `json:"transactionIndex"`
+	Value            string `json:"value"`
+	Type             string `json:"type"`
+	ChainId          string `json:"chainId"`
+	V                string `json:"v"`
+	R                string `json:"r"`
+	S                string `json:"s"`
 	// Receipt fields
 	ContractAddress   string `json:"contractAddress"`
 	CumulativeGasUsed string `json:"cumulativeGasUsed"`
