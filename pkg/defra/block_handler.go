@@ -58,34 +58,27 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (str
 		return "", errors.NewInvalidBlockFormat("defra", "CreateBlock", fmt.Sprintf("%v", block), nil)
 	}
 
-	// Data conversion
-	blockInt, err := utils.HexToInt(block.Number)
-	if err != nil {
-		return "", err // Already properly wrapped
-	}
-
-	// Create block data
+	// Create block data matching new schema
 	blockData := map[string]interface{}{
-		"hash":             block.Hash,
-		"number":           blockInt,
-		"timestamp":        block.Timestamp,
-		"parentHash":       block.ParentHash,
-		"difficulty":       block.Difficulty,
-		"totalDifficulty":  block.TotalDifficulty,
-		"gasUsed":          block.GasUsed,
-		"gasLimit":         block.GasLimit,
-		"baseFeePerGas":    block.BaseFeePerGas,
-		"nonce":            block.Nonce,
-		"miner":            block.Miner,
-		"size":             block.Size,
-		"stateRoot":        block.StateRoot,
-		"sha3Uncles":       block.Sha3Uncles,
-		"transactionsRoot": block.TransactionsRoot,
-		"receiptsRoot":     block.ReceiptsRoot,
-		"logsBloom":        block.LogsBloom,
-		"extraData":        block.ExtraData,
-		"mixHash":          block.MixHash,
-		"uncles":           block.Uncles,
+		"baseFeePerGas": block.BaseFeePerGas,
+		"difficulty":    block.Difficulty,
+		"extraData":     block.ExtraData,
+		"gasLimit":      block.GasLimit,
+		"gasUsed":       block.GasUsed,
+		"hash":          block.Hash,
+		"l1BlockNumber": block.L1BlockNumber,
+		"logsBloom":     block.LogsBloom,
+		"mixHash":       block.MixHash,
+		"nonce":         block.Nonce,
+		"number":        block.Number, // Now int type
+		"parentHash":    block.ParentHash,
+		"receiptsRoot":  block.ReceiptsRoot,
+		"sendCount":     block.SendCount,
+		"sendRoot":      block.SendRoot,
+		"sha3Uncles":    block.Sha3Uncles,
+		"size":          block.Size,
+		"stateRoot":     block.StateRoot,
+		"timestamp":     block.Timestamp,
 	}
 	// Post block data to collection endpoint
 	logger.Sugar.Debug("Posting blockdata to collection endpoint: ", blockData)
@@ -104,35 +97,36 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		return "", errors.NewInvalidInputFormat("defra", "CreateTransaction", "tx", nil)
 	}
 
-	blockInt, err := strconv.ParseInt(tx.BlockNumber, 10, 64)
-	if err != nil {
-		return "", errors.NewParsingFailed("defra", "CreateTransaction", "block number", err)
-	}
-
+	// Create transaction data matching new schema
 	txData := map[string]interface{}{
-		"hash":                 tx.Hash,
-		"blockNumber":          blockInt,
-		"blockHash":            tx.BlockHash,
-		"transactionIndex":     tx.TransactionIndex,
-		"from":                 tx.From,
-		"to":                   tx.To,
-		"value":                tx.Value,
-		"gas":                  tx.Gas,
-		"gasPrice":             tx.GasPrice,
-		"maxFeePerGas":         tx.MaxFeePerGas,
-		"maxPriorityFeePerGas": tx.MaxPriorityFeePerGas,
-		"input":                string(tx.Input),
-		"nonce":                fmt.Sprintf("%v", tx.Nonce),
-		"type":                 tx.Type,
-		"chainId":              tx.ChainId,
-		"v":                    tx.V,
-		"r":                    tx.R,
-		"s":                    tx.S,
-		"cumulativeGasUsed":    tx.CumulativeGasUsed,
-		"effectiveGasPrice":    tx.EffectiveGasPrice,
-		"status":               tx.Status,
-		"block_id":             block_id, // Include block relationship directly
-
+		// Transaction fields
+		"blockHash":        tx.BlockHash,
+		"blockNumber":      tx.BlockNumber, // Now int type
+		"from":             tx.From,
+		"gas":              tx.Gas,
+		"gasPrice":         tx.GasPrice,
+		"hash":             tx.Hash,
+		"input":            tx.Input,
+		"nonce":            tx.Nonce,
+		"to":               tx.To,
+		"transactionIndex": tx.TransactionIndex,
+		"value":            tx.Value,
+		"type":             tx.Type,
+		"chainId":          tx.ChainId,
+		"v":                tx.V,
+		"r":                tx.R,
+		"s":                tx.S,
+		// Receipt fields
+		"contractAddress":   tx.ContractAddress,
+		"cumulativeGasUsed": tx.CumulativeGasUsed,
+		"effectiveGasPrice": tx.EffectiveGasPrice,
+		"gasUsed":           tx.GasUsed,
+		"gasUsedForL1":      tx.GasUsedForL1,
+		"l1BlockNumber":     tx.L1BlockNumber,
+		"status":            tx.Status,
+		"timeboosted":       tx.Timeboosted,
+		"logsBloom":         tx.LogsBloom,
+		"block_id":          block_id, // Include block relationship directly
 	}
 	logger.Sugar.Debug("Creating transaction: ", txData)
 	// Database operation
@@ -169,32 +163,25 @@ func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntr
 }
 
 func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, tx_Id string) (string, error) {
-	blockInt, err := utils.HexToInt(log.BlockNumber)
-	if err != nil {
-		return "", errors.NewParsingFailed("defra", "CreateLog", fmt.Sprintf("block number: %s", log.BlockNumber), err)
-	}
 	if log == nil {
 		return "", errors.NewInvalidInputFormat("defra", "CreateLog", constants.CollectionLog, nil)
-	}
-	if block_id == "" {
-		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "block_id", nil)
 	}
 	if tx_Id == "" {
 		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "tx_Id", nil)
 	}
 
+	// Create log data matching new schema
 	logData := map[string]interface{}{
 		"address":          log.Address,
 		"topics":           log.Topics,
 		"data":             log.Data,
-		"blockNumber":      blockInt,
+		"blockNumber":      log.BlockNumber, // Now int type
 		"transactionHash":  log.TransactionHash,
 		"transactionIndex": log.TransactionIndex,
 		"blockHash":        log.BlockHash,
 		"logIndex":         log.LogIndex,
-		"removed":          fmt.Sprintf("%v", log.Removed), // Convert bool to string
+		"removed":          log.Removed, // Keep as bool
 		"transaction_id":   tx_Id,
-		"block_id":         block_id,
 	}
 	logger.Sugar.Debug("Creating log: ", logData)
 	// Database operation
@@ -236,30 +223,23 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 
 }
 
-func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId string, txId string, txHash string, logIndex string) (string, error) {
+func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, txId string, txHash string, logIndex int) (string, error) {
 
-	if blockId == "" {
-		return "", errors.NewInvalidInputFormat("defra", "UpdateLogRelationships", "blockId", nil)
-	}
 	if txId == "" {
 		return "", errors.NewInvalidInputFormat("defra", "UpdateLogRelationships", "txId", nil)
 	}
 	if txHash == "" {
 		return "", errors.NewInvalidInputFormat("defra", "UpdateLogRelationships", "txHash", nil)
 	}
-	if logIndex == "" {
-		return "", errors.NewInvalidInputFormat("defra", "UpdateLogRelationships", "logIndex", nil)
-	}
 
-	// Update log with block and transaction relationships
+	// Update log with transaction relationship (block relationship removed per new schema)
 	mutation := types.Request{Query: fmt.Sprintf(`mutation {
-		update_Log(filter: {logIndex: {_eq: %q}, transactionHash: {_eq: %q}}, input: {
-			block: %q,
+		update_Log(filter: {logIndex: {_eq: %d}, transactionHash: {_eq: %q}}, input: {
 			transaction: %q
 		}) {
 			_docID
 		}
-	}`, logIndex, txHash, blockId, txId)}
+	}`, logIndex, txHash, txId)}
 
 	resp, err := h.SendToGraphql(ctx, mutation)
 	if err != nil {
