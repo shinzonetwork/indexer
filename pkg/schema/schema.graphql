@@ -49,7 +49,6 @@ type Transaction @branchable {
 		status: String
 		timeboosted: Boolean
 		logsBloom: String
-        type: String
         # Relationships
 		block: Block @relation(name: "block_transactions")
 		logs: [Log] @relation(name: "transaction_logs")
