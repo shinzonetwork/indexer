@@ -64,6 +64,10 @@ func (i *ChainIndexer) HasIndexedAtLeastOneBlock() bool {
 	return i.hasIndexedAtLeastOneBlock
 }
 
+func (i *ChainIndexer) GetHealthPort() int {
+	return 8081
+}
+
 // GetDefraDBPort returns the port of the embedded DefraDB node, or -1 if using external DefraDB
 func (i *ChainIndexer) GetDefraDBPort() int {
 	if i.defraNode == nil {
@@ -228,7 +232,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	} else if i.defraNode != nil {
 		healthDefraURL = fmt.Sprintf("http://localhost:%d", defra.GetPort(i.defraNode))
 	}
-	i.healthServer = server.NewHealthServer(8080, i, healthDefraURL)
+	i.healthServer = server.NewHealthServer(i.GetHealthPort(), i, healthDefraURL)
 
 	// Start health server in background
 	go func() {
