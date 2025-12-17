@@ -1,4 +1,4 @@
-type Block @branchable {
+type Block {
     hash: String @index(unique: true)
     number: Int @index
     timestamp: String
@@ -23,7 +23,7 @@ type Block @branchable {
     transactions: [Transaction] @relation(name: "block_transactions")
 }
 
-type Transaction @branchable {
+type Transaction {
     hash: String @index(unique: true)
     blockHash: String @index
     blockNumber: Int @index
@@ -52,13 +52,13 @@ type Transaction @branchable {
     accessList: [AccessListEntry] @relation(name: "transaction_accessList")
 }
 
-type AccessListEntry @branchable {
+type AccessListEntry {
     address: String
     storageKeys: [String]
     transaction: Transaction @relation(name: "transaction_accessList")
 }
 
-type Log @branchable {
+type Log {
     address: String
     topics: [String]
     data: String
