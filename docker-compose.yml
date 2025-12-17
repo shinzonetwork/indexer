@@ -5,8 +5,12 @@ services:
       dockerfile: Dockerfile
     container_name: shinzo-indexer
     restart: unless-stopped
-    network_mode: host
     
+    ports:
+      - "8080:8080"
+      - "9171:9171"
+      - "9181:9181"
+
     environment:
       # Ethereum Node Configuration
       - GETH_RPC_URL=${GETH_RPC_URL}
@@ -17,7 +21,7 @@ services:
       - DEFRADB_KEYRING_SECRET=${DEFRADB_KEYRING_SECRET:-}
       
       # Indexer Configuration
-      - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-23500000}
+      - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-23700000}
     
     volumes:
       # DefraDB data
