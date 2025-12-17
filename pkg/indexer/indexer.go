@@ -65,7 +65,10 @@ func (i *ChainIndexer) HasIndexedAtLeastOneBlock() bool {
 }
 
 func (i *ChainIndexer) GetHealthPort() int {
-	return 8081
+	if i.cfg != nil && i.cfg.Server.HealthPort > 0 {
+		return i.cfg.Server.HealthPort
+	}
+	return 8080 // Default fallback port
 }
 
 // GetDefraDBPort returns the port of the embedded DefraDB node, or -1 if using external DefraDB

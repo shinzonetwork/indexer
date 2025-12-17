@@ -50,6 +50,11 @@ type IndexerConfig struct {
 	StartHeight int `yaml:"start_height"`
 }
 
+// ServerConfig represents server configuration
+type ServerConfig struct {
+	HealthPort int `yaml:"health_port"`
+}
+
 // LoggerConfig represents logger configuration
 type LoggerConfig struct {
 	Development bool `yaml:"development"`
@@ -60,6 +65,7 @@ type Config struct {
 	DefraDB DefraDBConfig `yaml:"defradb"`
 	Geth    GethConfig    `yaml:"geth"`
 	Indexer IndexerConfig `yaml:"indexer"`
+	Server  ServerConfig  `yaml:"server"`
 	Logger  LoggerConfig  `yaml:"logger"`
 }
 

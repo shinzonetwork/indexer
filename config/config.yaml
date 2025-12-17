@@ -17,6 +17,10 @@ geth:
 
 indexer:
   start_height: 23700000
+
+server:
+  health_port: 8080
+
 logger:
   development: false
 
