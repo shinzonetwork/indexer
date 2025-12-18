@@ -1,11 +1,11 @@
 services:
   indexer:
+    image: shinzo-indexer:latest
     build:
       context: .
       dockerfile: Dockerfile
     container_name: shinzo-indexer
     restart: unless-stopped
-    network_mode: host
     
     environment:
       # Ethereum Node Configuration
@@ -17,16 +17,19 @@ services:
       - DEFRADB_KEYRING_SECRET=${DEFRADB_KEYRING_SECRET:-}
       
       # Indexer Configuration
-      - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-23500000}
+      - INDEXER_START_HEIGHT=${INDEXER_START_HEIGHT:-23600000}
     
     volumes:
       # DefraDB data
-      - ./data/.defra:/app/.defra
+      - /mnt/defradb-data:/app/.defra 
       # Logs
-      - ./logs:/app/logs
-      # Config (read-only)
-      - ./config:/app/config:ro
+      - /mnt/defradb-data/logs:/app/logs 
     
+    ports:
+      # Expose indexer health server to host
+      - "8080:8080" # health server
+      - "9171:9171" # p2p
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
