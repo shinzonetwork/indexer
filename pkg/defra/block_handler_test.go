@@ -8,11 +8,11 @@ import (
 	"os"
 	"testing"
 
-	shinzoerrors "github.com/shinzonetwork/indexer/pkg/errors"
-	"github.com/shinzonetwork/indexer/pkg/logger"
-	"github.com/shinzonetwork/indexer/pkg/testutils"
-	"github.com/shinzonetwork/indexer/pkg/types"
-	"github.com/shinzonetwork/indexer/pkg/utils"
+	shinzoerrors "github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/testutils"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/types"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/utils"
 
 	"net/http/httptest"
 )

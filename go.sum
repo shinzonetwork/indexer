@@ -2316,8 +2316,6 @@ github.com/segmentio/asm v1.2.0/go.mod h1:BqMnlJP91P8d+4ibuonYZw9mfnzI9HfxselHZr
 github.com/sergi/go-diff v1.0.0/go.mod h1:0CfEIISq7TuYL3j771MWULgwwjU+GofnZX9QAmXWZgo=
 github.com/sergi/go-diff v1.1.0/go.mod h1:STckp+ISIX8hZLjrqAeVduY0gWCT9IjLuqbuNXdaHfM=
 github.com/shazow/go-diff v0.0.0-20160112020656-b6b7b6733b8c/go.mod h1:/PevMnwAxekIXwN8qQyfc5gl2NlkB3CQlkizAbOkeBs=
-github.com/shinzonetwork/indexer v0.1.0 h1:0eFqj/Ikpo2LTRNU21jYrbRmXACX7GDwBaEu3VM6dmI=
-github.com/shinzonetwork/indexer v0.1.0/go.mod h1:uHKlRPwWdwzjNKnQvyENR4mMpZOPplYEbNT4NvVygKE=
 github.com/shinzonetwork/shinzo-app-sdk v0.0.0-20251218182531-407c30d55a0f h1:C3/5bqE+9Nhq3CKyl8FRXKKRNBO94DdXvC3IRs8/Gng=
 github.com/shinzonetwork/shinzo-app-sdk v0.0.0-20251218182531-407c30d55a0f/go.mod h1:u2zfmbF/1dugVDYD0ubuRDKg/kqoWVZR0wvDARYQV2g=
 github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible h1:Bn1aCHHRnjv4Bl16T8rcaFjYSrGrIZvpiGO6P3Q4GpU=
