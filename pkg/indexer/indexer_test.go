@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shinzonetwork/indexer/config"
-	"github.com/shinzonetwork/indexer/pkg/logger"
-	"github.com/shinzonetwork/indexer/pkg/types"
+	"github.com/shinzonetwork/shinzo-indexer-client/config"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 

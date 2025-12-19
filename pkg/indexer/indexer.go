@@ -12,21 +12,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shinzonetwork/indexer/config"
-	"github.com/shinzonetwork/indexer/pkg/defra"
-	"github.com/shinzonetwork/indexer/pkg/errors"
-	"github.com/shinzonetwork/indexer/pkg/logger"
-	"github.com/shinzonetwork/indexer/pkg/rpc"
-	"github.com/shinzonetwork/indexer/pkg/schema"
-	"github.com/shinzonetwork/indexer/pkg/server"
-	"github.com/shinzonetwork/indexer/pkg/types"
+	"github.com/shinzonetwork/shinzo-indexer-client/config"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/defra"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/rpc"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/schema"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/server"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/types"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/sourcenetwork/defradb/node"
 
-	appConfig "github.com/shinzonetwork/app-sdk/pkg/config"
-	appsdk "github.com/shinzonetwork/app-sdk/pkg/defra"
-	"github.com/shinzonetwork/app-sdk/pkg/signer"
+	appConfig "github.com/shinzonetwork/shinzo-app-sdk/pkg/config"
+	appsdk "github.com/shinzonetwork/shinzo-app-sdk/pkg/defra"
+	"github.com/shinzonetwork/shinzo-app-sdk/pkg/signer"
 )
 
 const (
@@ -137,7 +137,7 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		logger.Sugar.Warnf("=== P2P DEBUG === Original config - ListenAddr: '%s', Enabled: %t",
 			cfg.DefraDB.P2P.ListenAddr, cfg.DefraDB.P2P.Enabled)
 
-		defraNode, err := appsdk.StartDefraInstance(appCfg,
+		defraNode, _, err := appsdk.StartDefraInstance(appCfg,
 			appsdk.NewSchemaApplierFromProvidedSchema(schema.GetSchema()),
 			"Block", "Transaction", "AccessListEntry", "Log")
 		if err != nil {

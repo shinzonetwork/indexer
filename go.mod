@@ -1,4 +1,4 @@
-module github.com/shinzonetwork/indexer
+module github.com/shinzonetwork/shinzo-indexer-client
 
 go 1.25.5
 
@@ -6,7 +6,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/joho/godotenv v1.5.1
 	github.com/libp2p/go-libp2p v0.43.0
-	github.com/shinzonetwork/app-sdk v0.0.0-20251204202848-9b6d174859b4
+	github.com/shinzonetwork/shinzo-app-sdk v0.0.0-20251218182531-407c30d55a0f
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )

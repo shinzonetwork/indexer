@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shinzonetwork/indexer/pkg/logger"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
 )
 
 // HealthServer provides HTTP endpoints for health checks and metrics
