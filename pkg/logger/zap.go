@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/shinzonetwork/indexer/pkg/errors"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

@@ -2,8 +2,9 @@ package utils
 
 import (
 	"fmt"
-	"github.com/shinzonetwork/indexer/pkg/errors"
 	"strconv"
+
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
 )
 
 // NumberToHex converts any numeric type to a hex string with "0x" prefix

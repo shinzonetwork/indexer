@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shinzonetwork/indexer/config"
-	"github.com/shinzonetwork/indexer/pkg/indexer"
-	"github.com/shinzonetwork/indexer/pkg/logger"
+	"github.com/shinzonetwork/shinzo-indexer-client/config"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/indexer"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
 )
 
 var (

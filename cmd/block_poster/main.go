@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/shinzonetwork/indexer/config"
-	"github.com/shinzonetwork/indexer/pkg/indexer"
+	"github.com/shinzonetwork/shinzo-indexer-client/config"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/indexer"
 )
 
 func main() {
