@@ -20,7 +20,7 @@ type Block @branchable {
     mixHash: String
     uncles: [String]
     # Relationships
-    transactions: [Transaction]  @relation(name: "block_transactions")
+    transactions: [Transaction] @relation(name: "block_transactions")
 }
 
 type Transaction @branchable {
