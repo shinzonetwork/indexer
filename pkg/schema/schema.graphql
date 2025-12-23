@@ -20,7 +20,7 @@ type Block @branchable {
     mixHash: String
     uncles: [String]
     # Relationships
-    transactions: [Transaction] @relation(name: "block_transactions")
+    transactions: [Transaction] @index @relation(name: "block_transactions")
 }
 
 type Transaction @branchable {
@@ -47,15 +47,15 @@ type Transaction @branchable {
     cumulativeGasUsed: String
     effectiveGasPrice: String
     # Relationships
-    block: Block @relation(name: "block_transactions")
-    logs: [Log] @relation(name: "transaction_logs")
-    accessList: [AccessListEntry] @relation(name: "transaction_accessList")
+    block: Block @index @relation(name: "block_transactions")
+    logs: [Log] @index @relation(name: "transaction_logs")
+    accessList: [AccessListEntry] @index @relation(name: "transaction_accessList")
 }
 
 type AccessListEntry @branchable {
     address: String
     storageKeys: [String]
-    transaction: Transaction @relation(name: "transaction_accessList")
+    transaction: Transaction @index @relation(name: "transaction_accessList")
 }
 
 type Log @branchable {
