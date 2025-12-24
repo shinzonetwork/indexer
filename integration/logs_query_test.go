@@ -6,6 +6,8 @@ package integration
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 )
 
 var logsQueryPath string
@@ -24,7 +26,7 @@ func assertLogHasTopics(t *testing.T, logMap map[string]interface{}) {
 func TestGetAllTransactionLogs(t *testing.T) {
 	txHash := getArbitraryTransactionHash(t)
 	result := MakeQuery(t, logsQueryPath, "GetAllTransactionLogs", map[string]interface{}{"txHash": txHash})
-	logList, ok := result["data"].(map[string]interface{})["Log"].([]interface{})
+	logList, ok := result["data"].(map[string]interface{})[constants.CollectionLog].([]interface{})
 	if !ok {
 		t.Errorf("No logs returned for txHash %v: %v", txHash, result)
 		return
@@ -57,7 +59,7 @@ func getArbitraryBlock(t *testing.T) map[string]interface{} {
 		t.Fatalf("Invalid data format in GraphQL response: %v", result)
 	}
 
-	blocks, ok := data["Block"].([]interface{})
+	blocks, ok := data[constants.CollectionBlock].([]interface{})
 	if !ok || len(blocks) == 0 {
 		t.Fatalf("No blocks returned")
 	}
@@ -77,7 +79,7 @@ func TestGetAllBlockLogs(t *testing.T) {
 		t.Fatalf("Block hash missing or empty in block: %v", block)
 	}
 	result := MakeQuery(t, logsQueryPath, "GetAllBlockLogs", map[string]interface{}{"blockHash": blockHash})
-	logList, ok := result["data"].(map[string]interface{})["Log"].([]interface{})
+	logList, ok := result["data"].(map[string]interface{})[constants.CollectionLog].([]interface{})
 	if !ok {
 		t.Errorf("No logs returned for blockHash %v: %v", blockHash, result)
 		return
@@ -98,7 +100,7 @@ func TestGetAllBlockLogs(t *testing.T) {
 func TestGetAllLogsByTopic(t *testing.T) {
 	topic := getArbitraryTopic(t)
 	result := MakeQuery(t, logsQueryPath, "GetAllLogsByTopic", map[string]interface{}{"topic": topic})
-	logList, ok := result["data"].(map[string]interface{})["Log"].([]interface{})
+	logList, ok := result["data"].(map[string]interface{})[constants.CollectionLog].([]interface{})
 	if !ok {
 		t.Errorf("No logs returned for topic %v: %v", topic, result)
 		return
