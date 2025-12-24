@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/types"
@@ -73,7 +74,7 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (str
 	// Post block data to collection endpoint
 	logger.Sugar.Debug("Posting blockdata to collection endpoint: ", blockData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "Block", blockData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionBlock, blockData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateBlock", fmt.Sprintf("%v", blockData), err)
 	}
@@ -119,7 +120,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 	}
 	logger.Sugar.Debug("Creating transaction: ", txData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "Transaction", txData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionTransaction, txData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateTransaction", fmt.Sprintf("%v", txData), err)
 	}
@@ -143,7 +144,7 @@ func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntr
 	}
 	logger.Sugar.Debug("Creating access list entry: ", ALEData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "AccessListEntry", ALEData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionAccessListEntry, ALEData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateAccessListEntry", fmt.Sprintf("%v", ALEData), err)
 	}
@@ -181,7 +182,7 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 	}
 	logger.Sugar.Debug("Creating log: ", logData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "Log", logData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionLog, logData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateLog", fmt.Sprintf("%v", logData), err)
 	}
