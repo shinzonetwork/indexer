@@ -6,6 +6,8 @@ package integration
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 )
 
 var transactionQueryPath string
@@ -20,7 +22,7 @@ func getArbitraryTransaction(t *testing.T) map[string]interface{} {
 	blockNumber := 1000001 // Use our predictable mock block with transactions
 	variables := map[string]interface{}{"blockNumber": blockNumber}
 	result := MakeQuery(t, blockQueryPath, "GetBlockWithTransactions", variables)
-	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
+	blockList, ok := result["data"].(map[string]interface{})[constants.CollectionBlock].([]interface{})
 	if !ok || len(blockList) == 0 {
 		t.Fatalf("No block with number %v found; cannot test transactions.", blockNumber)
 	}
@@ -60,7 +62,7 @@ func getArbitraryTransactionWithLogs(t *testing.T) map[string]interface{} {
 	blockNumber := 1000002 // Use our second mock block with transactions
 	variables := map[string]interface{}{"blockNumber": blockNumber}
 	result := MakeQuery(t, blockQueryPath, "GetBlockWithTransactions", variables)
-	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
+	blockList, ok := result["data"].(map[string]interface{})[constants.CollectionBlock].([]interface{})
 	if !ok || len(blockList) == 0 {
 		t.Fatalf("No block with number %v found; cannot test transactions.", blockNumber)
 	}
@@ -105,7 +107,7 @@ func getArbitraryTopic(t *testing.T) string {
 func TestGetTransactionByHash(t *testing.T) {
 	transactionHash := getArbitraryTransactionHash(t)
 	result := MakeQuery(t, transactionQueryPath, "GetTransactionByHash", map[string]interface{}{"txHash": transactionHash})
-	transactionList, ok := result["data"].(map[string]interface{})["Transaction"].([]interface{})
+	transactionList, ok := result["data"].(map[string]interface{})[constants.CollectionTransaction].([]interface{})
 	if !ok || len(transactionList) == 0 {
 		t.Errorf("No transactions returned: %v", result)
 		return
@@ -130,7 +132,7 @@ func TestGetTransactionByHash(t *testing.T) {
 func TestGetTransactionsInvolvingAddress(t *testing.T) {
 	address := getArbitraryAddress(t)
 	result := MakeQuery(t, transactionQueryPath, "GetTransactionsInvolvingAddress", map[string]interface{}{"address": address})
-	transactionList, ok := result["data"].(map[string]interface{})["Transaction"].([]interface{})
+	transactionList, ok := result["data"].(map[string]interface{})[constants.CollectionTransaction].([]interface{})
 	if !ok || len(transactionList) == 0 {
 		t.Errorf("No transactions returned for address %v: %v", address, result)
 		return
@@ -156,7 +158,7 @@ func TestGetTransactionsInvolvingAddress(t *testing.T) {
 func TestGetAllTransactionWithTopic(t *testing.T) {
 	topic := getArbitraryTopic(t)
 	result := MakeQuery(t, transactionQueryPath, "GetAllTransactionWithTopic", map[string]interface{}{"topic": topic})
-	logList, ok := result["data"].(map[string]interface{})["Log"].([]interface{})
+	logList, ok := result["data"].(map[string]interface{})[constants.CollectionLog].([]interface{})
 	if !ok || len(logList) == 0 {
 		t.Errorf("No logs returned for topic %v: %v", topic, result)
 		return

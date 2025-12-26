@@ -3,6 +3,8 @@ package integration
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 )
 
 const queryFile = "queries/blocks.graphql"
@@ -40,9 +42,9 @@ func getLatestBlockNumber(t *testing.T) int {
 	}
 
 	// Check if Block field exists
-	blockField, ok := dataMap["Block"]
+	blockField, ok := dataMap[constants.CollectionBlock]
 	if !ok {
-		t.Fatalf("No 'Block' field in GraphQL data: %v", dataMap)
+		t.Fatalf("No '%s' field in GraphQL data: %v", constants.CollectionBlock, dataMap)
 	}
 
 	// Cast Block to array
@@ -72,9 +74,9 @@ func TestGetHighestBlockNumber(t *testing.T) {
 
 func TestGetLatestBlocks(t *testing.T) {
 	result := MakeQuery(t, blockQueryPath, "GetLatestBlocks", nil)
-	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
+	blockList, ok := result["data"].(map[string]interface{})[constants.CollectionBlock].([]interface{})
 	if !ok {
-		t.Fatalf("No Block field or wrong type in response: %v", result)
+		t.Fatalf("No %s field or wrong type in response: %v", constants.CollectionBlock, result)
 	}
 	if len(blockList) == 0 {
 		t.Fatalf("No blocks returned")
@@ -94,7 +96,7 @@ func TestGetBlockWithTransactions(t *testing.T) {
 	blockNumber := getLatestBlockNumber(t)
 	variables := map[string]interface{}{"blockNumber": blockNumber}
 	result := MakeQuery(t, blockQueryPath, "GetBlockWithTransactions", variables)
-	blockList, ok := result["data"].(map[string]interface{})["Block"].([]interface{})
+	blockList, ok := result["data"].(map[string]interface{})[constants.CollectionBlock].([]interface{})
 	if !ok || len(blockList) == 0 {
 		t.Fatalf("No block with number %v found; cannot test transactions.", blockNumber)
 	}

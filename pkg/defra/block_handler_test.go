@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 	shinzoerrors "github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/testutils"
@@ -249,7 +250,7 @@ func TestConvertHexToInt_UnhappyPaths(t *testing.T) {
 func TestCreateBlock_InvalidBlock(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLCreateResponse("Block", "test-block-doc-id")
+	response := testutils.CreateGraphQLCreateResponse(constants.CollectionBlock, "test-block-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
@@ -342,7 +343,7 @@ func TestCreateBlock_EmptyField(t *testing.T) {
 func TestCreateTransaction_MockServer(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
+	response := testutils.CreateGraphQLCreateResponse(constants.CollectionTransaction, "test-tx-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
@@ -376,7 +377,7 @@ func TestCreateTransaction_MockServer(t *testing.T) {
 func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLCreateResponse("Transaction", "test-tx-doc-id")
+	response := testutils.CreateGraphQLCreateResponse(constants.CollectionTransaction, "test-tx-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
@@ -411,7 +412,7 @@ func TestCreateTransaction_InvalidBlockNumber(t *testing.T) {
 func TestCreateLog_MockServer(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
+	response := testutils.CreateGraphQLCreateResponse(constants.CollectionLog, "test-log-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
@@ -445,7 +446,7 @@ func TestCreateLog_MockServer(t *testing.T) {
 func TestCreateLog_InvalidBlockNumber(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLCreateResponse("Log", "test-log-doc-id")
+	response := testutils.CreateGraphQLCreateResponse(constants.CollectionLog, "test-log-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
@@ -479,7 +480,7 @@ func TestCreateLog_InvalidBlockNumber(t *testing.T) {
 func TestUpdateTransactionRelationships_MockServerSuccess(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLUpdateResponse("Transaction", "updated-tx-doc-id")
+	response := testutils.CreateGraphQLUpdateResponse(constants.CollectionTransaction, "updated-tx-doc-id")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
@@ -816,7 +817,7 @@ func TestSendToGraphql_NetworkError(t *testing.T) {
 func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLQueryResponse("Block", `[
+	response := testutils.CreateGraphQLQueryResponse(constants.CollectionBlock, `[
 		{
 			"number": 12345
 		}
@@ -839,7 +840,7 @@ func TestGetHighestBlockNumber_MockServer(t *testing.T) {
 func TestGetHighestBlockNumber_EmptyResponse(t *testing.T) {
 	// Set up test logger
 	testLogger := testutils.NewTestLogger(t)
-	response := testutils.CreateGraphQLQueryResponse("Block", "[]")
+	response := testutils.CreateGraphQLQueryResponse(constants.CollectionBlock, "[]")
 	server, handler := createBlockHandlerWithMocks(response)
 	defer server.Close()
 
