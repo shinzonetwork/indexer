@@ -671,7 +671,7 @@ func hasBlocks() bool {
 		return false
 	}
 
-	blocks, ok := data["Block"].([]interface{})
+	blocks, ok := data[constants.CollectionBlock].([]interface{})
 	return ok && len(blocks) > 0
 }
 

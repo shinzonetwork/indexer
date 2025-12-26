@@ -131,7 +131,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntry *types.AccessListEntry, tx_Id string) (string, error) {
 	if accessListEntry == nil {
 		logger.Sugar.Error("CreateAccessListEntry: AccessListEntry is nil")
-		return "", errors.NewInvalidInputFormat("defra", "CreateAccessListEntry", "accessListEntry", nil)
+		return "", errors.NewInvalidInputFormat("defra", "CreateAccessListEntry", constants.CollectionAccessListEntry, nil)
 	}
 	if tx_Id == "" {
 		logger.Sugar.Error("CreateAccessListEntry: tx_Id is empty")
@@ -158,7 +158,7 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 		return "", errors.NewParsingFailed("defra", "CreateLog", fmt.Sprintf("block number: %s", log.BlockNumber), err)
 	}
 	if log == nil {
-		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "log", nil)
+		return "", errors.NewInvalidInputFormat("defra", "CreateLog", constants.CollectionLog, nil)
 	}
 	if block_id == "" {
 		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "block_id", nil)
@@ -473,25 +473,25 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, error)
 	data, ok := rawResponse["data"].(map[string]interface{})
 	if !ok {
 		logger.Sugar.Error("data field not found in response")
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", data))
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", data))
 	}
 
 	// Extract Block array
-	blockArray, ok := data["Block"].([]interface{})
+	blockArray, ok := data[constants.CollectionBlock].([]interface{})
 	if !ok {
 		logger.Sugar.Error("Block field not found in response")
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", data["Block"]))
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", data[constants.CollectionBlock]))
 	}
 
 	if len(blockArray) == 0 {
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", "blockArray is empty")
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, "blockArray is empty")
 	}
 
 	// Extract first block
 	block, ok := blockArray[0].(map[string]interface{})
 	if !ok {
 		logger.Sugar.Error("Invalid block format in response")
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", blockArray))
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", blockArray))
 	}
 
 	// Extract number field (handle both string and integer)
@@ -519,5 +519,5 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, error)
 	default:
 		logger.Sugar.Errorf("unexpected number type: %T", numberValue)
 	}
-	return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", numberValue))
+	return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", numberValue))
 }
