@@ -15,11 +15,13 @@ import (
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/types"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/utils"
+	"github.com/sourcenetwork/defradb/node"
 )
 
 type BlockHandler struct {
-	defraURL string
-	client   *http.Client
+	defraURL  string
+	client    *http.Client
+	defraNode *node.Node // Direct access to embedded DefraDB (nil if using HTTP)
 }
 
 func NewBlockHandler(url string) (*BlockHandler, error) {
@@ -32,6 +34,20 @@ func NewBlockHandler(url string) (*BlockHandler, error) {
 		client: &http.Client{
 			Timeout: 30 * time.Second, // Add 30-second timeout to prevent hanging
 		},
+		defraNode: nil,
+	}, nil
+}
+
+// NewBlockHandlerWithNode creates a BlockHandler that uses direct DB calls for better performance.
+func NewBlockHandlerWithNode(defraNode *node.Node) (*BlockHandler, error) {
+	if defraNode == nil {
+		return nil, errors.NewConfigurationError("defra", "NewBlockHandlerWithNode",
+			"defraNode is nil", "", nil)
+	}
+	return &BlockHandler{
+		defraNode: defraNode,
+		client:    nil,
+		defraURL:  "",
 	}, nil
 }
 
@@ -183,7 +199,8 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 	// Database operation
 	docID, err := h.PostToCollection(ctx, "Log", logData)
 	if err != nil {
-		return "", errors.NewQueryFailed("defra", "CreateLog", fmt.Sprintf("%v", logData), err)
+		logger.Sugar.Errorf("Failed to create log (txHash=%s, logIndex=%v): %v", log.TransactionHash, log.LogIndex, err)
+		return "", err
 	}
 
 	return docID, nil
@@ -328,6 +345,7 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 					}
 					return "", errors.NewQueryFailed("defra", "PostToCollection", "document already exists", nil)
 				}
+				logger.Sugar.Errorf("GraphQL error for %s: %s", collection, message)
 				return "", errors.NewQueryFailed("defra", "PostToCollection", message, nil)
 			}
 		}
@@ -373,11 +391,49 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 }
 
 func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]byte, error) {
-
 	if req.Query == "" {
 		return nil, errors.NewInvalidInputFormat("defra", "SendToGraphql", "req.Query", nil)
 	}
 
+	if h.defraNode != nil {
+		return h.sendToGraphqlDirect(ctx, req)
+	}
+
+	return h.sendToGraphqlHTTP(ctx, req)
+}
+
+// sendToGraphqlDirect executes GraphQL directly on the embedded DefraDB node
+func (h *BlockHandler) sendToGraphqlDirect(ctx context.Context, req types.Request) ([]byte, error) {
+	logger.Sugar.Debug("Sending direct mutation: ", req.Query, "\n")
+
+	result := h.defraNode.DB.ExecRequest(ctx, req.Query)
+	gqlResult := result.GQL
+
+	response := map[string]interface{}{
+		"data": gqlResult.Data,
+	}
+
+	if len(gqlResult.Errors) > 0 {
+		errList := make([]map[string]interface{}, len(gqlResult.Errors))
+		for i, err := range gqlResult.Errors {
+			errList[i] = map[string]interface{}{
+				"message": err.Error(),
+			}
+		}
+		response["errors"] = errList
+	}
+
+	respBody, err := json.Marshal(response)
+	if err != nil {
+		return nil, errors.NewQueryFailed("defra", "sendToGraphqlDirect", fmt.Sprintf("%v", req), err)
+	}
+
+	logger.Sugar.Debug("DefraDB Direct Response: ", string(respBody), "\n")
+	return respBody, nil
+}
+
+// sendToGraphqlHTTP executes GraphQL via HTTP
+func (h *BlockHandler) sendToGraphqlHTTP(ctx context.Context, req types.Request) ([]byte, error) {
 	type RequestJSON struct {
 		Query string `json:"query"`
 	}
@@ -391,13 +447,13 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 	}
 
 	// Debug: Print the mutation
-	logger.Sugar.Debug("Sending mutation: ", req.Query, "\n")
+	logger.Sugar.Debug("Sending HTTP mutation: ", req.Query, "\n")
 
 	// Create request
 	httpReq, err := http.NewRequestWithContext(ctx, req.Type, h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		logger.Sugar.Errorf("failed to create request: ", err)
-		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
+		return nil, errors.NewQueryFailed("defra", "sendToGraphqlHTTP", fmt.Sprintf("%v", req), err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -409,18 +465,18 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 		if strings.Contains(err.Error(), "connection refused") {
 			logger.Sugar.Error("DefraDB appears to be down. Please ensure DefraDB is running on the configured port.")
 		}
-		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
+		return nil, errors.NewQueryFailed("defra", "sendToGraphqlHTTP", fmt.Sprintf("%v", req), err)
 	}
 
 	defer resp.Body.Close()
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Sugar.Errorf("Read response error: ", err) // todo turn to error interface
-		return nil, errors.NewQueryFailed("defra", "SendToGraphql", fmt.Sprintf("%v", req), err)
+		logger.Sugar.Errorf("Read response error: ", err)
+		return nil, errors.NewQueryFailed("defra", "sendToGraphqlHTTP", fmt.Sprintf("%v", req), err)
 	}
 	// Debug: Print the response
-	logger.Sugar.Debug("DefraDB Response: ", string(respBody), "\n")
+	logger.Sugar.Debug("DefraDB HTTP Response: ", string(respBody), "\n")
 	return respBody, nil
 }
 

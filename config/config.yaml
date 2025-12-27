@@ -16,7 +16,7 @@ geth:
   api_key: "${GETH_API_KEY}"
 
 indexer:
-  start_height: 23500000
+  start_height: 23700000
 logger:
   development: false
 
