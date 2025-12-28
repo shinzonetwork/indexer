@@ -6,7 +6,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/joho/godotenv v1.5.1
 	github.com/libp2p/go-libp2p v0.43.0
-	github.com/shinzonetwork/shinzo-app-sdk v0.0.0-20251222184045-95d844f8e128
+	github.com/shinzonetwork/shinzo-app-sdk v0.0.0-20251228021408-e3627f8c91c9
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -296,7 +296,7 @@ require (
 	github.com/sourcenetwork/corekv/namespace v0.2.4 // indirect
 	github.com/sourcenetwork/corelog v0.0.8 // indirect
 	github.com/sourcenetwork/go-libp2p-pubsub-rpc v0.0.14 // indirect
-	github.com/sourcenetwork/go-p2p v0.1.6 // indirect
+	github.com/sourcenetwork/go-p2p v0.1.7 // indirect
 	github.com/sourcenetwork/goji v0.0.8 // indirect
 	github.com/sourcenetwork/graphql-go v0.7.10-0.20251126162830-73185f9b1d45 // indirect
 	github.com/sourcenetwork/immutable v0.3.0 // indirect
@@ -413,7 +413,7 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
-	github.com/sourcenetwork/defradb v0.20.1-0.20251221233107-fce850da34d2
+	github.com/sourcenetwork/defradb v0.20.1-0.20251228021150-187936c29de2
 	github.com/stretchr/testify v1.11.1
 	github.com/supranational/blst v0.3.16-0.20250831170142-f48500c1fdbe // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
