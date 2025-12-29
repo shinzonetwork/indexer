@@ -7,6 +7,10 @@ defradb:
     enabled: true
     bootstrap_peers: []
     listen_addr: "/ip4/0.0.0.0/tcp/9171"
+    max_retries: 5                  # Number of connection attempts before marking peer as failed
+    retry_base_delay_ms: 1000       # Base delay for exponential backoff (1s, 2s, 4s, 8s, 16s)
+    reconnect_interval_ms: 60000    # Check for disconnected peers every 60 seconds
+    enable_auto_reconnect: true     # Automatically reconnect to failed/disconnected peers
   store:
     path: "./.defra"
 

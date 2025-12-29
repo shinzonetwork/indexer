@@ -101,8 +101,13 @@ func toAppConfig(cfg *config.Config) *appConfig.Config {
 			Url:           cfg.DefraDB.Url,
 			KeyringSecret: cfg.DefraDB.KeyringSecret,
 			P2P: appConfig.DefraP2PConfig{
-				BootstrapPeers: cfg.DefraDB.P2P.BootstrapPeers,
-				ListenAddr:     cfg.DefraDB.P2P.ListenAddr,
+				Enabled:             cfg.DefraDB.P2P.Enabled,
+				BootstrapPeers:      cfg.DefraDB.P2P.BootstrapPeers,
+				ListenAddr:          cfg.DefraDB.P2P.ListenAddr,
+				MaxRetries:          cfg.DefraDB.P2P.MaxRetries,
+				RetryBaseDelayMs:    cfg.DefraDB.P2P.RetryBaseDelayMs,
+				ReconnectIntervalMs: cfg.DefraDB.P2P.ReconnectIntervalMs,
+				EnableAutoReconnect: cfg.DefraDB.P2P.EnableAutoReconnect,
 			},
 			Store: appConfig.DefraStoreConfig{
 				Path: cfg.DefraDB.Store.Path,
