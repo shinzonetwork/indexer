@@ -7,7 +7,7 @@ import (
 //go:embed schema.graphql
 var SchemaGraphQL string
 
-//go:embed schema-branch.graphql
+//go:embed schema_branchable.graphql
 var SchemaBranchGraphQL string
 
 // GetSchema returns the GraphQL schema found in `schema.graphql` as a string.
