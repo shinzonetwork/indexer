@@ -4,7 +4,7 @@ import (
 	_ "embed"
 )
 
-//go:embed schema.graphql
+//go:embed schema_standard.graphql
 var SchemaGraphQL string
 
 //go:embed schema_branchable.graphql
