@@ -118,14 +118,55 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 
 ### Using Makefile (Recommended)
 ```bash
-# Build the indexer
+# Build the indexer (standard version - non-branchable schema)
 make build
+
+# Build with branchable schema support
+make build TAGS=branchable
 
 # Start the indexer
 make start
 
 # Or build and run in one step
 go run cmd/block_poster/main.go
+
+# Build and run with branchable schema
+go run -tags=branchable cmd/block_poster/main.go
+```
+
+### Build Tags
+
+The indexer supports build tags to control schema behavior:
+
+- **Standard Build** (default): Uses non-branchable schema for parallel processing
+- **Branchable Build** (`TAGS=branchable`): Uses branchable schema for sequential processing
+
+```bash
+# Standard build (parallel processing)
+make build
+
+# Branchable build (sequential processing)
+make build TAGS=branchable
+
+# Docker builds
+docker build -t shinzo-indexer:standard .
+docker build --build-arg BUILD_TAGS=branchable -t shinzo-indexer:branchable .
+```
+
+### Docker Images
+Two separate Docker images are built and published:
+
+- **Standard Image**: `ghcr.io/shinzonetwork/indexer:standard` - Non-branchable schema
+- **Branchable Image**: `ghcr.io/shinzonetwork/indexer:branchable` - Branchable schema
+
+```bash
+# Pull and run standard version
+docker pull ghcr.io/shinzonetwork/indexer:standard
+docker run -d --name shinzo-indexer-standard ghcr.io/shinzonetwork/indexer:standard
+
+# Pull and run branchable version
+docker pull ghcr.io/shinzonetwork/indexer:branchable
+docker run -d --name shinzo-indexer-branchable ghcr.io/shinzonetwork/indexer:branchable
 ```
 
 ### Using Docker (Alternative)
@@ -135,15 +176,19 @@ docker-compose up --build
 ```
 ### Manual Build
 ```bash
-# Build binary
+# Build binary (standard version)
 go build -o bin/block_poster cmd/block_poster/main.go
+
+# Build binary with branchable schema
+go build -tags=branchable -o bin/block_poster cmd/block_poster/main.go
 
 # Run binary
 ./bin/block_poster
 ```
 
 ### Available Makefile Targets
-- `make build` - Build the indexer binary
+- `make build` - Build the indexer binary (standard version)
+- `make build TAGS=branchable` - Build with branchable schema
 - `make start` - Start the indexer
 - `make test` - Run all tests with summary
 - `make integration-test` - Run integration tests (mock + live)
@@ -210,6 +255,20 @@ To run live integration tests with your  managed blockchain node:
 This will run the indexer tests locally with your  managed blockchain node, providing comprehensive diagnostics and avoiding public node limitations.
 
 ## Data Model
+
+### Schema Variants
+
+The indexer supports two schema variants based on build tags:
+
+#### Standard Schema (Default)
+- **Processing**: Parallel transaction processing for better performance
+- **Use Case**: High-throughput indexing where transaction order doesn't affect data consistency
+- **Entities**: Block, Transaction, Log, AccessListEntry without @branchable directive
+
+#### Branchable Schema (`TAGS=branchable`)
+- **Processing**: Sequential transaction processing for data consistency
+- **Use Case**: Scenarios requiring strict transaction ordering and conflict prevention
+- **Entities**: Same entities with @branchable directive for DefraDB branchable collections
 
 ### Entities and Relationships
 - **Block**

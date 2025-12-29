@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/schema"
 )
 
 // HealthServer provides HTTP endpoints for health checks and metrics
@@ -67,6 +68,8 @@ type HealthResponse struct {
 	Uptime           string               `json:"uptime"`
 	P2P              *P2PInfo             `json:"p2p,omitempty"`
 	Registration     *DisplayRegistration `json:"registration,omitempty"`
+	BuildTags        string               `json:"build_tags,omitempty"`
+	SchemaType       string               `json:"schema_type,omitempty"`
 }
 
 // MetricsResponse represents basic metrics
@@ -127,6 +130,8 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 		Timestamp:        time.Now(),
 		DefraDBConnected: hs.checkDefraDB(),
 		Uptime:           time.Since(startTime).String(),
+		BuildTags:        getBuildTags(),
+		SchemaType:       getSchemaType(),
 	}
 
 	if hs.indexer != nil {
@@ -288,4 +293,20 @@ func normalizeHex(s string) string {
 		return "0x" + s[2:]
 	}
 	return "0x" + s
+}
+
+// getBuildTags returns the build tags used to compile the binary
+func getBuildTags() string {
+	if schema.IsBranchable() {
+		return "branchable"
+	}
+	return "standard"
+}
+
+// getSchemaType returns the schema type based on build tags
+func getSchemaType() string {
+	if schema.IsBranchable() {
+		return "branchable"
+	}
+	return "non-branchable"
 }
