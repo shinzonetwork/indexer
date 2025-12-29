@@ -102,8 +102,13 @@ func toAppConfig(cfg *config.Config) *appConfig.Config {
 			Url:           cfg.DefraDB.Url,
 			KeyringSecret: cfg.DefraDB.KeyringSecret,
 			P2P: appConfig.DefraP2PConfig{
-				BootstrapPeers: cfg.DefraDB.P2P.BootstrapPeers,
-				ListenAddr:     cfg.DefraDB.P2P.ListenAddr,
+				Enabled:             cfg.DefraDB.P2P.Enabled,
+				BootstrapPeers:      cfg.DefraDB.P2P.BootstrapPeers,
+				ListenAddr:          cfg.DefraDB.P2P.ListenAddr,
+				MaxRetries:          cfg.DefraDB.P2P.MaxRetries,
+				RetryBaseDelayMs:    cfg.DefraDB.P2P.RetryBaseDelayMs,
+				ReconnectIntervalMs: cfg.DefraDB.P2P.ReconnectIntervalMs,
+				EnableAutoReconnect: cfg.DefraDB.P2P.EnableAutoReconnect,
 			},
 			Store: appConfig.DefraStoreConfig{
 				Path: cfg.DefraDB.Store.Path,
@@ -171,19 +176,20 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		}
 	}
 
-	// Check if defra has any block - use actual DefraDB URL for embedded node
-	var defraURL string
+	var blockHandler *defra.BlockHandler
+	var blockHandlerErr error
 	if !defraStarted && i.defraNode != nil {
-		// Using embedded DefraDB - use the actual URL from the started node
-		defraURL = i.defraNode.APIURL
+		blockHandler, blockHandlerErr = defra.NewBlockHandlerWithNode(i.defraNode)
+		if blockHandlerErr != nil {
+			return fmt.Errorf("failed to create block handler with node: %v", blockHandlerErr)
+		}
+		logger.Sugar.Info("Using direct DB access for embedded DefraDB (faster)")
 	} else {
-		// Using external DefraDB - use the configured URL
-		defraURL = cfg.DefraDB.Url
-	}
-
-	blockHandler, err := defra.NewBlockHandler(defraURL)
-	if err != nil {
-		return fmt.Errorf("failed to create block handler for block check: %v", err)
+		blockHandler, blockHandlerErr = defra.NewBlockHandler(cfg.DefraDB.Url)
+		if blockHandlerErr != nil {
+			return fmt.Errorf("failed to create block handler for block check: %v", blockHandlerErr)
+		}
+		logger.Sugar.Info("Using HTTP access for external DefraDB")
 	}
 
 	startHeight := int64(cfg.Indexer.StartHeight)
@@ -280,9 +286,6 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			logger.Sugar.Infof("Successfully processed block %d", nextBlockToProcess)
 			nextBlockToProcess++
 			i.hasIndexedAtLeastOneBlock = true
-
-			// Small delay to avoid overwhelming the API
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
@@ -337,73 +340,85 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 		return fmt.Errorf("failed to create block %d in DefraDB after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
 	}
 
-	// Store transactions with block relationships
-	for _, tx := range block.Transactions {
-		// Retry logic for creating transaction
-		var txId string
-		for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
-			txId, err = blockHandler.CreateTransaction(ctx, &tx, blockId)
-			if err == nil {
-				break
-			}
-
-			if attempt < DefaultRetryAttempts-1 {
-				retryDelay := time.Duration(attempt+1) * time.Second
-				logger.Sugar.Warnf("Failed to create transaction %s (attempt %d/%d): %v, retrying in %v",
-					tx.Hash, attempt+1, DefaultRetryAttempts, err, retryDelay)
-				time.Sleep(retryDelay)
-			}
+	// Check if schema uses branchable collections - requires sequential processing
+	if schema.IsBranchable() {
+		// Process transactions sequentially to avoid transaction conflicts with branchable collections
+		for idx := range block.Transactions {
+			tx := block.Transactions[idx]
+			i.processTransaction(ctx, ethClient, blockHandler, &tx, blockId)
 		}
-		if err != nil {
-			logger.Sugar.Errorf("Failed to create transaction %s after %d attempts: %v", tx.Hash, DefaultRetryAttempts, err)
-			continue
-		}
+	} else {
+		// Process transactions in parallel for better performance (non-branchable)
+		var wg sync.WaitGroup
+		txSemaphore := make(chan struct{}, 20)
 
-		// Retry logic for fetching transaction receipt
-		var receipt *types.TransactionReceipt
-		for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
-			receipt, err = ethClient.GetTransactionReceipt(ctx, tx.Hash)
-			if err == nil {
-				break
-			}
-
-			if attempt < DefaultRetryAttempts-1 {
-				retryDelay := time.Duration(attempt+1) * time.Second
-				logger.Sugar.Warnf("Failed to get receipt for transaction %s (attempt %d/%d): %v, retrying in %v",
-					tx.Hash, attempt+1, DefaultRetryAttempts, err, retryDelay)
-				time.Sleep(retryDelay)
-			}
+		for idx := range block.Transactions {
+			tx := block.Transactions[idx]
+			wg.Add(1)
+			go func(tx types.Transaction) {
+				defer wg.Done()
+				txSemaphore <- struct{}{}
+				defer func() { <-txSemaphore }()
+				i.processTransaction(ctx, ethClient, blockHandler, &tx, blockId)
+			}(tx)
 		}
-		if err != nil {
-			logger.Sugar.Errorf("Failed to get receipt for transaction %s after %d attempts: %v", tx.Hash, DefaultRetryAttempts, err)
-			continue
-		}
-
-		// Store access list entries for EIP-2930/EIP-1559 transactions
-		for _, accessListEntry := range tx.AccessList {
-			_, err := blockHandler.CreateAccessListEntry(ctx, &accessListEntry, txId)
-			if err != nil {
-				logger.Sugar.Errorf("Failed to create access list entry for tx %s: %v", tx.Hash, err)
-				continue
-			}
-		}
-
-		// Store transaction logs from receipt
-		for _, log := range receipt.Logs {
-			_, err := blockHandler.CreateLog(ctx, &log, blockId, txId)
-			if err != nil {
-				logger.Sugar.Errorf("Failed to create log for tx %s: %v", tx.Hash, err)
-				continue
-			}
-			// Note: Relationships are already established in CreateLog, no need to update separately
-		}
-
-		logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
+		wg.Wait()
 	}
 
 	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
 	i.updateBlockInfo(blockNum)
 	return nil
+}
+
+// processTransaction handles a single transaction with its logs and access list entries
+func (i *ChainIndexer) processTransaction(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, tx *types.Transaction, blockId string) {
+	// Retry logic for creating transaction
+	var txId string
+	var txErr error
+	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+		txId, txErr = blockHandler.CreateTransaction(ctx, tx, blockId)
+		if txErr == nil {
+			break
+		}
+
+		if attempt < DefaultRetryAttempts-1 {
+			retryDelay := time.Duration(attempt+1) * time.Second
+			logger.Sugar.Warnf("Failed to create transaction %s (attempt %d/%d): %v, retrying in %v",
+				tx.Hash, attempt+1, DefaultRetryAttempts, txErr, retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+	if txErr != nil {
+		logger.Sugar.Errorf("Failed to create transaction %s after %d attempts: %v", tx.Hash, DefaultRetryAttempts, txErr)
+		return
+	}
+
+	// Fetch transaction receipt
+	receipt, txErr := ethClient.GetTransactionReceipt(ctx, tx.Hash)
+	if txErr != nil {
+		logger.Sugar.Errorf("Failed to get receipt for transaction %s: %v", tx.Hash, txErr)
+		return
+	}
+
+	// Store access list entries for EIP-2930/EIP-1559 transactions
+	for _, accessListEntry := range tx.AccessList {
+		_, err := blockHandler.CreateAccessListEntry(ctx, &accessListEntry, txId)
+		if err != nil {
+			logger.Sugar.Errorf("Failed to create access list entry for tx %s: %v", tx.Hash, err)
+			continue
+		}
+	}
+
+	// Store transaction logs from receipt
+	for _, log := range receipt.Logs {
+		_, err := blockHandler.CreateLog(ctx, &log, blockId, txId)
+		if err != nil {
+			logger.Sugar.Errorf("Failed to create log for tx %s: %v", tx.Hash, err)
+			continue
+		}
+	}
+
+	logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
 }
 
 // parseBlockNumber converts hex string to int64
