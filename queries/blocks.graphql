@@ -1,11 +1,11 @@
 query GetHighestBlockNumber {
-  Block(order: {number: DESC}, limit: 1) {
+  Ethereum__Mainnet__Block(order: {number: DESC}, limit: 1) {
     number
   }
 }
 
 query GetLatestBlocks {
-  Block(order: {number: DESC}, limit: 10) {
+  Ethereum__Mainnet__Block(order: {number: DESC}, limit: 10) {
     hash
     number
     parentHash
@@ -23,7 +23,7 @@ query GetLatestBlocks {
 }
 
 query GetBlockWithTransactions($blockNumber: Int!) {
-  Block(filter: {number: {_eq: $blockNumber}}) {
+  Ethereum__Mainnet__Block(filter: {number: {_eq: $blockNumber}}) {
     hash
     number
     parentHash

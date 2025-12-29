@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shinzonetwork/shinzo-indexer-client/config"
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/defra"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
@@ -139,11 +140,11 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 
 		defraNode, _, err := appsdk.StartDefraInstance(appCfg,
 			appsdk.NewSchemaApplierFromProvidedSchema(schema.GetSchema()),
-			"Block", "Transaction", "AccessListEntry", "Log")
+			constants.AllCollections...)
 		if err != nil {
 			return fmt.Errorf("Failed to start DefraDB instance with app-sdk: %v", err)
 		}
-		err = defraNode.DB.AddP2PCollections(ctx, "Block", "Transaction", "AccessListEntry", "Log")
+		err = defraNode.DB.AddP2PCollections(ctx, constants.AllCollections...)
 		if err != nil {
 			return fmt.Errorf("failed to add P2P collections: %w", err)
 		}
