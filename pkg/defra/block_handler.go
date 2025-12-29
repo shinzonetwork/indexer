@@ -507,8 +507,9 @@ func (h *BlockHandler) parseGraphQLResponse(resp []byte, fieldName string) (stri
 func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, error) {
 	query := types.Request{
 		Type: "POST",
-		Query: `query {
-		Block(order: {number: DESC}, limit: 1) {
+		Query: `query {` +
+			constants.CollectionBlock +
+			` (order: {number: DESC}, limit: 1) {
 			number
 		}	
 	}`}
