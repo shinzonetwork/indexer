@@ -2,18 +2,28 @@ package schema
 
 import (
 	_ "embed"
-	"strings"
 )
 
-//go:embed schema.graphql
+//go:embed schema_standard.graphql
 var SchemaGraphQL string
+
+//go:embed schema_branchable.graphql
+var SchemaBranchGraphQL string
 
 // GetSchema returns the GraphQL schema found in `schema.graphql` as a string.
 func GetSchema() string {
 	return SchemaGraphQL
 }
 
-// IsBranchable returns true if the schema uses @branchable.
-func IsBranchable() bool {
-	return strings.Contains(SchemaGraphQL, "@branchable")
+// GetBranchableSchema returns the branchable GraphQL schema.
+func GetBranchableSchema() string {
+	return SchemaBranchGraphQL
+}
+
+// GetSchemaForBuild returns the appropriate schema based on build tags.
+func GetSchemaForBuild() string {
+	if IsBranchable() {
+		return GetBranchableSchema()
+	}
+	return GetSchema()
 }

@@ -13,6 +13,9 @@ GETH_API_KEY ?=
 build:
 	go build -o bin/block_poster cmd/block_poster/main.go
 
+build-branchable:
+	go build -tags branchable -o bin/block_poster cmd/block_poster/main.go
+
 start:
 	./bin/block_poster
 
