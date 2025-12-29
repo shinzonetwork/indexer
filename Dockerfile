@@ -6,6 +6,7 @@ FROM golang:1.25 AS builder
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION=dev
+ARG BUILD_TAGS
 
 # Install build dependencies including WASM runtimes
 RUN apt-get update && apt-get install -y \
@@ -78,10 +79,11 @@ COPY . .
 RUN set -ex && \
     BUILD_DATE=$(date -u -Iseconds | sed 's/+00:00/Z/') && \
     VCS_REF=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") && \
-    echo "Building for VERSION=${VERSION}, BUILD_DATE=${BUILD_DATE}, VCS_REF=${VCS_REF}" && \
+    echo "Building for VERSION=${VERSION}, BUILD_DATE=${BUILD_DATE}, VCS_REF=${VCS_REF}, BUILD_TAGS=${BUILD_TAGS}" && \
     mkdir -p bin && \
     CGO_ENABLED=1 go build -v \
     -ldflags="-w -s -X main.version=${VERSION} -X main.buildDate=${BUILD_DATE} -X main.gitCommit=${VCS_REF}" \
+    ${BUILD_TAGS:+-tags="${BUILD_TAGS}"} \
     -o bin/block_poster \
     cmd/block_poster/main.go && \
     echo "Build completed, checking binary:" && \
