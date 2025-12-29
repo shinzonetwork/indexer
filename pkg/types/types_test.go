@@ -3,6 +3,8 @@ package types
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 )
 
 func TestTransactionReceiptJSONMarshaling(t *testing.T) {
@@ -194,7 +196,7 @@ func TestResponseJSONMarshaling(t *testing.T) {
 		Data: map[string][]struct {
 			DocID string `json:"_docID"`
 		}{
-			"Block": {
+			constants.CollectionBlock: {
 				{DocID: "doc-id-1"},
 				{DocID: "doc-id-2"},
 			},
@@ -215,11 +217,11 @@ func TestResponseJSONMarshaling(t *testing.T) {
 	}
 
 	// Verify data integrity
-	if len(unmarshaled.Data["Block"]) != 2 {
-		t.Errorf("Expected 2 Block entries, got %d", len(unmarshaled.Data["Block"]))
+	if len(unmarshaled.Data[constants.CollectionBlock]) != 2 {
+		t.Errorf("Expected 2 Block entries, got %d", len(unmarshaled.Data[constants.CollectionBlock]))
 	}
-	if unmarshaled.Data["Block"][0].DocID != "doc-id-1" {
-		t.Errorf("DocID mismatch: got %s, want %s", unmarshaled.Data["Block"][0].DocID, "doc-id-1")
+	if unmarshaled.Data[constants.CollectionBlock][0].DocID != "doc-id-1" {
+		t.Errorf("DocID mismatch: got %s, want %s", unmarshaled.Data[constants.CollectionBlock][0].DocID, "doc-id-1")
 	}
 }
 

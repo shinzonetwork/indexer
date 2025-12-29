@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shinzonetwork/shinzo-indexer-client/pkg/constants"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/errors"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/logger"
 	"github.com/shinzonetwork/shinzo-indexer-client/pkg/types"
@@ -89,7 +90,7 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (str
 	// Post block data to collection endpoint
 	logger.Sugar.Debug("Posting blockdata to collection endpoint: ", blockData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "Block", blockData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionBlock, blockData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateBlock", fmt.Sprintf("%v", blockData), err)
 	}
@@ -135,7 +136,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 	}
 	logger.Sugar.Debug("Creating transaction: ", txData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "Transaction", txData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionTransaction, txData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateTransaction", fmt.Sprintf("%v", txData), err)
 	}
@@ -146,7 +147,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntry *types.AccessListEntry, tx_Id string) (string, error) {
 	if accessListEntry == nil {
 		logger.Sugar.Error("CreateAccessListEntry: AccessListEntry is nil")
-		return "", errors.NewInvalidInputFormat("defra", "CreateAccessListEntry", "accessListEntry", nil)
+		return "", errors.NewInvalidInputFormat("defra", "CreateAccessListEntry", constants.CollectionAccessListEntry, nil)
 	}
 	if tx_Id == "" {
 		logger.Sugar.Error("CreateAccessListEntry: tx_Id is empty")
@@ -159,7 +160,7 @@ func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntr
 	}
 	logger.Sugar.Debug("Creating access list entry: ", ALEData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "AccessListEntry", ALEData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionAccessListEntry, ALEData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateAccessListEntry", fmt.Sprintf("%v", ALEData), err)
 	}
@@ -173,7 +174,7 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 		return "", errors.NewParsingFailed("defra", "CreateLog", fmt.Sprintf("block number: %s", log.BlockNumber), err)
 	}
 	if log == nil {
-		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "log", nil)
+		return "", errors.NewInvalidInputFormat("defra", "CreateLog", constants.CollectionLog, nil)
 	}
 	if block_id == "" {
 		return "", errors.NewInvalidInputFormat("defra", "CreateLog", "block_id", nil)
@@ -197,7 +198,7 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 	}
 	logger.Sugar.Debug("Creating log: ", logData)
 	// Database operation
-	docID, err := h.PostToCollection(ctx, "Log", logData)
+	docID, err := h.PostToCollection(ctx, constants.CollectionLog, logData)
 	if err != nil {
 		logger.Sugar.Errorf("Failed to create log (txHash=%s, logIndex=%v): %v", log.TransactionHash, log.LogIndex, err)
 		return "", err
@@ -528,25 +529,25 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, error)
 	data, ok := rawResponse["data"].(map[string]interface{})
 	if !ok {
 		logger.Sugar.Error("data field not found in response")
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", data))
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", data))
 	}
 
 	// Extract Block array
-	blockArray, ok := data["Block"].([]interface{})
+	blockArray, ok := data[constants.CollectionBlock].([]interface{})
 	if !ok {
 		logger.Sugar.Error("Block field not found in response")
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", data["Block"]))
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", data[constants.CollectionBlock]))
 	}
 
 	if len(blockArray) == 0 {
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", "blockArray is empty")
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, "blockArray is empty")
 	}
 
 	// Extract first block
 	block, ok := blockArray[0].(map[string]interface{})
 	if !ok {
 		logger.Sugar.Error("Invalid block format in response")
-		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", blockArray))
+		return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", blockArray))
 	}
 
 	// Extract number field (handle both string and integer)
@@ -574,5 +575,5 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, error)
 	default:
 		logger.Sugar.Errorf("unexpected number type: %T", numberValue)
 	}
-	return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", "Block", fmt.Sprintf("%v", numberValue))
+	return 0, errors.NewDocumentNotFound("defra", "GetHighestBlockNumber", constants.CollectionBlock, fmt.Sprintf("%v", numberValue))
 }
