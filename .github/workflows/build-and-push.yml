@@ -11,7 +11,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: shinzonetwork/indexer
+  IMAGE_NAME: shinzonetwork/shinzo-indexer-client
 
 jobs:
   # Job 1: Run tests
