@@ -2,16 +2,14 @@ package constants
 
 // DefraDB Collection Names - matches schema.graphql types
 const (
-	CollectionBlock           = "Ethereum__Mainnet__Block"
-	CollectionTransaction     = "Ethereum__Mainnet__Transaction"
-	CollectionLog             = "Ethereum__Mainnet__Log"
-	CollectionAccessListEntry = "Ethereum__Mainnet__AccessListEntry"
+	CollectionBlock       = "Arbitrum__Mainnet__Block"
+	CollectionTransaction = "Arbitrum__Mainnet__Transaction"
+	CollectionLog         = "Arbitrum__Mainnet__Log"
 )
 
 // Collection name slice for bulk operations
 var AllCollections = []string{
 	CollectionBlock,
 	CollectionTransaction,
-	CollectionAccessListEntry,
 	CollectionLog,
 }
