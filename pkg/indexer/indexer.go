@@ -400,15 +400,6 @@ func (i *ChainIndexer) processTransaction(ctx context.Context, ethClient *rpc.Et
 		return
 	}
 
-	// Store access list entries for EIP-2930/EIP-1559 transactions
-	for _, accessListEntry := range tx.AccessList {
-		_, err := blockHandler.CreateAccessListEntry(ctx, &accessListEntry, txId)
-		if err != nil {
-			logger.Sugar.Errorf("Failed to create access list entry for tx %s: %v", tx.Hash, err)
-			continue
-		}
-	}
-
 	// Store transaction logs from receipt
 	for _, log := range receipt.Logs {
 		_, err := blockHandler.CreateLog(ctx, &log, blockId, txId)
@@ -418,7 +409,7 @@ func (i *ChainIndexer) processTransaction(ctx context.Context, ethClient *rpc.Et
 		}
 	}
 
-	logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
+	logger.Sugar.Debugf("Processed transaction %s with %d logs", tx.Hash, len(receipt.Logs))
 }
 
 // parseBlockNumber converts hex string to int64
