@@ -192,6 +192,12 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		logger.Sugar.Info("Using HTTP access for external DefraDB")
 	}
 
+	// Apply rate limiting if configured
+	if cfg.Indexer.DocPushRateLimit > 0 {
+		blockHandler.SetRateLimit(cfg.Indexer.DocPushRateLimit)
+		logger.Sugar.Infof("Document push rate limited to %d docs/sec", cfg.Indexer.DocPushRateLimit)
+	}
+
 	startHeight := int64(cfg.Indexer.StartHeight)
 
 	nBlock, err := blockHandler.GetHighestBlockNumber(ctx)

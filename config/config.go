@@ -51,7 +51,8 @@ type GethConfig struct {
 
 // IndexerConfig represents indexer configuration
 type IndexerConfig struct {
-	StartHeight int `yaml:"start_height"`
+	StartHeight      int `yaml:"start_height"`
+	DocPushRateLimit int `yaml:"doc_push_rate_limit"`
 }
 
 // LoggerConfig represents logger configuration
