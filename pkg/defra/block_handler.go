@@ -20,9 +20,10 @@ import (
 )
 
 type BlockHandler struct {
-	defraURL  string
-	client    *http.Client
-	defraNode *node.Node // Direct access to embedded DefraDB (nil if using HTTP)
+	defraURL    string
+	client      *http.Client
+	defraNode   *node.Node       // Direct access to embedded DefraDB (nil if using HTTP)
+	rateLimiter <-chan time.Time // Rate limiter for document pushes (nil = no limit)
 }
 
 func NewBlockHandler(url string) (*BlockHandler, error) {
@@ -50,6 +51,17 @@ func NewBlockHandlerWithNode(defraNode *node.Node) (*BlockHandler, error) {
 		client:    nil,
 		defraURL:  "",
 	}, nil
+}
+
+// SetRateLimit sets the maximum documents per second that can be pushed.
+// Pass 0 to disable rate limiting.
+func (h *BlockHandler) SetRateLimit(docsPerSecond int) {
+	if docsPerSecond <= 0 {
+		h.rateLimiter = nil
+		return
+	}
+	interval := time.Second / time.Duration(docsPerSecond)
+	h.rateLimiter = time.Tick(interval)
 }
 
 func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (string, error) {
@@ -311,6 +323,14 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 			_docID
 		}
 	}`, collection, strings.Join(inputFields, ", "))}
+
+	if h.rateLimiter != nil {
+		select {
+		case <-h.rateLimiter:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
 
 	// Send mutation
 	resp, err := h.SendToGraphql(ctx, mutation)
