@@ -38,6 +38,15 @@ A high-performance blockchain indexing solution built with Source Network, Defra
 - Global logger integration with Uber Zap
 - Context-aware error reporting with block numbers and transaction hashes
 
+## Hardware Recommendations
+
+| Component | Minimum | Recommended |
+| --- | --- | --- |
+| CPU | 8 vCPUs | 16 vCPUs |
+| Memory (RAM) | 16 GB | 32–64 GB |
+| Storage | 3 TB NVMe | 4+ TB NVMe |
+| OS | Ubuntu 24.04 | Ubuntu 24.04 |
+
 ## Prerequisites
 
 - Go 1.24+
@@ -49,7 +58,6 @@ A high-performance blockchain indexing solution built with Source Network, Defra
    - Use a local or deployed Geth Ethereum Node
    - Note the JSON-RPC and WebSocket endpoints  
    - Configure API key authentication if required
-
 
 ## Installation
 
