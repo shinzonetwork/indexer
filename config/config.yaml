@@ -21,7 +21,7 @@ geth:
 
 indexer:
   start_height: 23700000
-  doc_push_rate_limit: 90  # Max docs per second to push (0 = no limit)
+  doc_push_rate_limit: 150  # Max docs per second to push (0 = no limit)
 logger:
   development: false
 
