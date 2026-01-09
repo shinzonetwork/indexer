@@ -100,6 +100,7 @@ func NewHealthServer(port int, indexer HealthChecker, defraURL string) *HealthSe
 	// Register routes
 	mux.HandleFunc("/health", hs.healthHandler)
 	mux.HandleFunc("/registration", hs.registrationHandler)
+	mux.HandleFunc("/registration-app", hs.registrationAppHandler)
 	mux.HandleFunc("/metrics", hs.metricsHandler)
 	mux.HandleFunc("/", hs.rootHandler)
 
@@ -157,6 +158,15 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // registrationHandler handles readiness probe requests
 func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -220,6 +230,22 @@ func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// redirects to the registration app with the indexer URL
+func (hs *HealthServer) registrationAppHandler(w http.ResponseWriter, r *http.Request) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+
+	hostURL := fmt.Sprintf("%s://%s/registration", scheme, r.Host)
+	redirectURL := fmt.Sprintf("https://register.shinzo.network/?indexer=%s", hostURL)
+
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
 // metricsHandler provides basic metrics in JSON format
