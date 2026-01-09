@@ -100,6 +100,7 @@ func NewHealthServer(port int, indexer HealthChecker, defraURL string) *HealthSe
 	// Register routes
 	mux.HandleFunc("/health", hs.healthHandler)
 	mux.HandleFunc("/registration", hs.registrationHandler)
+	mux.HandleFunc("/registration-app", hs.registrationAppHandler)
 	mux.HandleFunc("/metrics", hs.metricsHandler)
 	mux.HandleFunc("/", hs.rootHandler)
 
@@ -155,6 +156,35 @@ func (hs *HealthServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// getRegistrationData returns the signed registration data for the indexer
+func (hs *HealthServer) getRegistrationData() (*DisplayRegistration, error) {
+	if hs.indexer == nil {
+		return nil, fmt.Errorf("indexer not available")
+	}
+
+	const registrationMessage = "Shinzo Network Indexer registration"
+	defraReg, peerReg, signErr := hs.indexer.SignMessages(registrationMessage)
+	registration := &DisplayRegistration{
+		Enabled: signErr == nil,
+		Message: normalizeHex(hex.EncodeToString([]byte(registrationMessage))),
+	}
+	if signErr != nil {
+		return registration, signErr
+	}
+
+	// Normalize signed fields to 0x-prefixed hex strings for API consumers.
+	registration.DefraPKRegistration = DefraPKRegistration{
+		PublicKey:   normalizeHex(defraReg.PublicKey),
+		SignedPKMsg: normalizeHex(defraReg.SignedPKMsg),
+	}
+	registration.PeerIDRegistration = PeerIDRegistration{
+		PeerID:        normalizeHex(peerReg.PeerID),
+		SignedPeerMsg: normalizeHex(peerReg.SignedPeerMsg),
+	}
+
+	return registration, nil
+}
+
 // registrationHandler handles readiness probe requests
 func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -194,22 +224,7 @@ func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Reque
 			return
 		}
 
-		// Include signed registration information on the registration endpoint.
-		const registrationMessage = "Shinzo Network Indexer registration"
-		defraReg, peerReg, signErr := hs.indexer.SignMessages(registrationMessage)
-		registration := &DisplayRegistration{
-			Enabled: signErr == nil,
-			Message: normalizeHex(hex.EncodeToString([]byte(registrationMessage))),
-		}
-		if signErr == nil {
-			// Normalize signed fields to 0x-prefixed hex strings for API consumers.
-			defraReg.PublicKey = normalizeHex(defraReg.PublicKey)
-			peerReg.PeerID = normalizeHex(peerReg.PeerID)
-			defraReg.SignedPKMsg = normalizeHex(defraReg.SignedPKMsg)
-			peerReg.SignedPeerMsg = normalizeHex(peerReg.SignedPeerMsg)
-			registration.DefraPKRegistration = defraReg
-			registration.PeerIDRegistration = peerReg
-		}
+		registration, _ := hs.getRegistrationData()
 		response.Registration = registration
 	}
 
@@ -220,6 +235,26 @@ func (hs *HealthServer) registrationHandler(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// registrationAppHandler redirects to the registration app with registration data as query params
+func (hs *HealthServer) registrationAppHandler(w http.ResponseWriter, r *http.Request) {
+	registration, err := hs.getRegistrationData()
+	if err != nil || registration == nil || !registration.Enabled {
+		http.Error(w, "Registration data not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	redirectURL := fmt.Sprintf(
+		"https://register.shinzo.network/?role=indexer&signedMessage=%s&peerId=%s&peerSignedMessage=%s&defraPublicKey=%s&defraPublicKeySignedMessage=%s",
+		registration.Message,
+		registration.PeerIDRegistration.PeerID,
+		registration.PeerIDRegistration.SignedPeerMsg,
+		registration.DefraPKRegistration.PublicKey,
+		registration.DefraPKRegistration.SignedPKMsg,
+	)
+
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
 // metricsHandler provides basic metrics in JSON format
