@@ -6,7 +6,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/joho/godotenv v1.5.1
 	github.com/libp2p/go-libp2p v0.43.0
-	github.com/shinzonetwork/shinzo-app-sdk v0.0.0-20260112205216-79b2309794ae
+	github.com/shinzonetwork/shinzo-app-sdk v0.0.0-20260113064333-9af9ba2a0edb
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -413,7 +413,7 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
-	github.com/sourcenetwork/defradb v0.20.1-0.20260112205009-7b0326380e41
+	github.com/sourcenetwork/defradb v0.20.1-0.20260113064143-3c49df8533bd
 	github.com/stretchr/testify v1.11.1
 	github.com/supranational/blst v0.3.16-0.20250831170142-f48500c1fdbe // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
