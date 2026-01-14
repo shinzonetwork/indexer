@@ -258,13 +258,13 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			logger.Sugar.Info("Real-time indexing stopped")
 			return nil
 		default:
-			// Step 2: Process the specific block we want (nextBlockToProcess)
+			// Process the specific block we want (nextBlockToProcess)
 			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
 
 			err := i.processBlock(ctx, client, blockHandler, nextBlockToProcess)
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
-					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
+					// Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
 					logger.Sugar.Infof("Block %d not available yet (ahead of chain), waiting 3s before retry...", nextBlockToProcess)
 					time.Sleep(3 * time.Second)
 					continue
@@ -321,8 +321,79 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 		return fmt.Errorf("failed to fetch block %d after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
 	}
 
-	// Retry logic for storing block in DefraDB
+	if i.defraNode != nil {
+		return i.processBlockBatch(ctx, ethClient, blockHandler, block, blockNum)
+	}
+
+	return i.processSingleBlock(ctx, ethClient, blockHandler, block, blockNum)
+}
+
+// processBlockBatch creates all documents for a block in a single transaction.
+func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, block *types.Block, blockNum int64) error {
+	var receipts []*types.TransactionReceipt
+	var receiptMu sync.Mutex
+	var wg sync.WaitGroup
+	receiptSem := make(chan struct{}, 20)
+
+	for idx := range block.Transactions {
+		tx := block.Transactions[idx]
+		wg.Add(1)
+		go func(tx types.Transaction) {
+			defer wg.Done()
+			receiptSem <- struct{}{}
+			defer func() { <-receiptSem }()
+
+			receipt, err := ethClient.GetTransactionReceipt(ctx, tx.Hash)
+			if err != nil {
+				logger.Sugar.Warnf("Failed to get receipt for tx %s: %v", tx.Hash, err)
+				return
+			}
+			receiptMu.Lock()
+			receipts = append(receipts, receipt)
+			receiptMu.Unlock()
+		}(tx)
+	}
+	wg.Wait()
+
+	transactions := make([]*types.Transaction, len(block.Transactions))
+	for idx := range block.Transactions {
+		transactions[idx] = &block.Transactions[idx]
+	}
+
+	var err error
+	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
+		_, err = blockHandler.CreateBlockBatch(ctx, block, transactions, receipts)
+		if err == nil {
+			break
+		}
+
+		if strings.Contains(err.Error(), "already exists") {
+			logger.Sugar.Infof("Block %d already exists in DefraDB, skipping...", blockNum)
+			return nil
+		}
+
+		if attempt < DefaultRetryAttempts-1 {
+			retryDelay := time.Duration(attempt+1) * time.Second
+			logger.Sugar.Warnf("Failed to batch create block %d (attempt %d/%d): %v, retrying in %v",
+				blockNum, attempt+1, DefaultRetryAttempts, err, retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to batch create block %d after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
+	}
+
+	logger.Sugar.Infof("Successfully batch processed block %d with %d transactions", blockNum, len(block.Transactions))
+	i.updateBlockInfo(blockNum)
+	return nil
+}
+
+// processSingleBlock creates documents one at a time
+func (i *ChainIndexer) processSingleBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, block *types.Block, blockNum int64) error {
+	var err error
 	var blockId string
+
+	// Retry logic for storing block in DefraDB
 	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
 		blockId, err = blockHandler.CreateBlock(ctx, block)
 		if err == nil {
@@ -371,7 +442,7 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 		wg.Wait()
 	}
 
-	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
+	logger.Sugar.Infof("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
 	i.updateBlockInfo(blockNum)
 	return nil
 }
@@ -424,7 +495,7 @@ func (i *ChainIndexer) processTransaction(ctx context.Context, ethClient *rpc.Et
 		}
 	}
 
-	logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
+	logger.Sugar.Infof("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
 }
 
 // parseBlockNumber converts hex string to int64

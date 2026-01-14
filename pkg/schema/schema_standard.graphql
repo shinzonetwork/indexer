@@ -25,8 +25,8 @@ type Ethereum__Mainnet__Block {
 
 type Ethereum__Mainnet__Transaction {
     hash: String @index(unique: true)
-    blockHash: String @index
-    blockNumber: Int @index
+    blockHash: String
+    blockNumber: Int
     from: String
     to: String
     value: String
@@ -37,7 +37,7 @@ type Ethereum__Mainnet__Transaction {
     maxPriorityFeePerGas: String
     input: String
     nonce: String
-    transactionIndex: Int @index
+    transactionIndex: Int
     type: String
     chainId: String
     v: String
@@ -47,7 +47,7 @@ type Ethereum__Mainnet__Transaction {
     cumulativeGasUsed: String
     effectiveGasPrice: String
     # Relationships
-    block: Ethereum__Mainnet__Block @index @relation(name: "block_transactions")
+    block: Ethereum__Mainnet__Block @relation(name: "block_transactions")
     logs: [Ethereum__Mainnet__Log] @relation(name: "transaction_logs")
     accessList: [Ethereum__Mainnet__AccessListEntry] @relation(name: "transaction_accessList")
 }
@@ -55,21 +55,20 @@ type Ethereum__Mainnet__Transaction {
 type Ethereum__Mainnet__AccessListEntry {
     address: String
     storageKeys: [String]
-    transaction: Ethereum__Mainnet__Transaction @index @relation(name: "transaction_accessList")
+    transaction: Ethereum__Mainnet__Transaction @relation(name: "transaction_accessList")
 }
 
 type Ethereum__Mainnet__Log {
     address: String
     topics: [String]
     data: String
-    transactionHash: String @index
-    blockHash: String @index
-    blockNumber: Int @index
-    transactionIndex: Int @index
-    logIndex: Int @index
+    transactionHash: String
+    blockHash: String
+    blockNumber: Int
+    transactionIndex: Int
+    logIndex: Int
     removed: String
     # Relationships
-    block: Ethereum__Mainnet__Block @index @relation(name: "block_logs")
-    transaction: Ethereum__Mainnet__Transaction @index @relation(name: "transaction_logs")
+    block: Ethereum__Mainnet__Block @relation(name: "block_logs")
+    transaction: Ethereum__Mainnet__Transaction @relation(name: "transaction_logs")
 }
-

@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,6 +24,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
+
+	go func() {
+		http.ListenAndServe(":6060", nil)
+	}()
 
 	// Create and start indexer
 	chainIndexer, err := indexer.CreateIndexer(cfg)
