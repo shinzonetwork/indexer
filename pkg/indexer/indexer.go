@@ -333,7 +333,7 @@ func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.Eth
 	var receipts []*types.TransactionReceipt
 	var receiptMu sync.Mutex
 	var wg sync.WaitGroup
-	receiptSem := make(chan struct{}, 20)
+	receiptSem := make(chan struct{}, 4)
 
 	for idx := range block.Transactions {
 		tx := block.Transactions[idx]
@@ -427,7 +427,7 @@ func (i *ChainIndexer) processSingleBlock(ctx context.Context, ethClient *rpc.Et
 	} else {
 		// Process transactions in parallel for better performance (non-branchable)
 		var wg sync.WaitGroup
-		txSemaphore := make(chan struct{}, 20)
+		txSemaphore := make(chan struct{}, 4)
 
 		for idx := range block.Transactions {
 			tx := block.Transactions[idx]

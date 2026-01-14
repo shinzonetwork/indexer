@@ -20,7 +20,7 @@ import (
 )
 
 // DocsPerTxn is the number of documents to create per transaction commit.
-const DocsPerTxn = 20
+const DocsPerTxn = 4
 
 type BlockHandler struct {
 	defraURL      string
