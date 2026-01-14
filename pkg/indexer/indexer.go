@@ -258,13 +258,13 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 			logger.Sugar.Info("Real-time indexing stopped")
 			return nil
 		default:
-			// Step 2: Process the specific block we want (nextBlockToProcess)
+			// Process the specific block we want (nextBlockToProcess)
 			logger.Sugar.Infof("=== Processing block %d ===", nextBlockToProcess)
 
 			err := i.processBlock(ctx, client, blockHandler, nextBlockToProcess)
 			if err != nil {
 				if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") {
-					// Step 4: Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
+					// Block doesn't exist yet (we're ahead of the chain) - wait 3 seconds and try again
 					logger.Sugar.Infof("Block %d not available yet (ahead of chain), waiting 3s before retry...", nextBlockToProcess)
 					time.Sleep(3 * time.Second)
 					continue
@@ -333,7 +333,7 @@ func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.Eth
 	var receipts []*types.TransactionReceipt
 	var receiptMu sync.Mutex
 	var wg sync.WaitGroup
-	receiptSem := make(chan struct{}, 4)
+	receiptSem := make(chan struct{}, 20)
 
 	for idx := range block.Transactions {
 		tx := block.Transactions[idx]
@@ -383,7 +383,7 @@ func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.Eth
 		return fmt.Errorf("failed to batch create block %d after %d attempts: %w", blockNum, DefaultRetryAttempts, err)
 	}
 
-	logger.Sugar.Debugf("Successfully batch processed block %d with %d transactions", blockNum, len(block.Transactions))
+	logger.Sugar.Infof("Successfully batch processed block %d with %d transactions", blockNum, len(block.Transactions))
 	i.updateBlockInfo(blockNum)
 	return nil
 }
@@ -427,7 +427,7 @@ func (i *ChainIndexer) processSingleBlock(ctx context.Context, ethClient *rpc.Et
 	} else {
 		// Process transactions in parallel for better performance (non-branchable)
 		var wg sync.WaitGroup
-		txSemaphore := make(chan struct{}, 4)
+		txSemaphore := make(chan struct{}, 20)
 
 		for idx := range block.Transactions {
 			tx := block.Transactions[idx]
@@ -442,7 +442,7 @@ func (i *ChainIndexer) processSingleBlock(ctx context.Context, ethClient *rpc.Et
 		wg.Wait()
 	}
 
-	logger.Sugar.Debugf("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
+	logger.Sugar.Infof("Successfully processed block %d with %d transactions", blockNum, len(block.Transactions))
 	i.updateBlockInfo(blockNum)
 	return nil
 }
@@ -495,7 +495,7 @@ func (i *ChainIndexer) processTransaction(ctx context.Context, ethClient *rpc.Et
 		}
 	}
 
-	logger.Sugar.Debugf("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
+	logger.Sugar.Infof("Processed transaction %s with %d access list entries and %d logs", tx.Hash, len(tx.AccessList), len(receipt.Logs))
 }
 
 // parseBlockNumber converts hex string to int64

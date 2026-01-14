@@ -824,7 +824,7 @@ func (h *BlockHandler) buildTransactionMutation(tx *types.Transaction, blockID s
 			cumulativeGasUsed: %q,
 			effectiveGasPrice: %q,
 			status: %t,
-			block_id: %q
+			block: %q
 		}) { _docID }
 	}`, constants.CollectionTransaction,
 		tx.Hash, txBlockNum, tx.BlockHash, tx.TransactionIndex,
@@ -852,8 +852,8 @@ func (h *BlockHandler) buildLogMutation(log *types.Log, blockID, txID string) st
 			blockHash: %q,
 			logIndex: %d,
 			removed: %q,
-			transaction_id: %q,
-			block_id: %q
+			transaction: %q,
+			block: %q
 		}) { _docID }
 	}`, constants.CollectionLog,
 		log.Address, h.formatStringArray(log.Topics), log.Data, logBlockNum,
@@ -867,7 +867,7 @@ func (h *BlockHandler) buildAccessListEntryMutation(ale *types.AccessListEntry, 
 		create_%s(input: {
 			address: %q,
 			storageKeys: %s,
-			transaction_id: %q
+			transaction: %q
 		}) { _docID }
 	}`, constants.CollectionAccessListEntry,
 		ale.Address, h.formatStringArray(ale.StorageKeys), txID)
