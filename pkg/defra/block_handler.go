@@ -187,7 +187,7 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		"cumulativeGasUsed":    tx.CumulativeGasUsed,
 		"effectiveGasPrice":    tx.EffectiveGasPrice,
 		"status":               tx.Status,
-		"block_id":             block_id, // Include block relationship directly
+		"block":                block_id, // Include block relationship directly
 
 	}
 	logger.Sugar.Debug("Creating transaction: ", txData)
@@ -210,9 +210,9 @@ func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntr
 		return "", errors.NewInvalidInputFormat("defra", "CreateAccessListEntry", "tx_Id", nil)
 	}
 	ALEData := map[string]interface{}{
-		"address":        accessListEntry.Address,
-		"storageKeys":    accessListEntry.StorageKeys,
-		"transaction_id": tx_Id,
+		"address":     accessListEntry.Address,
+		"storageKeys": accessListEntry.StorageKeys,
+		"transaction": tx_Id,
 	}
 	logger.Sugar.Debug("Creating access list entry: ", ALEData)
 	// Database operation
@@ -249,8 +249,8 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 		"blockHash":        log.BlockHash,
 		"logIndex":         log.LogIndex,
 		"removed":          fmt.Sprintf("%v", log.Removed), // Convert bool to string
-		"transaction_id":   tx_Id,
-		"block_id":         block_id,
+		"transaction":      tx_Id,
+		"block":            block_id,
 	}
 	logger.Sugar.Debug("Creating log: ", logData)
 	// Database operation
