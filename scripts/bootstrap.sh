@@ -25,7 +25,7 @@ mkdir -p logs
 echo "===> Building DefraDB from $DEFRA_ROOT"
 cd "$DEFRA_ROOT"
 make deps:playground
-GOFLAGS="-tags=playground" make build
+BUILD_TAGS="playground" make build
 ./build/defradb start --rootdir "$ROOTDIR" > "$OLDPWD/$DEFRA_LOG_PATH" 2>&1 &
 DEFRA_PID=$!
 echo "$DEFRA_PID" > "$ROOTDIR/defradb.pid"
