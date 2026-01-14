@@ -198,6 +198,12 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		logger.Sugar.Infof("Document push rate limited to %d docs/sec", cfg.Indexer.DocPushRateLimit)
 	}
 
+	// Apply batch size configuration
+	if cfg.Indexer.DocsPerTxn > 0 {
+		blockHandler.SetDocsPerTxn(cfg.Indexer.DocsPerTxn)
+		logger.Sugar.Infof("Documents per transaction batch: %d", cfg.Indexer.DocsPerTxn)
+	}
+
 	startHeight := int64(cfg.Indexer.StartHeight)
 
 	nBlock, err := blockHandler.GetHighestBlockNumber(ctx)
@@ -250,6 +256,14 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 		}
 	}()
 
+	// Use concurrent processing if configured and using embedded DefraDB
+	if cfg.Indexer.ConcurrentBlocks > 1 && i.defraNode != nil {
+		logger.Sugar.Infof("Using concurrent block processing with %d workers, %d prefetch buffer",
+			cfg.Indexer.ConcurrentBlocks, cfg.Indexer.PrefetchBlocks)
+		return i.runConcurrentIndexing(ctx, client, blockHandler, nextBlockToProcess, cfg)
+	}
+
+	// Sequential processing (original behavior)
 	for i.shouldIndex {
 		i.isStarted = true
 
@@ -296,6 +310,36 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	}
 
 	return nil
+}
+
+// runConcurrentIndexing runs the indexer with concurrent block processing.
+func (i *ChainIndexer) runConcurrentIndexing(
+	ctx context.Context,
+	client *rpc.EthereumClient,
+	blockHandler *defra.BlockHandler,
+	startBlock int64,
+	cfg *config.Config,
+) error {
+	i.shouldIndex = true
+	i.isStarted = true
+
+	prefetcher := NewBlockPrefetcher(
+		client,
+		cfg.Indexer.PrefetchBlocks,
+		cfg.Indexer.ReceiptWorkers,
+	)
+	prefetcher.Start(startBlock)
+	defer prefetcher.Stop()
+
+	processor := NewConcurrentBlockProcessor(
+		blockHandler,
+		cfg.Indexer.ConcurrentBlocks,
+	)
+
+	return processor.ProcessBlocks(ctx, prefetcher, startBlock, func(blockNum int64) {
+		i.updateBlockInfo(blockNum)
+		i.hasIndexedAtLeastOneBlock = true
+	})
 }
 
 // processBlock fetches and stores a single block with retry logic

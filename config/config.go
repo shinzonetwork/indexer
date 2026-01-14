@@ -53,6 +53,10 @@ type GethConfig struct {
 type IndexerConfig struct {
 	StartHeight      int `yaml:"start_height"`
 	DocPushRateLimit int `yaml:"doc_push_rate_limit"`
+	DocsPerTxn       int `yaml:"docs_per_txn"`        // Documents per transaction commit (default: 25)
+	ConcurrentBlocks int `yaml:"concurrent_blocks"`   // Number of blocks to process concurrently (default: 1)
+	PrefetchBlocks   int `yaml:"prefetch_blocks"`     // Number of blocks to prefetch (default: 2)
+	ReceiptWorkers   int `yaml:"receipt_workers"`     // Concurrent receipt fetchers (default: 20)
 }
 
 // LoggerConfig represents logger configuration
@@ -87,12 +91,31 @@ func LoadConfig(path string) (*Config, error) {
 	// Apply environment variable overrides
 	applyEnvOverrides(&cfg)
 
+	// Apply default values
+	applyDefaults(&cfg)
+
 	// Validate configuration
 	if err := validateConfig(&cfg); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+// applyDefaults sets default values for optional configuration
+func applyDefaults(cfg *Config) {
+	if cfg.Indexer.DocsPerTxn <= 0 {
+		cfg.Indexer.DocsPerTxn = 25 // Default batch size
+	}
+	if cfg.Indexer.ConcurrentBlocks <= 0 {
+		cfg.Indexer.ConcurrentBlocks = 1 // Default to sequential
+	}
+	if cfg.Indexer.PrefetchBlocks <= 0 {
+		cfg.Indexer.PrefetchBlocks = 2 // Prefetch 2 blocks ahead
+	}
+	if cfg.Indexer.ReceiptWorkers <= 0 {
+		cfg.Indexer.ReceiptWorkers = 20 // Default receipt workers
+	}
 }
 
 // validateConfig validates the configuration
@@ -157,6 +180,26 @@ func applyEnvOverrides(cfg *Config) {
 	if startHeight := os.Getenv("INDEXER_START_HEIGHT"); startHeight != "" {
 		if h, err := strconv.Atoi(startHeight); err == nil {
 			cfg.Indexer.StartHeight = h
+		}
+	}
+	if docsPerTxn := os.Getenv("INDEXER_DOCS_PER_TXN"); docsPerTxn != "" {
+		if n, err := strconv.Atoi(docsPerTxn); err == nil {
+			cfg.Indexer.DocsPerTxn = n
+		}
+	}
+	if concurrentBlocks := os.Getenv("INDEXER_CONCURRENT_BLOCKS"); concurrentBlocks != "" {
+		if n, err := strconv.Atoi(concurrentBlocks); err == nil {
+			cfg.Indexer.ConcurrentBlocks = n
+		}
+	}
+	if prefetchBlocks := os.Getenv("INDEXER_PREFETCH_BLOCKS"); prefetchBlocks != "" {
+		if n, err := strconv.Atoi(prefetchBlocks); err == nil {
+			cfg.Indexer.PrefetchBlocks = n
+		}
+	}
+	if receiptWorkers := os.Getenv("INDEXER_RECEIPT_WORKERS"); receiptWorkers != "" {
+		if n, err := strconv.Atoi(receiptWorkers); err == nil {
+			cfg.Indexer.ReceiptWorkers = n
 		}
 	}
 
