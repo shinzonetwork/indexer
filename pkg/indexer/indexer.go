@@ -328,12 +328,15 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 	return i.processSingleBlock(ctx, ethClient, blockHandler, block, blockNum)
 }
 
-// processBlockBatch creates all documents for a block in a single transaction.
+// processBlockBatch creates all documents for a block using optimized batch mutations.
+// This fetches all receipts in parallel, then uses BatchExecute to create documents
+// in batches of 50-100, dramatically reducing the number of GraphQL operations.
 func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, block *types.Block, blockNum int64) error {
+	// Fetch all receipts in parallel with higher concurrency
 	var receipts []*types.TransactionReceipt
 	var receiptMu sync.Mutex
 	var wg sync.WaitGroup
-	receiptSem := make(chan struct{}, 20)
+	receiptSem := make(chan struct{}, 50) // Increased from 20 for faster receipt fetching
 
 	for idx := range block.Transactions {
 		tx := block.Transactions[idx]
@@ -355,14 +358,16 @@ func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.Eth
 	}
 	wg.Wait()
 
+	// Convert transactions slice to pointer slice
 	transactions := make([]*types.Transaction, len(block.Transactions))
 	for idx := range block.Transactions {
 		transactions[idx] = &block.Transactions[idx]
 	}
 
+	// Use the optimized batch method
 	var err error
 	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
-		_, err = blockHandler.CreateBlockBatch(ctx, block, transactions, receipts)
+		_, err = blockHandler.CreateBlockBatchOptimized(ctx, block, transactions, receipts)
 		if err == nil {
 			break
 		}
@@ -387,6 +392,7 @@ func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.Eth
 	i.updateBlockInfo(blockNum)
 	return nil
 }
+
 
 // processSingleBlock creates documents one at a time
 func (i *ChainIndexer) processSingleBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, block *types.Block, blockNum int64) error {
