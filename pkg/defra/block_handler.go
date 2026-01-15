@@ -536,10 +536,8 @@ func (h *BlockHandler) createBlockSingleTransaction(ctx context.Context, block *
 		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", "failed to create transaction", err)
 	}
 
-	// Build the complete mutation for the entire block
-	mutation, _, _, _ := h.buildEntireBlockMutation(block, blockInt, transactions, receiptMap)
-
-	result := txn.ExecRequest(ctx, mutation)
+	blockMutation := h.buildBlockMutation(block, blockInt)
+	result := txn.ExecRequest(ctx, blockMutation)
 	if len(result.GQL.Errors) > 0 {
 		txn.Discard()
 		errMsg := result.GQL.Errors[0].Error()
@@ -549,15 +547,88 @@ func (h *BlockHandler) createBlockSingleTransaction(ctx context.Context, block *
 		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", errMsg, result.GQL.Errors[0])
 	}
 
+	blockID, err := h.extractDocID(result.GQL.Data, "create_"+constants.CollectionBlock)
+	if err != nil || blockID == "" {
+		txn.Discard()
+		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", "failed to get block ID", err)
+	}
+
+	txHashToID := make(map[string]string)
+	if len(transactions) > 0 {
+		txMutation, txInfos := h.buildBatchedTransactionMutation(transactions, blockID, 0)
+		if txMutation != "" {
+			result = txn.ExecRequest(ctx, txMutation)
+			if len(result.GQL.Errors) > 0 {
+				txn.Discard()
+				return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", result.GQL.Errors[0].Error(), result.GQL.Errors[0])
+			}
+
+			for _, txInfo := range txInfos {
+				docID := h.extractDocIDFromBatchedResponse(result.GQL.Data, txInfo.alias)
+				if docID != "" {
+					txHashToID[txInfo.hash] = docID
+				}
+			}
+		}
+	}
+
+	var allLogs []logEntry
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		receipt, ok := receiptMap[tx.Hash]
+		if !ok || receipt == nil {
+			continue
+		}
+		txID, ok := txHashToID[tx.Hash]
+		if !ok {
+			continue
+		}
+		for i := range receipt.Logs {
+			allLogs = append(allLogs, logEntry{log: &receipt.Logs[i], txID: txID})
+		}
+	}
+
+	if len(allLogs) > 0 {
+		logMutation := h.buildBatchedLogMutation(allLogs, blockID, 0)
+		if logMutation != "" {
+			result = txn.ExecRequest(ctx, logMutation)
+			if len(result.GQL.Errors) > 0 {
+				txn.Discard()
+				return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", result.GQL.Errors[0].Error(), result.GQL.Errors[0])
+			}
+		}
+	}
+
+	var allALEs []aleEntry
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		txID, ok := txHashToID[tx.Hash]
+		if !ok {
+			continue
+		}
+		for i := range tx.AccessList {
+			allALEs = append(allALEs, aleEntry{ale: &tx.AccessList[i], txID: txID})
+		}
+	}
+
+	if len(allALEs) > 0 {
+		aleMutation := h.buildBatchedALEMutation(allALEs, 0)
+		if aleMutation != "" {
+			result = txn.ExecRequest(ctx, aleMutation)
+			if len(result.GQL.Errors) > 0 {
+				txn.Discard()
+				return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", result.GQL.Errors[0].Error(), result.GQL.Errors[0])
+			}
+		}
+	}
+
 	// Commit everything at once
 	if err := txn.Commit(); err != nil {
 		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", "failed to commit", err)
-	}
-
-	// Extract block ID
-	blockID := h.extractDocIDFromBatchedResponse(result.GQL.Data, "block0")
-	if blockID == "" {
-		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", "failed to get block ID", nil)
 	}
 
 	return blockID, nil
