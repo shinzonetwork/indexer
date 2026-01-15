@@ -19,8 +19,9 @@ import (
 	"github.com/sourcenetwork/defradb/node"
 )
 
-// DocsPerTxn is the number of documents to create per transaction commit.
-const DocsPerTxn = 4
+// DefaultDocsPerTxn is the default number of documents per transaction commit.
+// This can be overridden via SetDocsPerTxn.
+const DefaultDocsPerTxn = 25
 
 type BlockHandler struct {
 	defraURL      string
@@ -28,10 +29,15 @@ type BlockHandler struct {
 	defraNode     *node.Node       // Direct access to embedded DefraDB (nil if using HTTP)
 	rateLimiter   <-chan time.Time // Rate limiter for document pushes (nil = no limit) - used by HTTP mode
 	docsPerSecond int              // Rate limit in docs/sec (0 = no limit) - used by batch mode
+	docsPerTxn    int              // Documents per transaction commit
 
 	// Rate limiter state (for periodic checking)
 	rateLimitWindowStart time.Time // Start of current 1-second window
 	docsInCurrentWindow  int       // Docs created in current window
+
+	// Document throughput metrics
+	metricsWindowStart  time.Time
+	docsCreatedInWindow int
 }
 
 func NewBlockHandler(url string) (*BlockHandler, error) {
@@ -44,7 +50,8 @@ func NewBlockHandler(url string) (*BlockHandler, error) {
 		client: &http.Client{
 			Timeout: 30 * time.Second, // Add 30-second timeout to prevent hanging
 		},
-		defraNode: nil,
+		defraNode:  nil,
+		docsPerTxn: DefaultDocsPerTxn,
 	}, nil
 }
 
@@ -55,10 +62,20 @@ func NewBlockHandlerWithNode(defraNode *node.Node) (*BlockHandler, error) {
 			"defraNode is nil", "", nil)
 	}
 	return &BlockHandler{
-		defraNode: defraNode,
-		client:    nil,
-		defraURL:  "",
+		defraNode:  defraNode,
+		client:     nil,
+		defraURL:   "",
+		docsPerTxn: DefaultDocsPerTxn,
 	}, nil
+}
+
+// SetDocsPerTxn sets the number of documents to batch per transaction commit.
+func (h *BlockHandler) SetDocsPerTxn(docsPerTxn int) {
+	if docsPerTxn <= 0 {
+		h.docsPerTxn = DefaultDocsPerTxn
+		return
+	}
+	h.docsPerTxn = docsPerTxn
 }
 
 // SetRateLimit sets the maximum documents per second that can be pushed.
@@ -436,7 +453,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	case map[string]interface{}:
 		// Single object response
 		if docID, ok := v["_docID"].(string); ok {
-			// return good
 			return docID, nil
 		}
 	case []interface{}:
@@ -444,7 +460,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		if len(v) > 0 {
 			if item, ok := v[0].(map[string]interface{}); ok {
 				if docID, ok := item["_docID"].(string); ok {
-					// return good
 					return docID, nil
 				}
 			}
@@ -646,7 +661,7 @@ func (h *BlockHandler) CreateBlockBatch(ctx context.Context, block *types.Block,
 		txCount++
 		docCount++
 
-		if docCount >= DocsPerTxn {
+		if docCount >= h.docsPerTxn {
 			if err := txn.Commit(); err != nil {
 				logger.Sugar.Warnf("Failed to commit tx batch: %v", err)
 			}
@@ -695,7 +710,7 @@ func (h *BlockHandler) CreateBlockBatch(ctx context.Context, block *types.Block,
 			logCount++
 			docCount++
 
-			if docCount >= DocsPerTxn {
+			if docCount >= h.docsPerTxn {
 				if err := txn.Commit(); err != nil {
 					logger.Sugar.Warnf("Failed to commit log batch: %v", err)
 				}
@@ -741,7 +756,7 @@ func (h *BlockHandler) CreateBlockBatch(ctx context.Context, block *types.Block,
 			aleCount++
 			docCount++
 
-			if docCount >= DocsPerTxn {
+			if docCount >= h.docsPerTxn {
 				if err := txn.Commit(); err != nil {
 					logger.Sugar.Warnf("Failed to commit ALE batch: %v", err)
 				}
