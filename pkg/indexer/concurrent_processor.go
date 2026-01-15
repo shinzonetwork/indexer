@@ -83,7 +83,11 @@ func (p *ConcurrentBlockProcessor) ProcessBlocks(
 				delete(p.pending, p.nextToCommit)
 
 				if next.Success {
-					logger.Sugar.Infof("Committed block %d (ID: %s)", next.BlockNum, next.BlockID)
+					if next.BlockID != "existing" {
+						logger.Sugar.Infof("Committed block %d (ID: %s)", next.BlockNum, next.BlockID)
+					} else {
+						logger.Sugar.Infof("Block %d already existed, skipping", next.BlockNum)
+					}
 					if onBlockProcessed != nil {
 						onBlockProcessed(next.BlockNum)
 					}
@@ -96,7 +100,8 @@ func (p *ConcurrentBlockProcessor) ProcessBlocks(
 		}
 	}()
 
-	nextBlockToRequest := startBlock + int64(p.workers)
+	// Start requesting blocks after the ones already seeded by the prefetcher
+	nextBlockToRequest := startBlock + int64(prefetcher.bufferSize)
 	processedCount := 0
 
 	for {
@@ -145,26 +150,43 @@ func (p *ConcurrentBlockProcessor) ProcessBlocks(
 	}
 }
 
-// processBlock processes a single prefetched block
+// processBlock processes a single prefetched block with retry on transaction conflicts
 func (p *ConcurrentBlockProcessor) processBlock(ctx context.Context, prefetched *PrefetchedBlock) *BlockResult {
 	result := &BlockResult{BlockNum: prefetched.BlockNum}
-	blockID, err := p.blockHandler.CreateBlockBatch(
-		ctx,
-		prefetched.Block,
-		prefetched.Transactions,
-		prefetched.Receipts,
-	)
-	if err != nil {
+
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		blockID, err := p.blockHandler.CreateBlockBatch(
+			ctx,
+			prefetched.Block,
+			prefetched.Transactions,
+			prefetched.Receipts,
+		)
+		if err == nil {
+			result.Success = true
+			result.BlockID = blockID
+			return result
+		}
+
 		if strings.Contains(err.Error(), "already exists") {
 			result.Success = true
 			result.BlockID = "existing"
 			return result
 		}
+
+		// Retry on transaction conflict
+		if strings.Contains(err.Error(), "transaction conflict") {
+			if attempt < maxRetries-1 {
+				logger.Sugar.Infof("Block %d transaction conflict, retrying (attempt %d/%d)", prefetched.BlockNum, attempt+1, maxRetries)
+				time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond) // 50ms, 100ms, 150ms backoff
+				continue
+			}
+		}
+
 		result.Error = fmt.Errorf("failed to create block batch: %w", err)
 		return result
 	}
-	result.Success = true
-	result.BlockID = blockID
+
 	return result
 }
 

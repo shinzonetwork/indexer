@@ -51,12 +51,11 @@ type GethConfig struct {
 
 // IndexerConfig represents indexer configuration
 type IndexerConfig struct {
-	StartHeight      int `yaml:"start_height"`
-	DocPushRateLimit int `yaml:"doc_push_rate_limit"`
-	DocsPerTxn       int `yaml:"docs_per_txn"`        // Documents per transaction commit (default: 25)
-	ConcurrentBlocks int `yaml:"concurrent_blocks"`   // Number of blocks to process concurrently (default: 1)
-	PrefetchBlocks   int `yaml:"prefetch_blocks"`     // Number of blocks to prefetch (default: 2)
-	ReceiptWorkers   int `yaml:"receipt_workers"`     // Concurrent receipt fetchers (default: 20)
+	StartHeight         int `yaml:"start_height"`
+	ConcurrentBlocks    int `yaml:"concurrent_blocks"`
+	PrefetchBlocks      int `yaml:"prefetch_blocks"`
+	ReceiptWorkers      int `yaml:"receipt_workers"`
+	MaxDocsPerTxn       int `yaml:"max_docs_per_txn"` // Threshold for single-txn vs batched block creation
 }
 
 // LoggerConfig represents logger configuration
@@ -104,9 +103,6 @@ func LoadConfig(path string) (*Config, error) {
 
 // applyDefaults sets default values for optional configuration
 func applyDefaults(cfg *Config) {
-	if cfg.Indexer.DocsPerTxn <= 0 {
-		cfg.Indexer.DocsPerTxn = 25 // Default batch size
-	}
 	if cfg.Indexer.ConcurrentBlocks <= 0 {
 		cfg.Indexer.ConcurrentBlocks = 1 // Default to sequential
 	}
@@ -115,6 +111,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Indexer.ReceiptWorkers <= 0 {
 		cfg.Indexer.ReceiptWorkers = 20 // Default receipt workers
+	}
+	if cfg.Indexer.MaxDocsPerTxn <= 0 {
+		cfg.Indexer.MaxDocsPerTxn = 256 // Default threshold for single-txn block creation
 	}
 }
 
@@ -182,11 +181,6 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.Indexer.StartHeight = h
 		}
 	}
-	if docsPerTxn := os.Getenv("INDEXER_DOCS_PER_TXN"); docsPerTxn != "" {
-		if n, err := strconv.Atoi(docsPerTxn); err == nil {
-			cfg.Indexer.DocsPerTxn = n
-		}
-	}
 	if concurrentBlocks := os.Getenv("INDEXER_CONCURRENT_BLOCKS"); concurrentBlocks != "" {
 		if n, err := strconv.Atoi(concurrentBlocks); err == nil {
 			cfg.Indexer.ConcurrentBlocks = n
@@ -200,6 +194,11 @@ func applyEnvOverrides(cfg *Config) {
 	if receiptWorkers := os.Getenv("INDEXER_RECEIPT_WORKERS"); receiptWorkers != "" {
 		if n, err := strconv.Atoi(receiptWorkers); err == nil {
 			cfg.Indexer.ReceiptWorkers = n
+		}
+	}
+	if maxDocsPerTxn := os.Getenv("INDEXER_MAX_DOCS_PER_TXN"); maxDocsPerTxn != "" {
+		if n, err := strconv.Atoi(maxDocsPerTxn); err == nil {
+			cfg.Indexer.MaxDocsPerTxn = n
 		}
 	}
 

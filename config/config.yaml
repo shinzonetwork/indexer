@@ -21,11 +21,10 @@ geth:
 
 indexer:
   start_height: 23700000
-  doc_push_rate_limit: 0  # Max docs per second to push (0 = no limit)
-  docs_per_txn: 25         # Documents per DefraDB transaction commit (default: 25)
-  concurrent_blocks: 4     # Number of blocks to process concurrently (default: 1 = sequential)
-  prefetch_blocks: 8       # Number of blocks to prefetch ahead (default: 2)
-  receipt_workers: 30      # Concurrent receipt fetchers per block (default: 20)
+  concurrent_blocks: 6     # Number of blocks to process concurrently (default: 1)
+  prefetch_blocks: 16      # Number of blocks to prefetch ahead (default: 2)
+  receipt_workers: 64      # Concurrent receipt fetchers per block (default: 20)
+  max_docs_per_txn: 256    # Docs threshold for single-txn block creation (default: 256)
 
 logger:
   development: false
