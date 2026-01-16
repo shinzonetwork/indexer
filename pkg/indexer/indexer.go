@@ -179,29 +179,17 @@ func (i *ChainIndexer) StartIndexing(defraStarted bool) error {
 	var blockHandler *defra.BlockHandler
 	var blockHandlerErr error
 	if !defraStarted && i.defraNode != nil {
-		blockHandler, blockHandlerErr = defra.NewBlockHandlerWithNode(i.defraNode)
+		blockHandler, blockHandlerErr = defra.NewBlockHandlerWithNode(i.defraNode, cfg.Indexer.MaxDocsPerTxn)
 		if blockHandlerErr != nil {
 			return fmt.Errorf("failed to create block handler with node: %v", blockHandlerErr)
 		}
-		logger.Sugar.Info("Using direct DB access for embedded DefraDB (faster)")
+		logger.Sugar.Infof("Using direct DB access for embedded DefraDB (maxDocsPerTxn=%d)", cfg.Indexer.MaxDocsPerTxn)
 	} else {
 		blockHandler, blockHandlerErr = defra.NewBlockHandler(cfg.DefraDB.Url)
 		if blockHandlerErr != nil {
 			return fmt.Errorf("failed to create block handler for block check: %v", blockHandlerErr)
 		}
 		logger.Sugar.Info("Using HTTP access for external DefraDB")
-	}
-
-	// Apply rate limiting if configured
-	if cfg.Indexer.DocPushRateLimit > 0 {
-		blockHandler.SetRateLimit(cfg.Indexer.DocPushRateLimit)
-		logger.Sugar.Infof("Document push rate limited to %d docs/sec", cfg.Indexer.DocPushRateLimit)
-	}
-
-	// Apply batch size configuration
-	if cfg.Indexer.DocsPerTxn > 0 {
-		blockHandler.SetDocsPerTxn(cfg.Indexer.DocsPerTxn)
-		logger.Sugar.Infof("Documents per transaction batch: %d", cfg.Indexer.DocsPerTxn)
 	}
 
 	startHeight := int64(cfg.Indexer.StartHeight)
@@ -373,20 +361,24 @@ func (i *ChainIndexer) processBlock(ctx context.Context, ethClient *rpc.Ethereum
 }
 
 // processBlockBatch creates all documents for a block using optimized batch mutations.
-// This fetches all receipts in parallel, then uses BatchExecute to create documents
-// in batches of 50-100, dramatically reducing the number of GraphQL operations.
+// This streams receipts as they arrive and processes them concurrently with fetching,
+// reducing latency compared to waiting for all receipts before processing.
 func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, block *types.Block, blockNum int64) error {
-	// Fetch all receipts in parallel with higher concurrency
-	var receipts []*types.TransactionReceipt
-	var receiptMu sync.Mutex
-	var wg sync.WaitGroup
-	receiptSem := make(chan struct{}, 50) // Increased from 20 for faster receipt fetching
+	type txWithReceipt struct {
+		tx      *types.Transaction
+		receipt *types.TransactionReceipt
+	}
+	receiptWorkers := i.cfg.Indexer.ReceiptWorkers
+	receiptChan := make(chan txWithReceipt, receiptWorkers*2)
+
+	var fetchWg sync.WaitGroup
+	receiptSem := make(chan struct{}, receiptWorkers)
 
 	for idx := range block.Transactions {
-		tx := block.Transactions[idx]
-		wg.Add(1)
-		go func(tx types.Transaction) {
-			defer wg.Done()
+		tx := &block.Transactions[idx]
+		fetchWg.Add(1)
+		go func(tx *types.Transaction) {
+			defer fetchWg.Done()
 			receiptSem <- struct{}{}
 			defer func() { <-receiptSem }()
 
@@ -395,23 +387,25 @@ func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.Eth
 				logger.Sugar.Warnf("Failed to get receipt for tx %s: %v", tx.Hash, err)
 				return
 			}
-			receiptMu.Lock()
-			receipts = append(receipts, receipt)
-			receiptMu.Unlock()
+			receiptChan <- txWithReceipt{tx: tx, receipt: receipt}
 		}(tx)
 	}
-	wg.Wait()
 
-	// Convert transactions slice to pointer slice
-	transactions := make([]*types.Transaction, len(block.Transactions))
-	for idx := range block.Transactions {
-		transactions[idx] = &block.Transactions[idx]
+	go func() {
+		fetchWg.Wait()
+		close(receiptChan)
+	}()
+
+	var transactions []*types.Transaction
+	var receipts []*types.TransactionReceipt
+	for result := range receiptChan {
+		transactions = append(transactions, result.tx)
+		receipts = append(receipts, result.receipt)
 	}
 
-	// Use the optimized batch method
 	var err error
 	for attempt := 0; attempt < DefaultRetryAttempts; attempt++ {
-		_, err = blockHandler.CreateBlockBatchOptimized(ctx, block, transactions, receipts)
+		_, err = blockHandler.CreateBlockBatch(ctx, block, transactions, receipts)
 		if err == nil {
 			break
 		}
@@ -436,7 +430,6 @@ func (i *ChainIndexer) processBlockBatch(ctx context.Context, ethClient *rpc.Eth
 	i.updateBlockInfo(blockNum)
 	return nil
 }
-
 
 // processSingleBlock creates documents one at a time
 func (i *ChainIndexer) processSingleBlock(ctx context.Context, ethClient *rpc.EthereumClient, blockHandler *defra.BlockHandler, block *types.Block, blockNum int64) error {

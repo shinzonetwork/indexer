@@ -19,25 +19,27 @@ import (
 	"github.com/sourcenetwork/defradb/node"
 )
 
-// DefaultDocsPerTxn is the default number of documents per transaction commit.
-// This can be overridden via SetDocsPerTxn.
-const DefaultDocsPerTxn = 25
-
 type BlockHandler struct {
 	defraURL      string
 	client        *http.Client
-	defraNode     *node.Node       // Direct access to embedded DefraDB (nil if using HTTP)
-	rateLimiter   <-chan time.Time // Rate limiter for document pushes (nil = no limit) - used by HTTP mode
-	docsPerSecond int              // Rate limit in docs/sec (0 = no limit) - used by batch mode
-	docsPerTxn    int              // Documents per transaction commit
-
-	// Rate limiter state (for periodic checking)
-	rateLimitWindowStart time.Time // Start of current 1-second window
-	docsInCurrentWindow  int       // Docs created in current window
+	defraNode     *node.Node // Direct access to embedded DefraDB (nil if using HTTP)
+	maxDocsPerTxn int        // Threshold for single-txn vs batched block creation
 
 	// Document throughput metrics
 	metricsWindowStart  time.Time
 	docsCreatedInWindow int
+}
+
+// logEntry holds a log and its associated transaction ID for batched processing
+type logEntry struct {
+	log  *types.Log
+	txID string
+}
+
+// aleEntry holds an access list entry and its associated transaction ID for batched processing
+type aleEntry struct {
+	ale  *types.AccessListEntry
+	txID string
 }
 
 func NewBlockHandler(url string) (*BlockHandler, error) {
@@ -50,79 +52,26 @@ func NewBlockHandler(url string) (*BlockHandler, error) {
 		client: &http.Client{
 			Timeout: 30 * time.Second, // Add 30-second timeout to prevent hanging
 		},
-		defraNode:  nil,
-		docsPerTxn: DefaultDocsPerTxn,
+		defraNode: nil,
 	}, nil
 }
 
 // NewBlockHandlerWithNode creates a BlockHandler that uses direct DB calls for better performance.
-func NewBlockHandlerWithNode(defraNode *node.Node) (*BlockHandler, error) {
+// maxDocsPerTxn is the threshold for single-txn vs batched block creation (default 256 if <= 0).
+func NewBlockHandlerWithNode(defraNode *node.Node, maxDocsPerTxn int) (*BlockHandler, error) {
 	if defraNode == nil {
 		return nil, errors.NewConfigurationError("defra", "NewBlockHandlerWithNode",
 			"defraNode is nil", "", nil)
 	}
+	if maxDocsPerTxn <= 0 {
+		maxDocsPerTxn = 256
+	}
 	return &BlockHandler{
-		defraNode:  defraNode,
-		client:     nil,
-		defraURL:   "",
-		docsPerTxn: DefaultDocsPerTxn,
+		defraNode:     defraNode,
+		client:        nil,
+		defraURL:      "",
+		maxDocsPerTxn: maxDocsPerTxn,
 	}, nil
-}
-
-// SetDocsPerTxn sets the number of documents to batch per transaction commit.
-func (h *BlockHandler) SetDocsPerTxn(docsPerTxn int) {
-	if docsPerTxn <= 0 {
-		h.docsPerTxn = DefaultDocsPerTxn
-		return
-	}
-	h.docsPerTxn = docsPerTxn
-}
-
-// SetRateLimit sets the maximum documents per second that can be pushed.
-// Pass 0 to disable rate limiting.
-func (h *BlockHandler) SetRateLimit(docsPerSecond int) {
-	if docsPerSecond <= 0 {
-		h.rateLimiter = nil
-		h.docsPerSecond = 0
-		return
-	}
-	h.docsPerSecond = docsPerSecond
-	interval := time.Second / time.Duration(docsPerSecond)
-	h.rateLimiter = time.Tick(interval)
-}
-
-// enforceRateLimit enforces rate limiting by sleeping based on how many docs were created.
-// Uses a token bucket approach: each doc consumes time based on the rate limit.
-func (h *BlockHandler) enforceRateLimit(docsJustCreated int) {
-	if h.docsPerSecond <= 0 || docsJustCreated <= 0 {
-		return
-	}
-
-	timePerDoc := time.Second / time.Duration(h.docsPerSecond)
-
-	now := time.Now()
-
-	if h.rateLimitWindowStart.IsZero() {
-		h.rateLimitWindowStart = now
-		h.docsInCurrentWindow = docsJustCreated
-		return
-	}
-
-	elapsed := now.Sub(h.rateLimitWindowStart)
-	h.docsInCurrentWindow += docsJustCreated
-	totalRequiredTime := timePerDoc * time.Duration(h.docsInCurrentWindow)
-
-	if elapsed < totalRequiredTime {
-		sleepTime := totalRequiredTime - elapsed
-		if sleepTime > 0 {
-			time.Sleep(sleepTime)
-		}
-	}
-
-	if h.docsInCurrentWindow >= h.docsPerSecond*10 {
-		h.rateLimitWindowStart = time.Now()
-		h.docsInCurrentWindow = 0
-	}
 }
 
 func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (string, error) {
@@ -161,8 +110,6 @@ func (h *BlockHandler) CreateBlock(ctx context.Context, block *types.Block) (str
 		"uncles":           block.Uncles,
 	}
 	// Post block data to collection endpoint
-	logger.Sugar.Debug("Posting blockdata to collection endpoint: ", blockData)
-	// Database operation
 	docID, err := h.PostToCollection(ctx, constants.CollectionBlock, blockData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateBlock", fmt.Sprintf("%v", blockData), err)
@@ -204,11 +151,8 @@ func (h *BlockHandler) CreateTransaction(ctx context.Context, tx *types.Transact
 		"cumulativeGasUsed":    tx.CumulativeGasUsed,
 		"effectiveGasPrice":    tx.EffectiveGasPrice,
 		"status":               tx.Status,
-		"block":                block_id, // Include block relationship directly
-
+		"block":                block_id,
 	}
-	logger.Sugar.Debug("Creating transaction: ", txData)
-	// Database operation
 	docID, err := h.PostToCollection(ctx, constants.CollectionTransaction, txData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateTransaction", fmt.Sprintf("%v", txData), err)
@@ -231,13 +175,10 @@ func (h *BlockHandler) CreateAccessListEntry(ctx context.Context, accessListEntr
 		"storageKeys": accessListEntry.StorageKeys,
 		"transaction": tx_Id,
 	}
-	logger.Sugar.Debug("Creating access list entry: ", ALEData)
-	// Database operation
 	docID, err := h.PostToCollection(ctx, constants.CollectionAccessListEntry, ALEData)
 	if err != nil {
 		return "", errors.NewQueryFailed("defra", "CreateAccessListEntry", fmt.Sprintf("%v", ALEData), err)
 	}
-
 	return docID, nil
 }
 
@@ -265,12 +206,10 @@ func (h *BlockHandler) CreateLog(ctx context.Context, log *types.Log, block_id, 
 		"transactionIndex": log.TransactionIndex,
 		"blockHash":        log.BlockHash,
 		"logIndex":         log.LogIndex,
-		"removed":          fmt.Sprintf("%v", log.Removed), // Convert bool to string
+		"removed":          fmt.Sprintf("%v", log.Removed),
 		"transaction":      tx_Id,
 		"block":            block_id,
 	}
-	logger.Sugar.Debug("Creating log: ", logData)
-	// Database operation
 	docID, err := h.PostToCollection(ctx, constants.CollectionLog, logData)
 	if err != nil {
 		logger.Sugar.Errorf("Failed to create log (txHash=%s, logIndex=%v): %v", log.TransactionHash, log.LogIndex, err)
@@ -298,7 +237,6 @@ func (h *BlockHandler) UpdateTransactionRelationships(ctx context.Context, block
 
 	resp, err := h.SendToGraphql(ctx, mutation)
 	if err != nil {
-		logger.Sugar.Errorf("failed to update transaction relationships: ", mutation)
 		return "", errors.NewQueryFailed("defra", "UpdateTransactionRelationships", fmt.Sprintf("%v", mutation), err)
 	}
 	docId, err := h.parseGraphQLResponse(resp, "update_Transaction")
@@ -336,7 +274,6 @@ func (h *BlockHandler) UpdateLogRelationships(ctx context.Context, blockId strin
 
 	resp, err := h.SendToGraphql(ctx, mutation)
 	if err != nil {
-		logger.Sugar.Errorf("log relationship update failure: ", mutation)
 		return "", errors.NewQueryFailed("defra", "UpdateLogRelationships", fmt.Sprintf("%v", mutation), err)
 	}
 	docId, err := h.parseGraphQLResponse(resp, "update_Log")
@@ -385,28 +322,15 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		}
 	}`, collection, strings.Join(inputFields, ", "))}
 
-	if h.rateLimiter != nil {
-		select {
-		case <-h.rateLimiter:
-		case <-ctx.Done():
-			return "", ctx.Err()
-		}
-	}
-
 	// Send mutation
 	resp, err := h.SendToGraphql(ctx, mutation)
 	if err != nil {
-		logger.Sugar.Error("Received nil response from GraphQL")
 		return "", errors.NewQueryFailed("defra", "PostToCollection", fmt.Sprintf("%v", mutation), err)
 	}
-
-	logger.Sugar.Debug("DefraDB Response: ", string(resp))
 
 	// Parse response - handle both single object and array formats
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(resp, &rawResponse); err != nil {
-		logger.Sugar.Errorf("failed to decode response: %v", err)
-		logger.Sugar.Debug("Raw response: ", string(resp))
 		return "", errors.NewQueryFailed("defra", "PostToCollection", fmt.Sprintf("%v", mutation), err)
 	}
 
@@ -416,8 +340,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 			if message, ok := errorMap["message"].(string); ok {
 				// Handle duplicate document error gracefully
 				if strings.Contains(message, "already exists") {
-					logger.Sugar.Infof("Document already exists in %s collection, skipping creation", collection)
-					// Extract DocID from error message if possible
 					if strings.Contains(message, "DocID: ") {
 						parts := strings.Split(message, "DocID: ")
 						if len(parts) > 1 {
@@ -427,7 +349,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 					}
 					return "", errors.NewQueryFailed("defra", "PostToCollection", "document already exists", nil)
 				}
-				logger.Sugar.Errorf("GraphQL error for %s: %s", collection, message)
 				return "", errors.NewQueryFailed("defra", "PostToCollection", message, nil)
 			}
 		}
@@ -436,7 +357,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	// Extract data field
 	data, ok := rawResponse["data"].(map[string]interface{})
 	if !ok {
-		logger.Sugar.Error("data field not found in response\n", "Response: ", rawResponse)
 		return "", errors.NewQueryFailed("defra", "PostToCollection", fmt.Sprintf("%v", mutation), nil)
 	}
 
@@ -444,7 +364,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 	createField := fmt.Sprintf("create_%s", collection)
 	createData, ok := data[createField]
 	if !ok {
-		logger.Sugar.Errorf("create_", collection, " field not found in response\n", "Response data: ", data)
 		return "", errors.NewQueryFailed("defra", "PostToCollection", fmt.Sprintf("%v", mutation), nil)
 	}
 
@@ -466,7 +385,6 @@ func (h *BlockHandler) PostToCollection(ctx context.Context, collection string, 
 		}
 	}
 
-	logger.Sugar.Errorf("unable to extract _docID from create_"+collection+" response\n", "Create data: ", createData)
 	return "", errors.NewQueryFailed("defra", "PostToCollection", fmt.Sprintf("%v", mutation), nil)
 }
 
@@ -484,8 +402,6 @@ func (h *BlockHandler) SendToGraphql(ctx context.Context, req types.Request) ([]
 
 // sendToGraphqlDirect executes GraphQL directly on the embedded DefraDB node
 func (h *BlockHandler) sendToGraphqlDirect(ctx context.Context, req types.Request) ([]byte, error) {
-	logger.Sugar.Debug("Sending direct mutation: ", req.Query, "\n")
-
 	result := h.defraNode.DB.ExecRequest(ctx, req.Query)
 	gqlResult := result.GQL
 
@@ -508,7 +424,6 @@ func (h *BlockHandler) sendToGraphqlDirect(ctx context.Context, req types.Reques
 		return nil, errors.NewQueryFailed("defra", "sendToGraphqlDirect", fmt.Sprintf("%v", req), err)
 	}
 
-	logger.Sugar.Debug("DefraDB Direct Response: ", string(respBody), "\n")
 	return respBody, nil
 }
 
@@ -526,13 +441,9 @@ func (h *BlockHandler) sendToGraphqlHTTP(ctx context.Context, req types.Request)
 		logger.Sugar.Errorf("failed to marshal request body: ", err)
 	}
 
-	// Debug: Print the mutation
-	logger.Sugar.Debug("Sending HTTP mutation: ", req.Query, "\n")
-
 	// Create request
 	httpReq, err := http.NewRequestWithContext(ctx, req.Type, h.defraURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		logger.Sugar.Errorf("failed to create request: ", err)
 		return nil, errors.NewQueryFailed("defra", "sendToGraphqlHTTP", fmt.Sprintf("%v", req), err)
 	}
 
@@ -541,10 +452,6 @@ func (h *BlockHandler) sendToGraphqlHTTP(ctx context.Context, req types.Request)
 	// Send request
 	resp, err := h.client.Do(httpReq)
 	if err != nil {
-		logger.Sugar.Errorf("Failed to send GraphQL request to DefraDB at %s: %v", h.defraURL, err)
-		if strings.Contains(err.Error(), "connection refused") {
-			logger.Sugar.Error("DefraDB appears to be down. Please ensure DefraDB is running on the configured port.")
-		}
 		return nil, errors.NewQueryFailed("defra", "sendToGraphqlHTTP", fmt.Sprintf("%v", req), err)
 	}
 
@@ -552,11 +459,9 @@ func (h *BlockHandler) sendToGraphqlHTTP(ctx context.Context, req types.Request)
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Sugar.Errorf("Read response error: ", err)
 		return nil, errors.NewQueryFailed("defra", "sendToGraphqlHTTP", fmt.Sprintf("%v", req), err)
 	}
-	// Debug: Print the response
-	logger.Sugar.Debug("DefraDB HTTP Response: ", string(respBody), "\n")
+
 	return respBody, nil
 }
 
@@ -565,18 +470,15 @@ func (h *BlockHandler) parseGraphQLResponse(resp []byte, fieldName string) (stri
 	// Parse response
 	var response types.Response
 	if err := json.Unmarshal(resp, &response); err != nil {
-		logger.Sugar.Errorf("failed to decode response: ", err, "\n", "Raw response: ", string(resp))
 		return "", errors.NewQueryFailed("defra", "parseGraphQLResponse", fmt.Sprintf("%v", resp), err)
 	}
 
 	// Get document ID
 	items, ok := response.Data[fieldName]
 	if !ok {
-		logger.Sugar.Errorf("%s field not found in response\n", fieldName, "Response data: ", response.Data)
 		return "", errors.NewQueryFailed("defra", "parseGraphQLResponse", fmt.Sprintf("%v", resp), nil)
 	}
 	if len(items) == 0 {
-		logger.Sugar.Warnf("no document ID returned for %s", fieldName)
 		return "", errors.NewQueryFailed("defra", "parseGraphQLResponse", fmt.Sprintf("%v", resp), nil)
 	}
 	return items[0].DocID, nil
@@ -605,9 +507,33 @@ func (h *BlockHandler) CreateBlockBatch(ctx context.Context, block *types.Block,
 		}
 	}
 
+	totalLogs := 0
+	totalALEs := 0
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		if receipt, ok := receiptMap[tx.Hash]; ok && receipt != nil {
+			totalLogs += len(receipt.Logs)
+		}
+		totalALEs += len(tx.AccessList)
+	}
+	totalDocs := 1 + len(transactions) + totalLogs + totalALEs
+
+	if totalDocs <= h.maxDocsPerTxn {
+		return h.createBlockSingleTransaction(ctx, block, blockInt, transactions, receipts, receiptMap, totalDocs)
+	}
+
+	return h.createBlockBatched(ctx, block, blockInt, transactions, receipts, receiptMap)
+}
+
+// createBlockSingleTransaction creates the entire block in a single DB transaction.
+// This is optimal for small-to-medium blocks as it minimizes commit overhead.
+func (h *BlockHandler) createBlockSingleTransaction(ctx context.Context, block *types.Block, blockInt int64, transactions []*types.Transaction, receipts []*types.TransactionReceipt, receiptMap map[string]*types.TransactionReceipt, totalDocs int) (string, error) {
+	// Start single transaction for everything
 	txn, err := h.defraNode.DB.NewTxn(false)
 	if err != nil {
-		return "", errors.NewQueryFailed("defra", "CreateBlockBatch", "failed to create transaction", err)
+		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", "failed to create transaction", err)
 	}
 
 	blockMutation := h.buildBlockMutation(block, blockInt)
@@ -616,77 +542,37 @@ func (h *BlockHandler) CreateBlockBatch(ctx context.Context, block *types.Block,
 		txn.Discard()
 		errMsg := result.GQL.Errors[0].Error()
 		if strings.Contains(errMsg, "already exists") {
-			logger.Sugar.Infof("Block %d already exists, skipping batch creation", blockInt)
 			return "", fmt.Errorf("block already exists")
 		}
-		return "", errors.NewQueryFailed("defra", "CreateBlockBatch", errMsg, result.GQL.Errors[0])
+		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", errMsg, result.GQL.Errors[0])
 	}
 
 	blockID, err := h.extractDocID(result.GQL.Data, "create_"+constants.CollectionBlock)
 	if err != nil || blockID == "" {
 		txn.Discard()
-		return "", errors.NewQueryFailed("defra", "CreateBlockBatch", "failed to get block ID", err)
-	}
-
-	if err := txn.Commit(); err != nil {
-		return "", errors.NewQueryFailed("defra", "CreateBlockBatch", "failed to commit block", err)
+		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", "failed to get block ID", err)
 	}
 
 	txHashToID := make(map[string]string)
-	txCount := 0
-	docCount := 0
-	txn, err = h.defraNode.DB.NewTxn(false)
-	if err != nil {
-		return "", errors.NewQueryFailed("defra", "CreateBlockBatch", "failed to create transaction", err)
-	}
-
-	for _, tx := range transactions {
-		if tx == nil {
-			continue
-		}
-
-		txMutation := h.buildTransactionMutation(tx, blockID)
-		result := txn.ExecRequest(ctx, txMutation)
-		if len(result.GQL.Errors) > 0 {
-			logger.Sugar.Warnf("Failed to create tx %s: %v", tx.Hash, result.GQL.Errors[0])
-			continue
-		}
-
-		txID, err := h.extractDocID(result.GQL.Data, "create_"+constants.CollectionTransaction)
-		if err != nil || txID == "" {
-			logger.Sugar.Warnf("Failed to get tx ID for %s", tx.Hash)
-			continue
-		}
-		txHashToID[tx.Hash] = txID
-		txCount++
-		docCount++
-
-		if docCount >= h.docsPerTxn {
-			if err := txn.Commit(); err != nil {
-				logger.Sugar.Warnf("Failed to commit tx batch: %v", err)
+	if len(transactions) > 0 {
+		txMutation, txInfos := h.buildBatchedTransactionMutation(transactions, blockID, 0)
+		if txMutation != "" {
+			result = txn.ExecRequest(ctx, txMutation)
+			if len(result.GQL.Errors) > 0 {
+				txn.Discard()
+				return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", result.GQL.Errors[0].Error(), result.GQL.Errors[0])
 			}
-			h.enforceRateLimit(docCount)
-			txn, _ = h.defraNode.DB.NewTxn(false)
-			docCount = 0
+
+			for _, txInfo := range txInfos {
+				docID := h.extractDocIDFromBatchedResponse(result.GQL.Data, txInfo.alias)
+				if docID != "" {
+					txHashToID[txInfo.hash] = docID
+				}
+			}
 		}
 	}
 
-	if docCount > 0 {
-		if err := txn.Commit(); err != nil {
-			logger.Sugar.Warnf("Failed to commit final tx batch: %v", err)
-		}
-		h.enforceRateLimit(docCount)
-	} else {
-		txn.Discard()
-	}
-
-	logCount := 0
-	docCount = 0
-	txn, err = h.defraNode.DB.NewTxn(false)
-	if err != nil {
-		return "", errors.NewQueryFailed("defra", "CreateBlockBatch", "failed to create transaction", err)
-	}
-
+	var allLogs []logEntry
 	for _, tx := range transactions {
 		if tx == nil {
 			continue
@@ -699,44 +585,23 @@ func (h *BlockHandler) CreateBlockBatch(ctx context.Context, block *types.Block,
 		if !ok {
 			continue
 		}
-
 		for i := range receipt.Logs {
-			logMutation := h.buildLogMutation(&receipt.Logs[i], blockID, txID)
-			result := txn.ExecRequest(ctx, logMutation)
+			allLogs = append(allLogs, logEntry{log: &receipt.Logs[i], txID: txID})
+		}
+	}
+
+	if len(allLogs) > 0 {
+		logMutation := h.buildBatchedLogMutation(allLogs, blockID, 0)
+		if logMutation != "" {
+			result = txn.ExecRequest(ctx, logMutation)
 			if len(result.GQL.Errors) > 0 {
-				logger.Sugar.Warnf("Failed to create log: %v", result.GQL.Errors[0])
-				continue
-			}
-			logCount++
-			docCount++
-
-			if docCount >= h.docsPerTxn {
-				if err := txn.Commit(); err != nil {
-					logger.Sugar.Warnf("Failed to commit log batch: %v", err)
-				}
-				h.enforceRateLimit(docCount)
-				txn, _ = h.defraNode.DB.NewTxn(false)
-				docCount = 0
+				txn.Discard()
+				return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", result.GQL.Errors[0].Error(), result.GQL.Errors[0])
 			}
 		}
 	}
 
-	if docCount > 0 {
-		if err := txn.Commit(); err != nil {
-			logger.Sugar.Warnf("Failed to commit final log batch: %v", err)
-		}
-		h.enforceRateLimit(docCount)
-	} else {
-		txn.Discard()
-	}
-
-	aleCount := 0
-	docCount = 0
-	txn, err = h.defraNode.DB.NewTxn(false)
-	if err != nil {
-		return "", errors.NewQueryFailed("defra", "CreateBlockBatch", "failed to create transaction", err)
-	}
-
+	var allALEs []aleEntry
 	for _, tx := range transactions {
 		if tx == nil {
 			continue
@@ -745,147 +610,791 @@ func (h *BlockHandler) CreateBlockBatch(ctx context.Context, block *types.Block,
 		if !ok {
 			continue
 		}
-
 		for i := range tx.AccessList {
-			aleMutation := h.buildAccessListEntryMutation(&tx.AccessList[i], txID)
-			result := txn.ExecRequest(ctx, aleMutation)
-			if len(result.GQL.Errors) > 0 {
-				logger.Sugar.Warnf("Failed to create ALE: %v", result.GQL.Errors[0])
-				continue
-			}
-			aleCount++
-			docCount++
+			allALEs = append(allALEs, aleEntry{ale: &tx.AccessList[i], txID: txID})
+		}
+	}
 
-			if docCount >= h.docsPerTxn {
-				if err := txn.Commit(); err != nil {
-					logger.Sugar.Warnf("Failed to commit ALE batch: %v", err)
-				}
-				h.enforceRateLimit(docCount)
-				txn, _ = h.defraNode.DB.NewTxn(false)
-				docCount = 0
+	if len(allALEs) > 0 {
+		aleMutation := h.buildBatchedALEMutation(allALEs, 0)
+		if aleMutation != "" {
+			result = txn.ExecRequest(ctx, aleMutation)
+			if len(result.GQL.Errors) > 0 {
+				txn.Discard()
+				return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", result.GQL.Errors[0].Error(), result.GQL.Errors[0])
 			}
 		}
 	}
 
-	if docCount > 0 {
-		if err := txn.Commit(); err != nil {
-			logger.Sugar.Warnf("Failed to commit final batch: %v", err)
-		}
-		h.enforceRateLimit(docCount)
-	} else {
-		txn.Discard()
+	// Commit everything at once
+	if err := txn.Commit(); err != nil {
+		return "", errors.NewQueryFailed("defra", "createBlockSingleTransaction", "failed to commit", err)
 	}
 
 	return blockID, nil
 }
 
-// buildBlockMutation creates a GraphQL mutation for a block
-func (h *BlockHandler) buildBlockMutation(block *types.Block, blockInt int64) string {
-	return fmt.Sprintf(`mutation {
-		create_%s(input: {
-			hash: %q,
-			number: %d,
-			timestamp: %q,
-			parentHash: %q,
-			difficulty: %q,
-			totalDifficulty: %q,
-			gasUsed: %q,
-			gasLimit: %q,
-			baseFeePerGas: %q,
-			nonce: %q,
-			miner: %q,
-			size: %q,
-			stateRoot: %q,
-			sha3Uncles: %q,
-			transactionsRoot: %q,
-			receiptsRoot: %q,
-			logsBloom: %q,
-			extraData: %q,
-			mixHash: %q,
-			uncles: %s
-		}) { _docID }
-	}`, constants.CollectionBlock,
-		block.Hash, blockInt, block.Timestamp, block.ParentHash,
-		block.Difficulty, block.TotalDifficulty, block.GasUsed, block.GasLimit,
-		block.BaseFeePerGas, block.Nonce, block.Miner, block.Size,
-		block.StateRoot, block.Sha3Uncles, block.TransactionsRoot,
-		block.ReceiptsRoot, block.LogsBloom, block.ExtraData, block.MixHash,
-		h.formatStringArray(block.Uncles))
+// buildEntireBlockMutation builds a single GraphQL mutation containing the block and all related documents.
+func (h *BlockHandler) buildEntireBlockMutation(block *types.Block, blockInt int64, transactions []*types.Transaction, receiptMap map[string]*types.TransactionReceipt) (string, int, int, int) {
+	// Estimate size for pre-allocation
+	estimatedSize := 2048 + len(transactions)*1536
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		if receipt, ok := receiptMap[tx.Hash]; ok && receipt != nil {
+			estimatedSize += len(receipt.Logs) * 1024
+		}
+		estimatedSize += len(tx.AccessList) * 512
+	}
+
+	var sb strings.Builder
+	sb.Grow(estimatedSize)
+	sb.WriteString("mutation {\n")
+
+	// === Block ===
+	sb.WriteString(`block0: create_`)
+	sb.WriteString(constants.CollectionBlock)
+	sb.WriteString(`(input: { hash: "`)
+	sb.WriteString(block.Hash)
+	sb.WriteString(`", number: `)
+	sb.WriteString(strconv.FormatInt(blockInt, 10))
+	sb.WriteString(`, timestamp: "`)
+	sb.WriteString(block.Timestamp)
+	sb.WriteString(`", parentHash: "`)
+	sb.WriteString(block.ParentHash)
+	sb.WriteString(`", difficulty: "`)
+	sb.WriteString(block.Difficulty)
+	sb.WriteString(`", totalDifficulty: "`)
+	sb.WriteString(block.TotalDifficulty)
+	sb.WriteString(`", gasUsed: "`)
+	sb.WriteString(block.GasUsed)
+	sb.WriteString(`", gasLimit: "`)
+	sb.WriteString(block.GasLimit)
+	sb.WriteString(`", baseFeePerGas: "`)
+	sb.WriteString(block.BaseFeePerGas)
+	sb.WriteString(`", nonce: "`)
+	sb.WriteString(block.Nonce)
+	sb.WriteString(`", miner: "`)
+	sb.WriteString(block.Miner)
+	sb.WriteString(`", size: "`)
+	sb.WriteString(block.Size)
+	sb.WriteString(`", stateRoot: "`)
+	sb.WriteString(block.StateRoot)
+	sb.WriteString(`", sha3Uncles: "`)
+	sb.WriteString(block.Sha3Uncles)
+	sb.WriteString(`", transactionsRoot: "`)
+	sb.WriteString(block.TransactionsRoot)
+	sb.WriteString(`", receiptsRoot: "`)
+	sb.WriteString(block.ReceiptsRoot)
+	sb.WriteString(`", logsBloom: "`)
+	sb.WriteString(block.LogsBloom)
+	sb.WriteString(`", extraData: "`)
+	sb.WriteString(block.ExtraData)
+	sb.WriteString(`", mixHash: "`)
+	sb.WriteString(block.MixHash)
+	sb.WriteString(`", uncles: `)
+	sb.WriteString(h.formatStringArray(block.Uncles))
+	sb.WriteString(` }) { _docID }`)
+	sb.WriteString("\n")
+
+	// === Transactions ===
+	txCount := 0
+	for i, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		alias := fmt.Sprintf("tx%d", i)
+		txBlockNum, _ := strconv.ParseInt(tx.BlockNumber, 10, 64)
+
+		sb.WriteString(alias)
+		sb.WriteString(`: create_`)
+		sb.WriteString(constants.CollectionTransaction)
+		sb.WriteString(`(input: { hash: "`)
+		sb.WriteString(tx.Hash)
+		sb.WriteString(`", blockNumber: `)
+		sb.WriteString(strconv.FormatInt(txBlockNum, 10))
+		sb.WriteString(`, blockHash: "`)
+		sb.WriteString(tx.BlockHash)
+		sb.WriteString(`", transactionIndex: `)
+		sb.WriteString(strconv.Itoa(tx.TransactionIndex))
+		sb.WriteString(`, from: "`)
+		sb.WriteString(tx.From)
+		sb.WriteString(`", to: "`)
+		sb.WriteString(tx.To)
+		sb.WriteString(`", value: "`)
+		sb.WriteString(tx.Value)
+		sb.WriteString(`", gas: "`)
+		sb.WriteString(tx.Gas)
+		sb.WriteString(`", gasPrice: "`)
+		sb.WriteString(tx.GasPrice)
+		sb.WriteString(`", maxFeePerGas: "`)
+		sb.WriteString(tx.MaxFeePerGas)
+		sb.WriteString(`", maxPriorityFeePerGas: "`)
+		sb.WriteString(tx.MaxPriorityFeePerGas)
+		sb.WriteString(`", input: "`)
+		sb.WriteString(string(tx.Input))
+		sb.WriteString(`", nonce: "`)
+		sb.WriteString(tx.Nonce)
+		sb.WriteString(`", type: "`)
+		sb.WriteString(tx.Type)
+		sb.WriteString(`", chainId: "`)
+		sb.WriteString(tx.ChainId)
+		sb.WriteString(`", v: "`)
+		sb.WriteString(tx.V)
+		sb.WriteString(`", r: "`)
+		sb.WriteString(tx.R)
+		sb.WriteString(`", s: "`)
+		sb.WriteString(tx.S)
+		sb.WriteString(`", cumulativeGasUsed: "`)
+		sb.WriteString(tx.CumulativeGasUsed)
+		sb.WriteString(`", effectiveGasPrice: "`)
+		sb.WriteString(tx.EffectiveGasPrice)
+		sb.WriteString(`", status: `)
+		sb.WriteString(strconv.FormatBool(tx.Status))
+		sb.WriteString(` }) { _docID }`)
+		sb.WriteString("\n")
+		txCount++
+	}
+
+	// === Logs ===
+	logIdx := 0
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		receipt, ok := receiptMap[tx.Hash]
+		if !ok || receipt == nil {
+			continue
+		}
+
+		for i := range receipt.Logs {
+			log := &receipt.Logs[i]
+			logBlockNum, _ := utils.HexToInt(log.BlockNumber)
+			alias := fmt.Sprintf("log%d", logIdx)
+
+			sb.WriteString(alias)
+			sb.WriteString(`: create_`)
+			sb.WriteString(constants.CollectionLog)
+			sb.WriteString(`(input: { address: "`)
+			sb.WriteString(log.Address)
+			sb.WriteString(`", topics: `)
+			sb.WriteString(h.formatStringArray(log.Topics))
+			sb.WriteString(`, data: "`)
+			sb.WriteString(log.Data)
+			sb.WriteString(`", blockNumber: `)
+			sb.WriteString(strconv.FormatInt(logBlockNum, 10))
+			sb.WriteString(`, transactionHash: "`)
+			sb.WriteString(log.TransactionHash)
+			sb.WriteString(`", transactionIndex: `)
+			sb.WriteString(strconv.Itoa(log.TransactionIndex))
+			sb.WriteString(`, blockHash: "`)
+			sb.WriteString(log.BlockHash)
+			sb.WriteString(`", logIndex: `)
+			sb.WriteString(strconv.Itoa(log.LogIndex))
+			sb.WriteString(`, removed: "`)
+			sb.WriteString(fmt.Sprintf("%v", log.Removed))
+			sb.WriteString(`" }) { _docID }`)
+			sb.WriteString("\n")
+			logIdx++
+		}
+	}
+
+	// === Access List Entries ===
+	aleIdx := 0
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+
+		for i := range tx.AccessList {
+			ale := &tx.AccessList[i]
+			alias := fmt.Sprintf("ale%d", aleIdx)
+
+			sb.WriteString(alias)
+			sb.WriteString(`: create_`)
+			sb.WriteString(constants.CollectionAccessListEntry)
+			sb.WriteString(`(input: { address: "`)
+			sb.WriteString(ale.Address)
+			sb.WriteString(`", storageKeys: `)
+			sb.WriteString(h.formatStringArray(ale.StorageKeys))
+			sb.WriteString(` }) { _docID }`)
+			sb.WriteString("\n")
+			aleIdx++
+		}
+	}
+
+	sb.WriteString("}")
+
+	return sb.String(), txCount, logIdx, aleIdx
 }
 
-// buildTransactionMutation creates a GraphQL mutation for a transaction
+// createBlockBatched creates the block using multiple transactions for large blocks.
+// This is the fallback for blocks exceeding MaxDocsPerTransaction.
+func (h *BlockHandler) createBlockBatched(ctx context.Context, block *types.Block, blockInt int64, transactions []*types.Transaction, receipts []*types.TransactionReceipt, receiptMap map[string]*types.TransactionReceipt) (string, error) {
+	txn, err := h.defraNode.DB.NewTxn(false)
+	if err != nil {
+		return "", errors.NewQueryFailed("defra", "createBlockBatched", "failed to create transaction", err)
+	}
+
+	blockMutation := h.buildBlockMutation(block, blockInt)
+	result := txn.ExecRequest(ctx, blockMutation)
+	if len(result.GQL.Errors) > 0 {
+		txn.Discard()
+		errMsg := result.GQL.Errors[0].Error()
+		return "", errors.NewQueryFailed("defra", "createBlockBatched", errMsg, result.GQL.Errors[0])
+	}
+
+	blockID, err := h.extractDocID(result.GQL.Data, "create_"+constants.CollectionBlock)
+	if err != nil || blockID == "" {
+		txn.Discard()
+		return "", errors.NewQueryFailed("defra", "createBlockBatched", "failed to get block ID", err)
+	}
+
+	if err := txn.Commit(); err != nil {
+		return "", errors.NewQueryFailed("defra", "createBlockBatched", "failed to commit block", err)
+	}
+
+	batchSize := 64 // Batch size for large blocks that exceed single-txn threshold
+	txHashToID := make(map[string]string)
+	txCount := 0
+
+	for i := 0; i < len(transactions); i += batchSize {
+		end := i + batchSize
+		if end > len(transactions) {
+			end = len(transactions)
+		}
+
+		batch := transactions[i:end]
+		if len(batch) == 0 {
+			continue
+		}
+
+		batchedMutation, txInfos := h.buildBatchedTransactionMutation(batch, blockID, i)
+		if batchedMutation == "" {
+			continue
+		}
+
+		txn, err = h.defraNode.DB.NewTxn(false)
+		if err != nil {
+			logger.Sugar.Warnf("Failed to create txn for tx batch: %v", err)
+			continue
+		}
+
+		result := txn.ExecRequest(ctx, batchedMutation)
+		if len(result.GQL.Errors) > 0 {
+			txn.Discard()
+			logger.Sugar.Warnf("Batch tx mutation error: %v", result.GQL.Errors[0])
+			continue
+		}
+
+		if err := txn.Commit(); err != nil {
+			logger.Sugar.Warnf("Failed to commit tx batch: %v", err)
+			continue
+		}
+
+		for _, txInfo := range txInfos {
+			docID := h.extractDocIDFromBatchedResponse(result.GQL.Data, txInfo.alias)
+			if docID != "" {
+				txHashToID[txInfo.hash] = docID
+				txCount++
+			}
+		}
+	}
+
+	// Phase 3: Create Logs in batches
+	var allLogs []logEntry
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		receipt, ok := receiptMap[tx.Hash]
+		if !ok || receipt == nil {
+			continue
+		}
+		txID, ok := txHashToID[tx.Hash]
+		if !ok {
+			continue
+		}
+		for i := range receipt.Logs {
+			allLogs = append(allLogs, logEntry{log: &receipt.Logs[i], txID: txID})
+		}
+	}
+
+	logCount := 0
+	for i := 0; i < len(allLogs); i += batchSize {
+		end := i + batchSize
+		if end > len(allLogs) {
+			end = len(allLogs)
+		}
+
+		batch := allLogs[i:end]
+		if len(batch) == 0 {
+			continue
+		}
+
+		batchedMutation := h.buildBatchedLogMutation(batch, blockID, i)
+		if batchedMutation == "" {
+			continue
+		}
+
+		txn, err = h.defraNode.DB.NewTxn(false)
+		if err != nil {
+			logger.Sugar.Warnf("Failed to create txn for log batch: %v", err)
+			continue
+		}
+
+		result := txn.ExecRequest(ctx, batchedMutation)
+		if len(result.GQL.Errors) > 0 {
+			txn.Discard()
+			logger.Sugar.Warnf("Batch log mutation error: %v", result.GQL.Errors[0])
+			continue
+		}
+
+		if err := txn.Commit(); err != nil {
+			logger.Sugar.Warnf("Failed to commit log batch: %v", err)
+			continue
+		}
+
+		logCount += len(batch)
+	}
+
+	// Phase 4: Create Access List Entries in batches
+	var allALEs []aleEntry
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		txID, ok := txHashToID[tx.Hash]
+		if !ok {
+			continue
+		}
+		for i := range tx.AccessList {
+			allALEs = append(allALEs, aleEntry{ale: &tx.AccessList[i], txID: txID})
+		}
+	}
+
+	aleCount := 0
+	for i := 0; i < len(allALEs); i += batchSize {
+		end := i + batchSize
+		if end > len(allALEs) {
+			end = len(allALEs)
+		}
+
+		batch := allALEs[i:end]
+		if len(batch) == 0 {
+			continue
+		}
+
+		batchedMutation := h.buildBatchedALEMutation(batch, i)
+		if batchedMutation == "" {
+			continue
+		}
+
+		txn, err = h.defraNode.DB.NewTxn(false)
+		if err != nil {
+			logger.Sugar.Warnf("Failed to create txn for ALE batch: %v", err)
+			continue
+		}
+
+		result := txn.ExecRequest(ctx, batchedMutation)
+		if len(result.GQL.Errors) > 0 {
+			txn.Discard()
+			logger.Sugar.Warnf("Batch ALE mutation error: %v", result.GQL.Errors[0])
+			continue
+		}
+
+		if err := txn.Commit(); err != nil {
+			logger.Sugar.Warnf("Failed to commit ALE batch: %v", err)
+			continue
+		}
+
+		aleCount += len(batch)
+	}
+
+	return blockID, nil
+}
+
+// txAliasInfo holds the alias and hash for a transaction in a batched mutation
+type txAliasInfo struct {
+	alias string
+	hash  string
+}
+
+// buildBatchedTransactionMutation creates a single GraphQL mutation for multiple transactions
+func (h *BlockHandler) buildBatchedTransactionMutation(txs []*types.Transaction, blockID string, startIdx int) (string, []txAliasInfo) {
+	var sb strings.Builder
+	sb.Grow(len(txs) * 1536)
+	sb.WriteString("mutation {\n")
+
+	var txInfos []txAliasInfo
+	for i, tx := range txs {
+		if tx == nil {
+			continue
+		}
+		alias := fmt.Sprintf("tx%d", startIdx+i)
+		txInfos = append(txInfos, txAliasInfo{alias: alias, hash: tx.Hash})
+		txBlockNum, _ := strconv.ParseInt(tx.BlockNumber, 10, 64)
+
+		sb.WriteString(alias)
+		sb.WriteString(`: create_`)
+		sb.WriteString(constants.CollectionTransaction)
+		sb.WriteString(`(input: { hash: "`)
+		sb.WriteString(tx.Hash)
+		sb.WriteString(`", blockNumber: `)
+		sb.WriteString(strconv.FormatInt(txBlockNum, 10))
+		sb.WriteString(`, blockHash: "`)
+		sb.WriteString(tx.BlockHash)
+		sb.WriteString(`", transactionIndex: `)
+		sb.WriteString(strconv.Itoa(tx.TransactionIndex))
+		sb.WriteString(`, from: "`)
+		sb.WriteString(tx.From)
+		sb.WriteString(`", to: "`)
+		sb.WriteString(tx.To)
+		sb.WriteString(`", value: "`)
+		sb.WriteString(tx.Value)
+		sb.WriteString(`", gas: "`)
+		sb.WriteString(tx.Gas)
+		sb.WriteString(`", gasPrice: "`)
+		sb.WriteString(tx.GasPrice)
+		sb.WriteString(`", maxFeePerGas: "`)
+		sb.WriteString(tx.MaxFeePerGas)
+		sb.WriteString(`", maxPriorityFeePerGas: "`)
+		sb.WriteString(tx.MaxPriorityFeePerGas)
+		sb.WriteString(`", input: "`)
+		sb.WriteString(string(tx.Input))
+		sb.WriteString(`", nonce: "`)
+		sb.WriteString(tx.Nonce)
+		sb.WriteString(`", type: "`)
+		sb.WriteString(tx.Type)
+		sb.WriteString(`", chainId: "`)
+		sb.WriteString(tx.ChainId)
+		sb.WriteString(`", v: "`)
+		sb.WriteString(tx.V)
+		sb.WriteString(`", r: "`)
+		sb.WriteString(tx.R)
+		sb.WriteString(`", s: "`)
+		sb.WriteString(tx.S)
+		sb.WriteString(`", cumulativeGasUsed: "`)
+		sb.WriteString(tx.CumulativeGasUsed)
+		sb.WriteString(`", effectiveGasPrice: "`)
+		sb.WriteString(tx.EffectiveGasPrice)
+		sb.WriteString(`", status: `)
+		sb.WriteString(strconv.FormatBool(tx.Status))
+		sb.WriteString(`, block: "`)
+		sb.WriteString(blockID)
+		sb.WriteString(`" }) { _docID }`)
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("}")
+
+	if len(txInfos) == 0 {
+		return "", nil
+	}
+	return sb.String(), txInfos
+}
+
+// buildBatchedLogMutation creates a single GraphQL mutation for multiple logs
+func (h *BlockHandler) buildBatchedLogMutation(logs []logEntry, blockID string, startIdx int) string {
+	var sb strings.Builder
+	sb.Grow(len(logs) * 1024)
+	sb.WriteString("mutation {\n")
+
+	count := 0
+	for i, entry := range logs {
+		if entry.log == nil {
+			continue
+		}
+		logBlockNum, _ := utils.HexToInt(entry.log.BlockNumber)
+		alias := fmt.Sprintf("log%d", startIdx+i)
+
+		sb.WriteString(alias)
+		sb.WriteString(`: create_`)
+		sb.WriteString(constants.CollectionLog)
+		sb.WriteString(`(input: { address: "`)
+		sb.WriteString(entry.log.Address)
+		sb.WriteString(`", topics: `)
+		sb.WriteString(h.formatStringArray(entry.log.Topics))
+		sb.WriteString(`, data: "`)
+		sb.WriteString(entry.log.Data)
+		sb.WriteString(`", blockNumber: `)
+		sb.WriteString(strconv.FormatInt(logBlockNum, 10))
+		sb.WriteString(`, transactionHash: "`)
+		sb.WriteString(entry.log.TransactionHash)
+		sb.WriteString(`", transactionIndex: `)
+		sb.WriteString(strconv.Itoa(entry.log.TransactionIndex))
+		sb.WriteString(`, blockHash: "`)
+		sb.WriteString(entry.log.BlockHash)
+		sb.WriteString(`", logIndex: `)
+		sb.WriteString(strconv.Itoa(entry.log.LogIndex))
+		sb.WriteString(`, removed: "`)
+		sb.WriteString(fmt.Sprintf("%v", entry.log.Removed))
+		sb.WriteString(`", transaction: "`)
+		sb.WriteString(entry.txID)
+		sb.WriteString(`", block: "`)
+		sb.WriteString(blockID)
+		sb.WriteString(`" }) { _docID }`)
+		sb.WriteString("\n")
+		count++
+	}
+
+	sb.WriteString("}")
+
+	if count == 0 {
+		return ""
+	}
+	return sb.String()
+}
+
+// buildBatchedALEMutation creates a single GraphQL mutation for multiple access list entries
+func (h *BlockHandler) buildBatchedALEMutation(ales []aleEntry, startIdx int) string {
+	var sb strings.Builder
+	sb.Grow(len(ales) * 512)
+	sb.WriteString("mutation {\n")
+
+	count := 0
+	for i, entry := range ales {
+		if entry.ale == nil {
+			continue
+		}
+		alias := fmt.Sprintf("ale%d", startIdx+i)
+
+		sb.WriteString(alias)
+		sb.WriteString(`: create_`)
+		sb.WriteString(constants.CollectionAccessListEntry)
+		sb.WriteString(`(input: { address: "`)
+		sb.WriteString(entry.ale.Address)
+		sb.WriteString(`", storageKeys: `)
+		sb.WriteString(h.formatStringArray(entry.ale.StorageKeys))
+		sb.WriteString(`, transaction: "`)
+		sb.WriteString(entry.txID)
+		sb.WriteString(`" }) { _docID }`)
+		sb.WriteString("\n")
+		count++
+	}
+
+	sb.WriteString("}")
+
+	if count == 0 {
+		return ""
+	}
+	return sb.String()
+}
+
+// extractDocIDFromBatchedResponse extracts a doc ID from a batched mutation response by alias
+func (h *BlockHandler) extractDocIDFromBatchedResponse(data any, alias string) string {
+	dataMap, ok := data.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	aliasData, ok := dataMap[alias]
+	if !ok {
+		keys := make([]string, 0, 5)
+		for k := range dataMap {
+			keys = append(keys, k)
+			if len(keys) >= 5 {
+				break
+			}
+		}
+		return ""
+	}
+
+	switch v := aliasData.(type) {
+	case map[string]any:
+		if docID, ok := v["_docID"].(string); ok {
+			return docID
+		}
+	case []map[string]interface{}:
+		// DefraDB returns this type for batched mutations
+		if len(v) > 0 {
+			if docID, ok := v[0]["_docID"].(string); ok {
+				return docID
+			}
+		}
+	case []any:
+		if len(v) > 0 {
+			if item, ok := v[0].(map[string]any); ok {
+				if docID, ok := item["_docID"].(string); ok {
+					return docID
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// buildBlockMutation creates a GraphQL mutation for a block using strings.Builder for efficiency
+func (h *BlockHandler) buildBlockMutation(block *types.Block, blockInt int64) string {
+	var sb strings.Builder
+	sb.Grow(2048) // Pre-allocate for typical block mutation size
+
+	sb.WriteString(`mutation { create_`)
+	sb.WriteString(constants.CollectionBlock)
+	sb.WriteString(`(input: { hash: "`)
+	sb.WriteString(block.Hash)
+	sb.WriteString(`", number: `)
+	sb.WriteString(strconv.FormatInt(blockInt, 10))
+	sb.WriteString(`, timestamp: "`)
+	sb.WriteString(block.Timestamp)
+	sb.WriteString(`", parentHash: "`)
+	sb.WriteString(block.ParentHash)
+	sb.WriteString(`", difficulty: "`)
+	sb.WriteString(block.Difficulty)
+	sb.WriteString(`", totalDifficulty: "`)
+	sb.WriteString(block.TotalDifficulty)
+	sb.WriteString(`", gasUsed: "`)
+	sb.WriteString(block.GasUsed)
+	sb.WriteString(`", gasLimit: "`)
+	sb.WriteString(block.GasLimit)
+	sb.WriteString(`", baseFeePerGas: "`)
+	sb.WriteString(block.BaseFeePerGas)
+	sb.WriteString(`", nonce: "`)
+	sb.WriteString(block.Nonce)
+	sb.WriteString(`", miner: "`)
+	sb.WriteString(block.Miner)
+	sb.WriteString(`", size: "`)
+	sb.WriteString(block.Size)
+	sb.WriteString(`", stateRoot: "`)
+	sb.WriteString(block.StateRoot)
+	sb.WriteString(`", sha3Uncles: "`)
+	sb.WriteString(block.Sha3Uncles)
+	sb.WriteString(`", transactionsRoot: "`)
+	sb.WriteString(block.TransactionsRoot)
+	sb.WriteString(`", receiptsRoot: "`)
+	sb.WriteString(block.ReceiptsRoot)
+	sb.WriteString(`", logsBloom: "`)
+	sb.WriteString(block.LogsBloom)
+	sb.WriteString(`", extraData: "`)
+	sb.WriteString(block.ExtraData)
+	sb.WriteString(`", mixHash: "`)
+	sb.WriteString(block.MixHash)
+	sb.WriteString(`", uncles: `)
+	sb.WriteString(h.formatStringArray(block.Uncles))
+	sb.WriteString(` }) { _docID } }`)
+
+	return sb.String()
+}
+
+// buildTransactionMutation creates a GraphQL mutation for a transaction using strings.Builder
 func (h *BlockHandler) buildTransactionMutation(tx *types.Transaction, blockID string) string {
 	txBlockNum, _ := strconv.ParseInt(tx.BlockNumber, 10, 64)
-	return fmt.Sprintf(`mutation {
-		create_%s(input: {
-			hash: %q,
-			blockNumber: %d,
-			blockHash: %q,
-			transactionIndex: %d,
-			from: %q,
-			to: %q,
-			value: %q,
-			gas: %q,
-			gasPrice: %q,
-			maxFeePerGas: %q,
-			maxPriorityFeePerGas: %q,
-			input: %q,
-			nonce: %q,
-			type: %q,
-			chainId: %q,
-			v: %q,
-			r: %q,
-			s: %q,
-			cumulativeGasUsed: %q,
-			effectiveGasPrice: %q,
-			status: %t,
-			block: %q
-		}) { _docID }
-	}`, constants.CollectionTransaction,
-		tx.Hash, txBlockNum, tx.BlockHash, tx.TransactionIndex,
-		tx.From, tx.To, tx.Value, tx.Gas, tx.GasPrice,
-		tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, string(tx.Input),
-		tx.Nonce, tx.Type, tx.ChainId, tx.V, tx.R, tx.S,
-		tx.CumulativeGasUsed, tx.EffectiveGasPrice, tx.Status, blockID)
+
+	var sb strings.Builder
+	sb.Grow(1536) // Pre-allocate for typical transaction mutation size
+
+	sb.WriteString(`mutation { create_`)
+	sb.WriteString(constants.CollectionTransaction)
+	sb.WriteString(`(input: { hash: "`)
+	sb.WriteString(tx.Hash)
+	sb.WriteString(`", blockNumber: `)
+	sb.WriteString(strconv.FormatInt(txBlockNum, 10))
+	sb.WriteString(`, blockHash: "`)
+	sb.WriteString(tx.BlockHash)
+	sb.WriteString(`", transactionIndex: `)
+	sb.WriteString(strconv.Itoa(tx.TransactionIndex))
+	sb.WriteString(`, from: "`)
+	sb.WriteString(tx.From)
+	sb.WriteString(`", to: "`)
+	sb.WriteString(tx.To)
+	sb.WriteString(`", value: "`)
+	sb.WriteString(tx.Value)
+	sb.WriteString(`", gas: "`)
+	sb.WriteString(tx.Gas)
+	sb.WriteString(`", gasPrice: "`)
+	sb.WriteString(tx.GasPrice)
+	sb.WriteString(`", maxFeePerGas: "`)
+	sb.WriteString(tx.MaxFeePerGas)
+	sb.WriteString(`", maxPriorityFeePerGas: "`)
+	sb.WriteString(tx.MaxPriorityFeePerGas)
+	sb.WriteString(`", input: "`)
+	sb.WriteString(string(tx.Input))
+	sb.WriteString(`", nonce: "`)
+	sb.WriteString(tx.Nonce)
+	sb.WriteString(`", type: "`)
+	sb.WriteString(tx.Type)
+	sb.WriteString(`", chainId: "`)
+	sb.WriteString(tx.ChainId)
+	sb.WriteString(`", v: "`)
+	sb.WriteString(tx.V)
+	sb.WriteString(`", r: "`)
+	sb.WriteString(tx.R)
+	sb.WriteString(`", s: "`)
+	sb.WriteString(tx.S)
+	sb.WriteString(`", cumulativeGasUsed: "`)
+	sb.WriteString(tx.CumulativeGasUsed)
+	sb.WriteString(`", effectiveGasPrice: "`)
+	sb.WriteString(tx.EffectiveGasPrice)
+	sb.WriteString(`", status: `)
+	if tx.Status {
+		sb.WriteString("true")
+	} else {
+		sb.WriteString("false")
+	}
+	sb.WriteString(`, block: "`)
+	sb.WriteString(blockID)
+	sb.WriteString(`" }) { _docID } }`)
+
+	return sb.String()
 }
 
-// buildLogMutation creates a GraphQL mutation for a log
+// buildLogMutation creates a GraphQL mutation for a log using strings.Builder
 func (h *BlockHandler) buildLogMutation(log *types.Log, blockID, txID string) string {
 	logBlockNum, _ := utils.HexToInt(log.BlockNumber)
-	removed := "false"
+
+	var sb strings.Builder
+	sb.Grow(1024) // Pre-allocate for typical log mutation size
+
+	sb.WriteString(`mutation { create_`)
+	sb.WriteString(constants.CollectionLog)
+	sb.WriteString(`(input: { address: "`)
+	sb.WriteString(log.Address)
+	sb.WriteString(`", topics: `)
+	sb.WriteString(h.formatStringArray(log.Topics))
+	sb.WriteString(`, data: "`)
+	sb.WriteString(log.Data)
+	sb.WriteString(`", blockNumber: `)
+	sb.WriteString(strconv.FormatInt(logBlockNum, 10))
+	sb.WriteString(`, transactionHash: "`)
+	sb.WriteString(log.TransactionHash)
+	sb.WriteString(`", transactionIndex: `)
+	sb.WriteString(strconv.Itoa(log.TransactionIndex))
+	sb.WriteString(`, blockHash: "`)
+	sb.WriteString(log.BlockHash)
+	sb.WriteString(`", logIndex: `)
+	sb.WriteString(strconv.Itoa(log.LogIndex))
+	sb.WriteString(`, removed: "`)
 	if log.Removed {
-		removed = "true"
+		sb.WriteString("true")
+	} else {
+		sb.WriteString("false")
 	}
-	return fmt.Sprintf(`mutation {
-		create_%s(input: {
-			address: %q,
-			topics: %s,
-			data: %q,
-			blockNumber: %d,
-			transactionHash: %q,
-			transactionIndex: %d,
-			blockHash: %q,
-			logIndex: %d,
-			removed: %q,
-			transaction: %q,
-			block: %q
-		}) { _docID }
-	}`, constants.CollectionLog,
-		log.Address, h.formatStringArray(log.Topics), log.Data, logBlockNum,
-		log.TransactionHash, log.TransactionIndex, log.BlockHash,
-		log.LogIndex, removed, txID, blockID)
+	sb.WriteString(`", transaction: "`)
+	sb.WriteString(txID)
+	sb.WriteString(`", block: "`)
+	sb.WriteString(blockID)
+	sb.WriteString(`" }) { _docID } }`)
+
+	return sb.String()
 }
 
-// buildAccessListEntryMutation creates a GraphQL mutation for an access list entry
+// buildAccessListEntryMutation creates a GraphQL mutation for an access list entry using strings.Builder
 func (h *BlockHandler) buildAccessListEntryMutation(ale *types.AccessListEntry, txID string) string {
-	return fmt.Sprintf(`mutation {
-		create_%s(input: {
-			address: %q,
-			storageKeys: %s,
-			transaction: %q
-		}) { _docID }
-	}`, constants.CollectionAccessListEntry,
-		ale.Address, h.formatStringArray(ale.StorageKeys), txID)
+	var sb strings.Builder
+	sb.Grow(512) // Pre-allocate for typical ALE mutation size
+
+	sb.WriteString(`mutation { create_`)
+	sb.WriteString(constants.CollectionAccessListEntry)
+	sb.WriteString(`(input: { address: "`)
+	sb.WriteString(ale.Address)
+	sb.WriteString(`", storageKeys: `)
+	sb.WriteString(h.formatStringArray(ale.StorageKeys))
+	sb.WriteString(`, transaction: "`)
+	sb.WriteString(txID)
+	sb.WriteString(`" }) { _docID } }`)
+
+	return sb.String()
 }
 
 // formatStringArray formats a string slice as a GraphQL array
@@ -950,7 +1459,6 @@ func (h *BlockHandler) GetHighestBlockNumber(ctx context.Context) (int64, error)
 
 	resp, err := h.SendToGraphql(ctx, query)
 	if err != nil {
-		logger.Sugar.Errorf("failed to query block numbers error: ", err)
 		return 0, errors.NewQueryFailed("defra", "GetHighestBlockNumber", query.Query, err)
 	}
 	// Parse response to handle both string and integer number formats
